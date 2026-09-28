@@ -115,7 +115,7 @@
   parcialmente aplicado / todos aplicados mas versão não bumpada).
 - **Gate**: `cargo test sync::coordinator::resume`
 
-## T-009: Testes de injeção de crash (integração)
+## T-009: Testes de injeção de crash (integração) [x]
 - **REQ**: REQ-004, REQ-005, REQ-007
 - **Graph node**: n/a
 - **What**: Suíte de integração que simula crash nos 4 pontos do diagrama de

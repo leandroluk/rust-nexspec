@@ -69,6 +69,13 @@
   bumpada). Adicionado `impl SyncParticipant for Arc<T>` (test-only, em
   `participant::test_support`) para permitir compartilhar o mesmo
   `TestParticipant` entre o coordinator e as asserções diretas do teste.
+- 2026-09-28 T-009 completo. `tests/sync_crash_recovery.rs`: 4 testes de
+  integração usando `Wal`/`RedbParticipant`/`Database` reais (não mocks),
+  simulando "reinício do processo" via objetos novos sobre os mesmos arquivos
+  em disco, um por ponto de crash do diagrama em `design.md` (antes do fsync
+  do WAL / depois do WAL antes do fan-out / meio do fan-out com 2 participantes
+  reais / depois do fan-out antes do bump de versão). Gate:
+  `cargo test --test sync_crash_recovery` → 4/4 pass.
 
 ## Decisions [window: last 10]
 - 2026-09-28 Design completo para "sync-coordinator" em
@@ -104,7 +111,7 @@
 - [x] T-006: `RedbParticipant` — implementação real da trait — Execute
 - [x] T-007: `Coordinator` — stage/commit/abort (fluxo feliz) — Execute
 - [x] T-008: `Coordinator::resume()` — recovery determinístico — Execute
-- [ ] T-009: Testes de injeção de crash (integração) — Execute
+- [x] T-009: Testes de injeção de crash (integração) — Execute
 - [ ] T-010: Superfície pública e lint final — Execute
 
 ## Next Steps
