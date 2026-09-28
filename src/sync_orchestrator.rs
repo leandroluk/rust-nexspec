@@ -68,14 +68,14 @@ impl<'a> SyncOrchestrator<'a> {
         let mut combined = MutationSet::default();
 
         for path in diff.added.iter().chain(diff.modified.iter()) {
-            if is_markdown(path) {
-                if let Some(bytes) = self.git.read_blob_at_head(path)? {
-                    let text = String::from_utf8_lossy(&bytes);
-                    let extracted = markdown::extract(&text);
-                    combined.nodes.extend(extracted.nodes);
-                    combined.edges.extend(extracted.edges);
-                    combined.docs.extend(extracted.docs);
-                }
+            if is_markdown(path)
+                && let Some(bytes) = self.git.read_blob_at_head(path)?
+            {
+                let text = String::from_utf8_lossy(&bytes);
+                let extracted = markdown::extract(&text);
+                combined.nodes.extend(extracted.nodes);
+                combined.edges.extend(extracted.edges);
+                combined.docs.extend(extracted.docs);
             }
             combined.nodes.push(file_node_mutation(path));
         }

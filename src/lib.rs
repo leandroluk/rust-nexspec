@@ -8,5 +8,7 @@ pub mod graph;
 pub mod sync;
 pub mod sync_orchestrator;
 
+pub use git::GitSource;
 pub use graph::{Csr, CsrParticipant, Edge, EdgeType, Node, NodeType};
 pub use sync::{Coordinator, MutationSet, SyncParticipant};
+pub use sync_orchestrator::SyncOrchestrator;

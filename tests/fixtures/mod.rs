@@ -2,6 +2,11 @@
 //! Shells out to the system `git` binary — this is explicitly allowed only
 //! inside `tests/` fixture setup (never in `src/`), per
 //! `.specs/features/git-integration/design.md` → Dependency Paths (REQ-208).
+//!
+//! `dead_code` is expected here: each `tests/*.rs` file compiles this module
+//! as its own copy, and not every integration test uses every method — the
+//! full API surface is intentional, not accidental cruft.
+#![allow(dead_code)]
 
 use std::path::Path;
 use std::process::Command;

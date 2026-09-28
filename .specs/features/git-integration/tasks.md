@@ -118,7 +118,7 @@
   esperado.
 - **Gate**: `cargo test --test git_edge_cases`
 
-## T-209: Lint e superfície pública
+## T-209: Lint e superfície pública [x]
 - **REQ**: (todos — fechamento da fase, mesmo padrão de T-010/T-110)
 - **What**: Exportar `git::GitSource`, `sync_orchestrator::SyncOrchestrator`
   de `src/lib.rs`. Doc comments em toda API pública.

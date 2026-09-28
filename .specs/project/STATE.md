@@ -264,7 +264,7 @@ validado na prática, sem precisar mudar a trait).
 - [x] T-206: `extract_commit_links` — linking temporal — Execute [P-A]
 - [x] T-207: `SyncOrchestrator::run_once()` — integração — Execute
 - [x] T-208: Testes de estados não-triviais do repositório — Execute
-- [ ] T-209: Lint e superfície pública — Execute
+- [x] T-209: Lint e superfície pública — Execute
 
 ## Progress [window: last 10]
 - 2026-09-28 T-201 completo. `cargo add gix` (defaults — footprint maior que
@@ -356,5 +356,28 @@ validado na prática, sem precisar mudar a trait).
   `cargo test --test git_edge_cases` → 2/2. Suíte completa após a correção:
   `cargo test` → 53/53 pass (40 unit + 13 integração).
 
+- 2026-09-28 T-209 completo. `lib.rs` exporta `git::GitSource`,
+  `sync_orchestrator::SyncOrchestrator`. Corrigidos: `clippy::collapsible_if`
+  em `sync_orchestrator.rs` (let-chain), `dead_code` em
+  `tests/fixtures/mod.rs` — cada `tests/*.rs` compila esse módulo como cópia
+  própria e nem todo teste usa todo método; `#![allow(dead_code)]` no topo
+  do arquivo, documentado como intencional (API completa do helper, não
+  lixo acidental). Gate: `cargo doc --no-deps` e
+  `cargo clippy --all-targets -- -D warnings` limpos; `cargo test` → 53/53
+  pass.
+
+## Feature "git-integration" (Fase 2): COMPLETA
+Todas as 9 tasks (T-201..T-209) concluídas, 53/53 testes, `cargo doc`/
+`cargo clippy -- -D warnings` limpos. `GitSource` (gix embutido, diff de
+árvore incremental, HEAD destacado), `DirtyCache` (mudanças não commitadas),
+`co_change_edges` (grafo de co-mudança com janela limitada), linking
+temporal commit→spec, e `SyncOrchestrator::run_once()` amarrando tudo à
+Fase 0/1 (`Coordinator` + `markdown::extract()`). Correção no meio do
+caminho: REQ-204 (dirty tree) tinha ficado só parcialmente implementado em
+T-207, fechado antes de declarar T-208 pronto.
+
 ## Next Steps
-- T-209 (lint/superfície pública) — última task, fecha a Fase 2.
+- Specify da Fase 3 (Multi-Language AST & Lexical Search) — Tree-sitter
+  (TS/JS, Python, Go, Rust) com parsing paralelo via `rayon`, índice Tantivy
+  (BM25). É quem `SyncOrchestrator` (Fase 2) vai passar a chamar também,
+  além de `markdown::extract()`, para arquivos não-`.md`.
