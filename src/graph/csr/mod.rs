@@ -4,5 +4,7 @@
 //! diagram.
 
 pub mod base;
+pub mod delta;
 
 pub use base::{CsrBase, CsrError};
+pub use delta::CsrDelta;

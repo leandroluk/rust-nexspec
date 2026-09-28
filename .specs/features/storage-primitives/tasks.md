@@ -49,7 +49,7 @@
   sem edges (retorna slice vazio, não erro).
 - **Gate**: `cargo test graph::csr::base`
 
-## T-105: `CsrDelta` — estrutura append-only em memória
+## T-105: `CsrDelta` — estrutura append-only em memória [x]
 - **REQ**: REQ-105
 - **What**: `CsrDelta { added: Vec<Edge>, removed: Vec<StableId> }` (edge ID
   removido). `CsrDelta::edges_from(id, edge_type)` combinando `added`
