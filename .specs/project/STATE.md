@@ -76,6 +76,24 @@
   do WAL / depois do WAL antes do fan-out / meio do fan-out com 2 participantes
   reais / depois do fan-out antes do bump de versão). Gate:
   `cargo test --test sync_crash_recovery` → 4/4 pass.
+- 2026-09-28 T-010 completo. `src/lib.rs` exporta `sync::{Coordinator,
+  MutationSet, SyncParticipant}`. Gate: `cargo doc --no-deps` e
+  `cargo clippy --all-targets -- -D warnings` sem erros/warnings.
+  Suíte completa: `cargo test` → 19/19 pass (15 unit + 4 integração).
+  SPEC_DEVIATION: tasks.md previa `RedbParticipant`/internals como
+  `pub(crate)` (T-010 original); mantido `pub` porque T-009 (testes de
+  crash-injection) já o usa fora do crate, via `tests/sync_crash_recovery.rs`,
+  para simular múltiplos participantes reais. Não conflita com REQ-006 — a
+  restrição de "caminho único de escrita" é sobre código de produção
+  (CSR/Tantivy/HNSW nas Fases 1/3/4), não sobre chamar a trait diretamente em
+  testes para injetar cenários de crash.
+
+## Feature "sync-coordinator" (Fase 0): COMPLETA
+Todas as 10 tasks concluídas, 19/19 testes passando, `cargo doc`/`cargo
+clippy -- -D warnings` limpos. 5 commits atômicos no histórico (scaffold+P-A,
+WAL, RedbParticipant, Coordinator happy-path, resume, testes de integração —
+T-010 será incluído no próximo commit). Pronta para servir de base para a
+Fase 1 (Storage Primitives & Graph Topology / CSR).
 
 ## Decisions [window: last 10]
 - 2026-09-28 Design completo para "sync-coordinator" em
@@ -112,8 +130,13 @@
 - [x] T-007: `Coordinator` — stage/commit/abort (fluxo feliz) — Execute
 - [x] T-008: `Coordinator::resume()` — recovery determinístico — Execute
 - [x] T-009: Testes de injeção de crash (integração) — Execute
-- [ ] T-010: Superfície pública e lint final — Execute
+- [x] T-010: Superfície pública e lint final — Execute
 
 ## Next Steps
-- Rodar Execute (`/graph-spec-design` "implement") começando por T-001; T-002,
-  T-004 e T-005 podem ser feitos em paralelo (onda [P-A]) logo em seguida.
+- Feature "sync-coordinator" (Fase 0) está completa e commitada. Próxima:
+  Specify da Fase 1 (Storage Primitives & Graph Topology) — `Node`/`Edge`
+  tipados, CSR duas camadas (base rkyv/mmap + delta lock-free), ID estável já
+  definido em `sync::mutation::StableId` (reaproveitar). Fase 1 consome
+  `sync::coordinator` como `SyncParticipant`, então já há um contrato real
+  para validar/ajustar (ver SPEC_DEVIATION do design.md sobre a trait não ser
+  estável até aqui).

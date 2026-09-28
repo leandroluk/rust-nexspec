@@ -128,7 +128,7 @@
 - **Done when**: os 4 cenários de crash passam sem estado parcial observável.
 - **Gate**: `cargo test --test sync_crash_recovery`
 
-## T-010: Superfície pública e lint final
+## T-010: Superfície pública e lint final [x]
 - **REQ**: REQ-006
 - **Graph node**: n/a
 - **What**: Exportar `sync::Coordinator`, `sync::SyncParticipant`,

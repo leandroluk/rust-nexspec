@@ -9,7 +9,7 @@ começar a ser trabalhada.
 
 | # | Fase | Entrega central | Status |
 |---|------|------------------|--------|
-| 0 | Sync Coordinator & Transactional Integrity | WAL (`sync.wal`), `sync_version` atômico em `redb`, staging+rename por store, `specdb sync --resume`, apply idempotente | Não iniciado |
+| 0 | Sync Coordinator & Transactional Integrity | WAL (`sync.wal`), `sync_version` atômico em `redb`, staging+rename por store, `specdb sync --resume`, apply idempotente | **Completo** (`.specs/features/sync-coordinator/`) |
 | 1 | Storage Primitives & Graph Topology | `Node`/`Edge` tipados, ID estável (Blake3) vs índice físico denso (`u32`), redb+zstd, CSR **duas camadas** (base rkyv/mmap + delta lock-free via `ArcSwap`/`crossbeam-epoch`, compactação por threshold), extração Markdown (comrak) | Não iniciado |
 | 2 | Git Integration & Incremental Sync | gix embutido (com fixtures para submodules/LFS/sparse checkout/detached HEAD), tree-diff incremental, blame por símbolo com janela de co-change limitada (default 500 commits/6 meses), linking commit→spec | Não iniciado |
 | 3 | Multi-Language AST & Lexical Search | Tree-sitter (TS/JS, Python, Go, Rust) com parsing paralelo via `rayon` no cold-start, índice Tantivy (BM25) | Não iniciado |
