@@ -261,7 +261,7 @@ validado na prática, sem precisar mudar a trait).
 - [x] T-203: `TreeDiff` — diff de árvore desde `last_indexed_commit` — Execute
 - [x] T-204: `DirtyCache` — mudanças não commitadas — Execute [P-A]
 - [x] T-205: `EdgeType::CoChanges` + `co_change_edges` — Execute [P-A]
-- [ ] T-206: `extract_commit_links` — linking temporal — Execute [P-A]
+- [x] T-206: `extract_commit_links` — linking temporal — Execute [P-A]
 - [ ] T-207: `SyncOrchestrator::run_once()` — integração — Execute
 - [ ] T-208: Testes de estados não-triviais do repositório — Execute
 - [ ] T-209: Lint e superfície pública — Execute
@@ -315,5 +315,16 @@ validado na prática, sem precisar mudar a trait).
   `commit.time()?.seconds`, walk é newest-first então corta assim que um
   commit fica velho demais. Gate: `cargo test git::` → 5/5 pass.
 
+- 2026-09-28 T-206 completo (fecha a onda [P-A]). `git::spec_link::
+  extract_commit_links(message) -> Vec<String>` reaproveita
+  `graph::markdown::find_markers` (agora `pub(crate)`) — mesma sintaxe de
+  marcador reconhecida em specs e em mensagens de commit.
+  `GitSource::commits_since(Option<[u8;20]>) -> Vec<CommitInfo>` (oid,
+  message, author, timestamp), `since` exclusivo (para no commit indicado,
+  sem incluí-lo). Gate: `cargo test git::` (unit) → 7/7,
+  `cargo test --test git_spec_link` → 1/1.
+
 ## Next Steps
-- T-206 (`extract_commit_links`) — última da onda [P-A], depende só de T-202.
+- T-207 (`SyncOrchestrator::run_once()`) — integra tudo (T-203..T-206) com
+  o `Coordinator` da Fase 0. Depois: T-208 (estados não-triviais) e T-209
+  (lint/superfície pública, fecha a Fase 2).

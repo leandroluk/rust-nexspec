@@ -54,7 +54,10 @@ fn parse_marker(text: &str, marker: &str) -> Option<(String, String)> {
 }
 
 /// Every `marker`-prefixed id (`marker` + digits) found anywhere in `text`.
-fn find_markers(text: &str, marker: &str) -> Vec<String> {
+/// `pub(crate)` — also used by `git::spec_link` for commit-message linking
+/// (REQ-207 in `.specs/features/git-integration/spec.md`), so a "REQ-001"
+/// mention is recognized identically whether it's in a spec or a commit.
+pub(crate) fn find_markers(text: &str, marker: &str) -> Vec<String> {
     let mut found = Vec::new();
     let mut offset = 0usize;
     while let Some(pos) = text[offset..].find(marker) {

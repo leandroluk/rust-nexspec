@@ -72,7 +72,7 @@
   do alcance.
 - **Gate**: `cargo test git::cochange`
 
-## T-206: `extract_commit_links` — linking temporal
+## T-206: `extract_commit_links` — linking temporal [x]
 - **REQ**: REQ-207
 - **What**: `extract_commit_links(message: &str) -> Vec<String>` — reaproveita
   o parser de marcadores já usado em `graph::markdown` (extrair para um
