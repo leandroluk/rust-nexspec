@@ -96,6 +96,12 @@ T-010 será incluído no próximo commit). Pronta para servir de base para a
 Fase 1 (Storage Primitives & Graph Topology / CSR).
 
 ## Decisions [window: last 10]
+- 2026-09-28 Feature "storage-primitives" (Fase 1) especificada, desenhada e
+  quebrada em tasks: `.specs/features/storage-primitives/{spec,design,tasks}.md`.
+  REQ count: 9 (REQ-101..109). Escopo `Complex`. CSR de duas camadas cobre só
+  edges (não nós — nós continuam via `RedbParticipant` da Fase 0). Delta
+  lock-free via `ArcSwap` (não `crossbeam-epoch`, por simplicidade). 10 tasks
+  (T-101..T-110), onda [P-A] em T-102/T-103.
 - 2026-09-28 Design completo para "sync-coordinator" em
   `.specs/features/sync-coordinator/design.md`. Risco principal: acoplamento
   obrigatório — `sync::coordinator`/`SyncParticipant` vira dependência
@@ -132,11 +138,17 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
 - [x] T-009: Testes de injeção de crash (integração) — Execute
 - [x] T-010: Superfície pública e lint final — Execute
 
+## Todos
+- [ ] T-101: Dependências novas (memmap2/arc-swap/zstd/comrak) — Execute
+- [ ] T-102: Tipos `Node`/`NodeType`/`NodePayload` — Execute [P-A]
+- [ ] T-103: Tipos `Edge`/`EdgeType` — Execute [P-A]
+- [ ] T-104: `CsrBase` — layout binário imutável — Execute
+- [ ] T-105: `CsrDelta` — estrutura append-only — Execute
+- [ ] T-106: `Csr` — fachada lock-free — Execute
+- [ ] T-107: `CsrParticipant` — implementação de `SyncParticipant` — Execute
+- [ ] T-108: `markdown::extract` — parser comrak — Execute
+- [ ] T-109: Integração fim-a-fim via `Coordinator` — Execute
+- [ ] T-110: Lint e superfície pública — Execute
+
 ## Next Steps
-- Feature "sync-coordinator" (Fase 0) está completa e commitada. Próxima:
-  Specify da Fase 1 (Storage Primitives & Graph Topology) — `Node`/`Edge`
-  tipados, CSR duas camadas (base rkyv/mmap + delta lock-free), ID estável já
-  definido em `sync::mutation::StableId` (reaproveitar). Fase 1 consome
-  `sync::coordinator` como `SyncParticipant`, então já há um contrato real
-  para validar/ajustar (ver SPEC_DEVIATION do design.md sobre a trait não ser
-  estável até aqui).
+- Rodar Execute começando por T-101; T-102/T-103 em paralelo [P-A] em seguida.
