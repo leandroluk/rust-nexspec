@@ -117,7 +117,7 @@
   nós e ao menos 1 edge conectando a task ao requirement.
 - **Gate**: `cargo test graph::markdown`
 
-## T-109: Integração fim-a-fim via `Coordinator`
+## T-109: Integração fim-a-fim via `Coordinator` [x]
 - **REQ**: REQ-109
 - **What**: Teste de integração (`tests/graph_storage_integration.rs`):
   `extract()` sobre um fixture real de `.specs/`, resultado passado a

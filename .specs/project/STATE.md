@@ -161,6 +161,17 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
   citado antes de ser parseado) não geram edge — documentado no código, não
   exigido pelo critério de "Done" da task. Gate: `cargo test graph::markdown`
   → 2/2 pass.
+- 2026-09-28 T-109 completo. `tests/graph_storage_integration.rs`:
+  `markdown::extract()` sobre fixture real → `Coordinator::stage()` com
+  `[RedbParticipant, CsrParticipant]` reais → nós recuperados via
+  `RedbParticipant::get_node` (desserializados de volta a `NodePayload`) e
+  edge `Satisfies` recuperada via `CsrParticipant::csr_handle().edges_from`.
+  Refino de design: `CsrParticipant` passou a guardar `Arc<Csr>` (era `Csr`
+  por valor) + método `csr_handle()` — necessário porque o participante é
+  movido para dentro do `Coordinator` (`Box<dyn SyncParticipant>`), então
+  quem quiser consultar o grafo depois precisa de um handle compartilhado
+  guardado antes do move. Gate: suíte completa `cargo test` → 36/36 pass
+  (31 unit + 1 integração nova + 4 crash-recovery da Fase 0).
 
 ## Known Issues
 - Os 3 subagentes em `.claude/agents/` (po.md, dev.md, qa.md) foram copiados de
@@ -189,7 +200,7 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
 - [x] T-106: `Csr` — fachada lock-free — Execute
 - [x] T-107: `CsrParticipant` — implementação de `SyncParticipant` — Execute
 - [x] T-108: `markdown::extract` — parser comrak — Execute
-- [ ] T-109: Integração fim-a-fim via `Coordinator` — Execute
+- [x] T-109: Integração fim-a-fim via `Coordinator` — Execute
 - [ ] T-110: Lint e superfície pública — Execute
 
 ## Progress [window: last 10]

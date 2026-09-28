@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use crate::graph::csr::base::{CsrBase, CsrError};
 use crate::graph::csr::delta::CsrDelta;
@@ -29,7 +29,11 @@ impl From<CsrError> for SyncError {
 const DEFAULT_COMPACTION_THRESHOLD_RATIO: f64 = 0.05;
 
 pub struct CsrParticipant {
-    csr: Csr,
+    // `Arc` so callers can keep a shared handle to query `Csr` (e.g. after
+    // this participant has been moved into a `Coordinator`'s participant
+    // list) — the whole point of Csr being lock-free is that reads don't
+    // need to go through the coordinator at all.
+    csr: Arc<Csr>,
     /// Path to the base `edges.bin` file — compaction writes to
     /// `<path>.staging` and renames it here atomically.
     base_path: PathBuf,
@@ -39,7 +43,7 @@ pub struct CsrParticipant {
 }
 
 impl CsrParticipant {
-    pub fn new(csr: Csr, base_path: PathBuf) -> Self {
+    pub fn new(csr: Arc<Csr>, base_path: PathBuf) -> Self {
         Self {
             csr,
             base_path,
@@ -51,6 +55,13 @@ impl CsrParticipant {
 
     pub fn csr(&self) -> &Csr {
         &self.csr
+    }
+
+    /// A cloneable, shared handle to the same `Csr` this participant writes
+    /// to — keep this before moving the participant into a `Coordinator` if
+    /// you need to query it afterwards.
+    pub fn csr_handle(&self) -> Arc<Csr> {
+        Arc::clone(&self.csr)
     }
 
     fn staging_path(&self) -> PathBuf {
@@ -181,7 +192,7 @@ mod tests {
         let file = NamedTempFile::new().unwrap();
         CsrBase::build(&[], file.path()).unwrap();
         let base = CsrBase::open(file.path()).unwrap();
-        let participant = CsrParticipant::new(Csr::new(base), file.path().to_path_buf());
+        let participant = CsrParticipant::new(std::sync::Arc::new(Csr::new(base)), file.path().to_path_buf());
         (file, participant)
     }
 
@@ -239,7 +250,7 @@ mod tests {
             .collect();
         CsrBase::build(&base_edges, file.path()).unwrap();
         let base = CsrBase::open(file.path()).unwrap();
-        let p = CsrParticipant::new(Csr::new(base), file.path().to_path_buf());
+        let p = CsrParticipant::new(std::sync::Arc::new(Csr::new(base)), file.path().to_path_buf());
         assert_eq!(p.csr().current_base().edge_count(), 100);
 
         // Below threshold (1 edge / 100 = 1%): no compaction yet.
