@@ -126,6 +126,19 @@ impl GitSource {
 
         Ok(diff)
     }
+
+    /// Read a file's content straight from the `HEAD` tree (not the working
+    /// tree filesystem) — works identically whether `HEAD` is on a branch or
+    /// detached (REQ-208). `None` if the path doesn't exist at `HEAD`.
+    pub fn read_blob_at_head(&self, path: &std::path::Path) -> Result<Option<Vec<u8>>, GitError> {
+        let head_commit = self.repo.head_commit().map_err(op_err)?;
+        let tree = head_commit.tree().map_err(op_err)?;
+        let Some(entry) = tree.lookup_entry_by_path(path).map_err(op_err)? else {
+            return Ok(None);
+        };
+        let object = entry.object().map_err(op_err)?;
+        Ok(Some(object.detach().data))
+    }
 }
 
 fn oid_from_bytes(bytes: &[u8]) -> Result<[u8; 20], GitError> {

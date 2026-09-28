@@ -6,6 +6,14 @@
 
 use crate::sync::mutation::StableId;
 
+/// Deterministic id for a [`NodeType::File`] node, keyed only by its
+/// repo-relative path — used by `git::cochange` (REQ-206) and
+/// `sync_orchestrator` (REQ-205) so both agree on the same id for the same
+/// file without needing a shared lookup table.
+pub fn file_node_id(path: &str) -> StableId {
+    *blake3::hash(format!("file:{path}").as_bytes()).as_bytes()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub enum NodeType {
     Requirement,

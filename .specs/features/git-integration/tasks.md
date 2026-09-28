@@ -88,7 +88,7 @@
   `["REQ-001"]`; mensagem sem marcador extrai vazio.
 - **Gate**: `cargo test git::spec_link`
 
-## T-207: `SyncOrchestrator::run_once()` — integração
+## T-207: `SyncOrchestrator::run_once()` — integração [x]
 - **REQ**: REQ-205
 - **What**: `SyncOrchestrator::new(git: GitSource, coordinator: Coordinator, ...)`.
   `run_once(&mut self) -> Result<SyncReport, SyncOrchestratorError>`: chama

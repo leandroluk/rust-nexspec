@@ -262,7 +262,7 @@ validado na prática, sem precisar mudar a trait).
 - [x] T-204: `DirtyCache` — mudanças não commitadas — Execute [P-A]
 - [x] T-205: `EdgeType::CoChanges` + `co_change_edges` — Execute [P-A]
 - [x] T-206: `extract_commit_links` — linking temporal — Execute [P-A]
-- [ ] T-207: `SyncOrchestrator::run_once()` — integração — Execute
+- [x] T-207: `SyncOrchestrator::run_once()` — integração — Execute
 - [ ] T-208: Testes de estados não-triviais do repositório — Execute
 - [ ] T-209: Lint e superfície pública — Execute
 
@@ -324,7 +324,22 @@ validado na prática, sem precisar mudar a trait).
   sem incluí-lo). Gate: `cargo test git::` (unit) → 7/7,
   `cargo test --test git_spec_link` → 1/1.
 
+- 2026-09-28 T-207 completo. `sync_orchestrator::SyncOrchestrator::run_once()`:
+  `diff_since(last_indexed_commit)` → `.md` em added/modified lidos via
+  `GitSource::read_blob_at_head` (não do filesystem — funciona em HEAD
+  destacado) → `markdown::extract()` → um `NodeMutation` de `NodePayload::File`
+  por caminho tocado (alvo determinístico para `CoChanges`, via
+  `graph::node::file_node_id`, refinado durante esta task — `co_change_edges`
+  não usa mais um mapa `path_to_node_id`, deriva o id direto do path) →
+  agregado num único `Coordinator::stage()` → só então
+  `set_last_indexed_commit`. Diff vazio não gera `stage()` nenhum
+  (`target_version: None` no `SyncReport`). Limitação documentada: arquivo
+  deletado remove o nó "File" mas não os REQ/TASK/ADR que vieram do conteúdo
+  dele (precisaria rastrear proveniência por entidade, fora do escopo desta
+  task). Gate: `cargo test --test sync_orchestrator` → 1/1 pass, confirmando
+  que a 2ª chamada com diff vazio não reprocessa nada e a 3ª pega só o commit
+  novo.
+
 ## Next Steps
-- T-207 (`SyncOrchestrator::run_once()`) — integra tudo (T-203..T-206) com
-  o `Coordinator` da Fase 0. Depois: T-208 (estados não-triviais) e T-209
-  (lint/superfície pública, fecha a Fase 2).
+- T-208 (estados não-triviais do repositório) e T-209 (lint/superfície
+  pública, fecha a Fase 2).

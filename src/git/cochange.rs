@@ -7,7 +7,7 @@
 //! that the "every `gix` call goes through `GitSource`" boundary from
 //! REQ-201 holds without exposing `GitSource`'s internal `gix::Repository`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
@@ -15,6 +15,7 @@ use gix::object::tree::diff::Change;
 
 use crate::git::source::{GitError, GitSource, op_err};
 use crate::graph::edge::EdgeType;
+use crate::graph::node::file_node_id;
 use crate::sync::mutation::{EdgeMutation, StableId};
 
 #[derive(Debug, Clone, Copy)]
@@ -42,15 +43,11 @@ fn stable_edge_id(from: &StableId, to: &StableId) -> StableId {
 
 impl GitSource {
     /// `CoChanges` edges (both directions) between every pair of paths that
-    /// changed together in the same commit, within `window`. Only paths
-    /// present in `path_to_node_id` produce edges — this function doesn't
-    /// know or care what a "node" is, that's the caller's (`markdown`/future
-    /// Tree-sitter extraction) responsibility.
-    pub fn co_change_edges(
-        &self,
-        window: &CoChangeWindow,
-        path_to_node_id: &HashMap<PathBuf, StableId>,
-    ) -> Result<Vec<EdgeMutation>, GitError> {
+    /// changed together in the same commit, within `window`. Edges reference
+    /// [`file_node_id`] for each path — deterministic from the path alone,
+    /// so no lookup table is needed and any caller (including
+    /// `sync_orchestrator`) derives the same id independently.
+    pub fn co_change_edges(&self, window: &CoChangeWindow) -> Result<Vec<EdgeMutation>, GitError> {
         let head_id = self.repo.head_id().map_err(op_err)?;
         let cutoff_seconds = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -78,7 +75,7 @@ impl GitSource {
 
             let node_ids: Vec<StableId> = changed_paths
                 .iter()
-                .filter_map(|p| path_to_node_id.get(p).copied())
+                .map(|p| file_node_id(&p.to_string_lossy()))
                 .collect();
             if node_ids.len() < 2 {
                 continue;
@@ -199,10 +196,6 @@ mod tests {
         assert!(Command::new("git").args(["commit", "--quiet", "-m", msg]).current_dir(dir).status().unwrap().success());
     }
 
-    fn node_id(path: &str) -> StableId {
-        *blake3::hash(path.as_bytes()).as_bytes()
-    }
-
     #[test]
     fn files_changed_together_produce_bidirectional_edges() {
         let dir = init_repo();
@@ -218,16 +211,11 @@ mod tests {
         commit(dir.path(), "chore: unrelated c"); // no co-change here
 
         let source = GitSource::open(dir.path()).unwrap();
-        let mut path_to_id = HashMap::new();
-        path_to_id.insert(PathBuf::from("a.md"), node_id("a.md"));
-        path_to_id.insert(PathBuf::from("b.md"), node_id("b.md"));
-        path_to_id.insert(PathBuf::from("c.md"), node_id("c.md"));
+        let edges = source.co_change_edges(&CoChangeWindow::default()).unwrap();
 
-        let edges = source.co_change_edges(&CoChangeWindow::default(), &path_to_id).unwrap();
-
-        let a = node_id("a.md");
-        let b = node_id("b.md");
-        let c = node_id("c.md");
+        let a = file_node_id("a.md");
+        let b = file_node_id("b.md");
+        let c = file_node_id("c.md");
         let has = |from: StableId, to: StableId| {
             edges.iter().any(|e| matches!(e, EdgeMutation::Upsert { from: f, to: t, .. } if *f == from && *t == to))
         };
@@ -247,15 +235,11 @@ mod tests {
         commit(dir.path(), "chore: unrelated newer commit"); // commit 1 (newest)
 
         let source = GitSource::open(dir.path()).unwrap();
-        let mut path_to_id = HashMap::new();
-        path_to_id.insert(PathBuf::from("a.md"), node_id("a.md"));
-        path_to_id.insert(PathBuf::from("b.md"), node_id("b.md"));
-
         let window = CoChangeWindow {
             max_commits: 1, // only the newest commit is visited
             max_age: Duration::from_secs(u64::MAX / 2),
         };
-        let edges = source.co_change_edges(&window, &path_to_id).unwrap();
+        let edges = source.co_change_edges(&window).unwrap();
         assert!(edges.is_empty(), "the co-changing commit is outside the 1-commit window");
     }
 }
