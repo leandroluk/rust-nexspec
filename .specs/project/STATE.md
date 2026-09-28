@@ -60,6 +60,15 @@
   falha de 1 participante no meio do fan-out, via `TestParticipant::failing()`,
   novo construtor adicionado ao mock de T-005 já que os campos internos são
   privados).
+- 2026-09-28 T-008 completo. `Coordinator::resume()`: para cada frame pendente
+  no WAL, reaplica (`stage`+`commit`) em cada participante com
+  `committed_version() < target_version` (idempotente, cobre replay total e
+  parcial no mesmo loop), depois bump de `sync_version` se necessário e
+  `mark_done`. Gate: `cargo test sync::` → 15/15 pass, cobrindo os 3 cenários
+  do design (nenhum aplicou / parcial / todos aplicados mas versão não
+  bumpada). Adicionado `impl SyncParticipant for Arc<T>` (test-only, em
+  `participant::test_support`) para permitir compartilhar o mesmo
+  `TestParticipant` entre o coordinator e as asserções diretas do teste.
 
 ## Decisions [window: last 10]
 - 2026-09-28 Design completo para "sync-coordinator" em
@@ -94,7 +103,7 @@
 - [x] T-005: Trait `SyncParticipant` — Execute [P-A]
 - [x] T-006: `RedbParticipant` — implementação real da trait — Execute
 - [x] T-007: `Coordinator` — stage/commit/abort (fluxo feliz) — Execute
-- [ ] T-008: `Coordinator::resume()` — recovery determinístico — Execute
+- [x] T-008: `Coordinator::resume()` — recovery determinístico — Execute
 - [ ] T-009: Testes de injeção de crash (integração) — Execute
 - [ ] T-010: Superfície pública e lint final — Execute
 

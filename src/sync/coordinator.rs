@@ -82,6 +82,30 @@ impl<'a> Coordinator<'a> {
             let _ = p.abort(target_version);
         }
     }
+
+    /// Deterministic crash recovery (REQ-004, REQ-005). Call once at startup,
+    /// before serving any read. For every WAL frame still pending (no
+    /// commit-marker): re-stage and commit on every participant that hasn't
+    /// reached `target_version` yet (idempotent — a participant already there
+    /// is skipped), then bump `sync_version` if it hasn't caught up, and mark
+    /// the frame done. See `.specs/features/sync-coordinator/design.md` →
+    /// "Resume — semântica determinística" for the full decision tree this
+    /// implements.
+    pub fn resume(&self) -> Result<(), SyncError> {
+        for (target_version, mutations) in self.wal.pending_frames()? {
+            for p in &self.participants {
+                if p.committed_version()? < target_version {
+                    p.stage(target_version, &mutations)?;
+                    p.commit(target_version)?;
+                }
+            }
+            if self.version.current()? < target_version {
+                self.version.bump(target_version)?;
+            }
+            self.wal.mark_done(target_version)?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -89,6 +113,7 @@ mod tests {
     use super::*;
     use crate::sync::participant::test_support::TestParticipant;
     use redb::Database;
+    use std::sync::Arc;
     use tempfile::NamedTempFile;
 
     fn setup() -> (NamedTempFile, Database, NamedTempFile) {
@@ -143,5 +168,79 @@ mod tests {
             1,
             "wal frame stays pending for resume() to reconcile"
         );
+    }
+
+    #[test]
+    fn resume_replays_when_no_participant_applied_the_pending_frame() {
+        let (_db_file, db, wal_file) = setup();
+        let wal = Wal::open(wal_file.path()).unwrap();
+        // Simulate a crash right after the WAL append but before any fan-out.
+        wal.append_frame(1, &MutationSet::default()).unwrap();
+
+        let p1 = Arc::new(TestParticipant::default());
+        let p2 = Arc::new(TestParticipant::default());
+        let coordinator = Coordinator::new(
+            Wal::open(wal_file.path()).unwrap(),
+            VersionPointer::new(&db),
+            vec![Box::new(p1.clone()), Box::new(p2.clone())],
+        );
+
+        coordinator.resume().unwrap();
+
+        assert_eq!(p1.committed_version().unwrap(), 1);
+        assert_eq!(p2.committed_version().unwrap(), 1);
+        assert_eq!(VersionPointer::new(&db).current().unwrap(), 1);
+        assert!(Wal::open(wal_file.path()).unwrap().pending_frames().unwrap().is_empty());
+    }
+
+    #[test]
+    fn resume_finishes_partially_applied_frame() {
+        let (_db_file, db, wal_file) = setup();
+        let wal = Wal::open(wal_file.path()).unwrap();
+        wal.append_frame(1, &MutationSet::default()).unwrap();
+
+        let p1 = Arc::new(TestParticipant::default());
+        let p2 = Arc::new(TestParticipant::default());
+        // Simulate a crash mid-fan-out: p1 already staged+committed, p2 didn't.
+        p1.stage(1, &MutationSet::default()).unwrap();
+        p1.commit(1).unwrap();
+
+        let coordinator = Coordinator::new(
+            Wal::open(wal_file.path()).unwrap(),
+            VersionPointer::new(&db),
+            vec![Box::new(p1.clone()), Box::new(p2.clone())],
+        );
+
+        coordinator.resume().unwrap();
+
+        assert_eq!(p1.committed_version().unwrap(), 1);
+        assert_eq!(p2.committed_version().unwrap(), 1);
+        assert_eq!(VersionPointer::new(&db).current().unwrap(), 1);
+    }
+
+    #[test]
+    fn resume_only_bumps_version_when_all_participants_already_committed() {
+        let (_db_file, db, wal_file) = setup();
+        let wal = Wal::open(wal_file.path()).unwrap();
+        wal.append_frame(1, &MutationSet::default()).unwrap();
+
+        let p1 = Arc::new(TestParticipant::default());
+        let p2 = Arc::new(TestParticipant::default());
+        // Simulate a crash right after fan-out commit but before the version bump.
+        p1.stage(1, &MutationSet::default()).unwrap();
+        p1.commit(1).unwrap();
+        p2.stage(1, &MutationSet::default()).unwrap();
+        p2.commit(1).unwrap();
+
+        let coordinator = Coordinator::new(
+            Wal::open(wal_file.path()).unwrap(),
+            VersionPointer::new(&db),
+            vec![Box::new(p1.clone()), Box::new(p2.clone())],
+        );
+
+        coordinator.resume().unwrap();
+
+        assert_eq!(VersionPointer::new(&db).current().unwrap(), 1);
+        assert!(Wal::open(wal_file.path()).unwrap().pending_frames().unwrap().is_empty());
     }
 }

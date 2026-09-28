@@ -99,7 +99,7 @@
   bump de versão.
 - **Gate**: `cargo test sync::coordinator::commit_flow`
 
-## T-008: `Coordinator::resume()` — recovery determinístico
+## T-008: `Coordinator::resume()` — recovery determinístico [x]
 - **REQ**: REQ-004, REQ-005
 - **Graph node**: n/a
 - **What**: No startup, ler `wal.pending_frames()`; para cada frame pendente,

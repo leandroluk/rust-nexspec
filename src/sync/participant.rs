@@ -89,6 +89,24 @@ pub(crate) mod test_support {
         }
     }
 
+    // Lets tests share one `TestParticipant` instance between the coordinator
+    // (which owns `Box<dyn SyncParticipant>`) and direct assertions/mutation
+    // in the test body — interior mutability makes this safe.
+    impl<T: SyncParticipant> SyncParticipant for std::sync::Arc<T> {
+        fn stage(&self, target_version: u64, mutations: &MutationSet) -> Result<(), SyncError> {
+            (**self).stage(target_version, mutations)
+        }
+        fn committed_version(&self) -> Result<u64, SyncError> {
+            (**self).committed_version()
+        }
+        fn commit(&self, target_version: u64) -> Result<(), SyncError> {
+            (**self).commit(target_version)
+        }
+        fn abort(&self, target_version: u64) -> Result<(), SyncError> {
+            (**self).abort(target_version)
+        }
+    }
+
     #[test]
     fn test_participant_commits_and_reports_version() {
         let p = TestParticipant::default();
