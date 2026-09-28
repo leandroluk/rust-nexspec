@@ -258,7 +258,7 @@ validado na prática, sem precisar mudar a trait).
 ## Todos
 - [x] T-201: Dependência `gix` e fixtures de teste — Execute
 - [x] T-202: `GitSource` — abrir repositório e ler HEAD — Execute
-- [ ] T-203: `TreeDiff` — diff de árvore desde `last_indexed_commit` — Execute
+- [x] T-203: `TreeDiff` — diff de árvore desde `last_indexed_commit` — Execute
 - [ ] T-204: `DirtyCache` — mudanças não commitadas — Execute [P-A]
 - [ ] T-205: `EdgeType::CoChanges` + `co_change_edges` — Execute [P-A]
 - [ ] T-206: `extract_commit_links` — linking temporal — Execute [P-A]
@@ -291,6 +291,17 @@ validado na prática, sem precisar mudar a trait).
   `cargo test --test git_source` → 3/3 pass, cobrindo HEAD em branch, HEAD
   destacado e detecção de dirty.
 
+- 2026-09-28 T-203 completo. `GitSource::diff_since(Option<[u8;20]>)`:
+  `None` → todos os blobs de `HEAD` via `tree.traverse().breadthfirst.files()`
+  como `Added`; `Some(oid)` → `tree.changes().for_each_to_obtain_tree()` do
+  `gix`, com `track_rewrites(None)` explícito (rename vira Delete+Add, que é
+  exatamente o modelo remove/re-extract que REQ-205 espera — sem isso, o
+  `gix` ativa detecção de rename por padrão e um arquivo renomeado
+  desapareceria do diff). `VersionPointer` ganhou `last_indexed_commit()`/
+  `set_last_indexed_commit()` numa tabela `redb` nova (`meta_bytes`, valor
+  `&[u8]`) — a tabela `meta` original só guarda `u64`, não serve para OID de
+  20 bytes. Gate: `cargo test --test git_tree_diff` → 2/2,
+  `cargo test sync::version` → 4/4.
+
 ## Next Steps
-- Rodar Execute em T-203 (`TreeDiff`); T-204/T-205/T-206 em paralelo [P-A]
-  já podem começar (dependem só de T-202, que está pronto).
+- T-204/T-205/T-206 em paralelo [P-A] (todas dependem só de T-202, pronto).

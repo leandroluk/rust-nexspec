@@ -24,7 +24,7 @@
   de uma branch) não causa erro.
 - **Gate**: `cargo test git::source`
 
-## T-203: `TreeDiff` — diff de árvore desde `last_indexed_commit`
+## T-203: `TreeDiff` — diff de árvore desde `last_indexed_commit` [x]
 - **REQ**: REQ-202, REQ-203
 - **What**: `VersionPointer` ganha `last_indexed_commit()`/
   `set_last_indexed_commit()` (chave nova na tabela `meta`, mesmo padrão de

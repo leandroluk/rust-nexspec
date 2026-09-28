@@ -7,6 +7,11 @@ use redb::{Database, ReadableDatabase, TableDefinition};
 const META_TABLE: TableDefinition<&str, u64> = TableDefinition::new("meta");
 const SYNC_VERSION_KEY: &str = "sync_version";
 
+// Separate table for non-u64 metadata (byte blobs). Same `redb` file, same
+// transactional path as `META_TABLE` — just a different value type.
+const META_BYTES_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("meta_bytes");
+const LAST_INDEXED_COMMIT_KEY: &str = "last_indexed_commit";
+
 #[derive(Debug, thiserror::Error)]
 pub enum VersionError {
     #[error("redb error: {0}")]
@@ -69,6 +74,41 @@ impl<'a> VersionPointer<'a> {
         tx.commit()?;
         Ok(())
     }
+
+    /// The Git commit OID last fully indexed (REQ-202 in
+    /// `.specs/features/git-integration/spec.md`) — `None` means "never
+    /// indexed", not an error.
+    pub fn last_indexed_commit(&self) -> Result<Option<[u8; 20]>, VersionError> {
+        let tx = self.db.begin_read()?;
+        let table = match tx.open_table(META_BYTES_TABLE) {
+            Ok(t) => t,
+            Err(redb::TableError::TableDoesNotExist(_)) => return Ok(None),
+            Err(e) => return Err(e.into()),
+        };
+        let Some(guard) = table.get(LAST_INDEXED_COMMIT_KEY)? else {
+            return Ok(None);
+        };
+        let bytes = guard.value();
+        if bytes.len() != 20 {
+            return Err(VersionError::Redb(format!(
+                "corrupt last_indexed_commit: expected 20 bytes, got {}",
+                bytes.len()
+            )));
+        }
+        let mut oid = [0u8; 20];
+        oid.copy_from_slice(bytes);
+        Ok(Some(oid))
+    }
+
+    pub fn set_last_indexed_commit(&self, oid: [u8; 20]) -> Result<(), VersionError> {
+        let tx = self.db.begin_write()?;
+        {
+            let mut table = tx.open_table(META_BYTES_TABLE)?;
+            table.insert(LAST_INDEXED_COMMIT_KEY, oid.as_slice())?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -98,5 +138,21 @@ mod tests {
         assert_eq!(vp.current().unwrap(), 42);
         vp.bump(43).unwrap();
         assert_eq!(vp.current().unwrap(), 43);
+    }
+
+    #[test]
+    fn last_indexed_commit_defaults_to_none() {
+        let (_file, db) = temp_db();
+        let vp = VersionPointer::new(&db);
+        assert_eq!(vp.last_indexed_commit().unwrap(), None);
+    }
+
+    #[test]
+    fn set_then_get_last_indexed_commit_roundtrips() {
+        let (_file, db) = temp_db();
+        let vp = VersionPointer::new(&db);
+        let oid = [7u8; 20];
+        vp.set_last_indexed_commit(oid).unwrap();
+        assert_eq!(vp.last_indexed_commit().unwrap(), Some(oid));
     }
 }
