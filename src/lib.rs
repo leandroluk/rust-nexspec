@@ -1,4 +1,4 @@
-//! SpecDB — in-process context engine for AI coding agents.
+//! NexSpec — in-process context engine for AI coding agents.
 //!
 //! See `.specs/project/PROJECT.md` for the product overview and
 //! `.specs/project/ROADMAP.md` for the phase-by-phase build plan.

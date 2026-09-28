@@ -1,4 +1,4 @@
-# SpecDB — Product & Architecture Roadmap
+# NexSpec — Product & Architecture Roadmap
 
 > High-performance, in-process context engine for AI coding agents. Unifies AST analysis, `.specs/` requirements, topological graph traversal (CSR), vector/BM25 hybrid retrieval, and native Git integration.
 
@@ -38,7 +38,7 @@ Metadata & Nodes      Topological Edges       Git Context (Commits,
 
 ## Universal Scope & Extended Use Cases
 
-Although conceived as the storage and traversal engine for `graph-spec-design`, the core of **SpecDB** is completely decoupled from any single methodology. It functions as a general-purpose, embedded **Codebase GraphRAG Engine** that can be consumed by any external agent, tool, or CI/CD pipeline:
+Although conceived as the storage and traversal engine for `graph-spec-design`, the core of **NexSpec** is completely decoupled from any single methodology. It functions as a general-purpose, embedded **Codebase GraphRAG Engine** that can be consumed by any external agent, tool, or CI/CD pipeline:
 
 1. **Universal MCP Context Server (Cursor, Claude Code, Windsurf)**
    * Exposes standardized tools over stdio: `query_context`, `trace_requirement`, `find_impacted_code`, `semantic_search`.
@@ -136,7 +136,7 @@ Cross-store consistency is treated as a first-class problem rather than an emerg
 
 * **AST Signature Pruner:** Strip implementation bodies from code nodes, retaining only typed signatures, contracts, and imports.
 * **Strict Token Limiter — Tokenizer-Aware *(revised)***:
-  * Fast BPE estimation via `tiktoken-rs` remains the default, but since SpecDB targets multiple downstream agents (Claude Code, Cursor, Windsurf) whose tokenizers differ from OpenAI's, a `Tokenizer` trait allows plugging alternate estimators.
+  * Fast BPE estimation via `tiktoken-rs` remains the default, but since NexSpec targets multiple downstream agents (Claude Code, Cursor, Windsurf) whose tokenizers differ from OpenAI's, a `Tokenizer` trait allows plugging alternate estimators.
   * A configurable **safety margin** (default: enforce 90% of the declared `--max-tokens` budget) absorbs estimation drift between BPE (OpenAI/tiktoken) and the tokenizers used by Claude or Gemini, so a hard budget like `800` doesn't overshoot the consuming model's real limit.
   * **Offline fallback *(new)***: if the BPE vocabulary/dictionary fails to load (e.g. no network on first run, or a stripped-down CI image), the limiter degrades to a simple `char_count / 3.5` heuristic rather than failing the command outright. This keeps `specdb` fully functional offline, at the cost of a coarser (but still safety-margined) token estimate.
   * Deterministic priority cutoff preserved: Target Spec/ADR > Seed Symbol > Direct Dependencies.

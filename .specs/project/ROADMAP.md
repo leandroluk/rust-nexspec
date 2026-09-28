@@ -1,6 +1,6 @@
-# SpecDB — Roadmap
+# NexSpec — Roadmap
 
-Fonte primária de escopo técnico: `.defs/SpecDB.md` (documento gerado com Gemini).
+Fonte primária de escopo técnico: `.defs/NexSpec.md` (documento gerado com Gemini).
 Este roadmap traduz as fases dele em milestones rastreáveis pela skill
 `graph-spec-design`. Cada fase vira uma feature em `.specs/features/` quando
 começar a ser trabalhada.
@@ -9,7 +9,7 @@ começar a ser trabalhada.
 
 | # | Fase | Entrega central | Status |
 |---|------|------------------|--------|
-| 0 | Sync Coordinator & Transactional Integrity | WAL (`sync.wal`), `sync_version` atômico em `redb`, staging+rename por store, `specdb sync --resume`, apply idempotente | **Completo** (`.specs/features/sync-coordinator/`) |
+| 0 | Sync Coordinator & Transactional Integrity | WAL (`sync.wal`), `sync_version` atômico em `redb`, staging+rename por store, `nexspec sync --resume`, apply idempotente | **Completo** (`.specs/features/sync-coordinator/`) |
 | 1 | Storage Primitives & Graph Topology | `Node`/`Edge` tipados, ID estável (Blake3) vs índice físico denso (`u32`), redb+zstd, CSR **duas camadas** (base rkyv/mmap + delta lock-free via `ArcSwap`/`crossbeam-epoch`, compactação por threshold), extração Markdown (comrak) | Não iniciado |
 | 2 | Git Integration & Incremental Sync | gix embutido (com fixtures para submodules/LFS/sparse checkout/detached HEAD), tree-diff incremental, blame por símbolo com janela de co-change limitada (default 500 commits/6 meses), linking commit→spec | Não iniciado |
 | 3 | Multi-Language AST & Lexical Search | Tree-sitter (TS/JS, Python, Go, Rust) com parsing paralelo via `rayon` no cold-start, índice Tantivy (BM25) | Não iniciado |
@@ -28,20 +28,20 @@ de remendar isso depois.
 
 ## Critério de "pronto" do projeto (v1)
 
-- `specdb init/sync/search/trace/blame/diff` funcionando via CLI estática
+- `nexspec init/sync/search/trace/blame/diff` funcionando via CLI estática
 - Contrato de saída compatível com o que a skill `graph-spec-design` espera hoje do
   `graphify` (`.specs/graph/graph.json`, `GRAPH_REPORT.md`, staleness check)
-- `graph-spec-design` consegue rodar 100% sobre `specdb` sem `graphify` Python
+- `graph-spec-design` consegue rodar 100% sobre `nexspec` sem `graphify` Python
   instalado (ver seção "Integração com a skill" abaixo)
 
 ## Integração com a skill graph-spec-design
 
-Hoje a skill chama `graphify` (Python) via `uv`/`pip`. Meta: expor `specdb` com CLI
+Hoje a skill chama `graphify` (Python) via `uv`/`pip`. Meta: expor `nexspec` com CLI
 e contrato de I/O suficientemente compatíveis para que o Rule #1 da skill
 (`references/init.md`, `references/session.md`) passe a detectar e preferir
-`specdb` no lugar de `graphify`, sem exigir mudança na skill além de trocar o
+`nexspec` no lugar de `graphify`, sem exigir mudança na skill além de trocar o
 binário/comando invocado. Essa troca será uma feature própria
-(`.specs/features/specdb-skill-integration/`) quando a Fase 6 estiver perto.
+(`.specs/features/nexspec-skill-integration/`) quando a Fase 6 estiver perto.
 
 ## Ordem de trabalho sugerida
 

@@ -2,13 +2,13 @@
 
 ## Summary
 
-Fase 1 dá ao SpecDB o modelo de dados e o motor de grafo que tudo mais (Git
+Fase 1 dá ao NexSpec o modelo de dados e o motor de grafo que tudo mais (Git
 sync, AST, busca híbrida, serialização de contexto) vai consumir: entidades
 tipadas (`Node`, `Edge`), um armazenamento de metadados transacional (`redb`,
 já com `sync_version` da Fase 0), e uma topologia CSR de duas camadas
 (base imutável mmap + delta lock-free) para navegação O(1) do grafo. Também
 entra aqui a extração de `.specs/*.md` (REQ/TASK/ADR) via `comrak`, que é o
-que conecta specs a código — a peça central da proposta do SpecDB.
+que conecta specs a código — a peça central da proposta do NexSpec.
 Todo módulo desta fase escreve exclusivamente através do
 `sync::coordinator` (Fase 0): CSR e o extrator de Markdown se tornam
 implementações de `SyncParticipant`.
@@ -52,7 +52,7 @@ implementações de `SyncParticipant`.
 ## Affected Components (from graph)
 
 Sem grafo ainda — este código é justamente o que vai gerar o primeiro grafo
-real do próprio SpecDB (auto-hospedagem futura). Componentes existentes que
+real do próprio NexSpec (auto-hospedagem futura). Componentes existentes que
 esta fase consome diretamente:
 
 - `sync::coordinator::Coordinator` — CSR/extrator de Markdown viram
@@ -72,7 +72,7 @@ esta fase consome diretamente:
 - Git/gix e sync incremental via diff de árvore — Fase 2. Fase 1 assume que o
   conjunto de arquivos a indexar já foi determinado por quem a chama (a Fase 2
   é quem vai decidir "o que mudou" a partir do Git).
-- CLI (`specdb init/sync/...`) — Fase 6. Aqui só a biblioteca.
+- CLI (`nexspec init/sync/...`) — Fase 6. Aqui só a biblioteca.
 - Paralelismo de parsing via `rayon` — mencionado na Fase 3 do roadmap
   (cold-start de Tree-sitter); o parser Markdown desta fase pode rodar
   sequencial por ora sem violar nenhum REQ.

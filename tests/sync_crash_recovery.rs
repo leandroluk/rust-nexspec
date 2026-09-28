@@ -8,7 +8,7 @@
 //! state is asserted to be fully consistent — never partial.
 
 use redb::Database;
-use specdb::sync::{Coordinator, MutationSet, NodeMutation, RedbParticipant, SyncParticipant, VersionPointer, Wal};
+use nexspec::sync::{Coordinator, MutationSet, NodeMutation, RedbParticipant, SyncParticipant, VersionPointer, Wal};
 use tempfile::NamedTempFile;
 
 const NODE_ID: [u8; 32] = [9u8; 32];

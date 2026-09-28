@@ -1,20 +1,21 @@
 # STATE
 
 ## Degraded Mode
-- Repositório novo, sem código-fonte ainda (`.git` só tem o commit inicial).
-  `graphify`/`specdb` não têm o que indexar de verdade.
 - Grafo NÃO construído — `.specs/graph/graph.json` não existe. Rule #1 da skill
   segue em modo degradado: contexto lido diretamente dos arquivos.
-- Reindexar assim que houver código Rust suficiente (fim da Fase 1 do roadmap) ou
-  quando um `specdb`/`graphify` funcional estiver instalável.
+- Já existe código Rust real (crate `nexspec`, módulos `sync`/`graph`, 27
+  testes) o suficiente para valer a pena indexar, mas ainda não há um
+  `graphify`/`nexspec` funcional para gerar o grafo. Reindexar assim que a
+  Fase 1 (CSR) estiver perto do fim, ou quando `graphify` (Python) for
+  instalado manualmente como alternativa temporária.
 
 ## Progress [window: last 10]
 - 2026-09-28 — Sessão iniciada. Skill `graph-spec-design` invocada pela primeira vez
-  neste repo. Lido `.defs/SpecDB.md` (doc de arquitetura gerado com Gemini) e os
+  neste repo. Lido `.defs/NexSpec.md` (doc de arquitetura gerado com Gemini) e os
   3 subagentes em `.claude/agents/` (po, dev, qa).
 - 2026-09-28 — Criada estrutura `.specs/` (project, codebase, features, quick, graph).
-- 2026-09-28 — `PROJECT.md` e `ROADMAP.md` escritos a partir de `.defs/SpecDB.md`.
-- 2026-09-28 — `.defs/SpecDB.md` foi reiterado externamente (outras IAs). Revisão
+- 2026-09-28 — `PROJECT.md` e `ROADMAP.md` escritos a partir de `.defs/NexSpec.md`.
+- 2026-09-28 — `.defs/NexSpec.md` foi reiterado externamente (outras IAs). Revisão
   reavaliada e propagada: nova Fase 0 (Sync Coordinator/WAL), CSR em duas camadas
   (base imutável + delta lock-free via ArcSwap/crossbeam-epoch), ID estável (Blake3)
   desacoplado do índice físico denso, janela de co-change limitada no blame,
@@ -113,12 +114,20 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
   nova, sem código prévio para ancorar. Open questions resolvidas com defaults
   documentados no próprio spec (formato WAL via rkyv, trait `SyncParticipant`,
   granularidade de versão = ciclo de sync completo) em vez de bloquear o início.
-- `.defs/SpecDB.md` é tratado como documento de referência (gerado externamente
+- `.defs/NexSpec.md` é tratado como documento de referência (gerado externamente
   com Gemini), não editado diretamente — decisões relevantes são promovidas para
   `.specs/`. Motivo: preservar a fonte original enquanto specs ficam sob controle
   da skill.
 - Projeto roda em modo degradado até existir código suficiente para indexar.
   Motivo: grafo vazio não agrega valor sobre leitura direta de arquivo.
+- 2026-09-28 Produto renomeado de "SpecDB" para "NexSpec" — "specdb" já estava
+  em uso por outro projeto na internet. Aplicado: `Cargo.toml` (`name =
+  "nexspec"`), `src/lib.rs`, `tests/sync_crash_recovery.rs` (`use nexspec::`),
+  e todas as menções em `.specs/**/*.md`. `.defs/SpecDB.md` renomeado para
+  `.defs/NexSpec.md` (git mv, preserva histórico). Repo/pasta local
+  (`rust-specdb`) e o remoto no GitHub **não** foram renomeados nesta sessão —
+  o usuário disse que troca isso por conta própria depois. Rebuild completo
+  após o rename: `cargo test` → 27/27 pass sob o novo nome de crate.
 
 ## Known Issues
 - Os 3 subagentes em `.claude/agents/` (po.md, dev.md, qa.md) foram copiados de
@@ -143,7 +152,7 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
 - [x] T-102: Tipos `Node`/`NodeType`/`NodePayload` — Execute [P-A]
 - [x] T-103: Tipos `Edge`/`EdgeType` — Execute [P-A]
 - [x] T-104: `CsrBase` — layout binário imutável — Execute
-- [ ] T-105: `CsrDelta` — estrutura append-only — Execute
+- [x] T-105: `CsrDelta` — estrutura append-only — Execute
 - [ ] T-106: `Csr` — fachada lock-free — Execute
 - [ ] T-107: `CsrParticipant` — implementação de `SyncParticipant` — Execute
 - [ ] T-108: `markdown::extract` — parser comrak — Execute
@@ -167,6 +176,11 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
   chegam por `StableId`, então algum dicionário é inevitável antes de virar
   índice denso; HashMap satisfaz o "O(1)" do REQ-105 na prática). Gate:
   `cargo test graph::csr` → 2/2 pass.
+- 2026-09-28 T-105 completo. `graph::csr::delta::CsrDelta` (added/removed em
+  memória, builder `upsert`/`remove`, `merge_into(base, from, edge_type)`).
+  Nota: a propriedade lock-free/COW é de como `Csr` publica instâncias via
+  `ArcSwap` (T-106), não do `CsrDelta` em si — este é um builder mutável
+  comum. Gate: `cargo test graph::csr` → 5/5 pass.
 
 ## Next Steps
 - Rodar Execute em T-102/T-103 em paralelo [P-A] em seguida.

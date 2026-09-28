@@ -140,7 +140,7 @@ No startup, `Coordinator::resume()`:
 - **Sem grafo/GRAPH_REPORT.md ainda** — não há God Nodes/comunidades de baixa
   coesão para checar (nenhum código existe). Este risco desaparece
   automaticamente assim que a Fase 3+ gerar o primeiro grafo real do próprio
-  SpecDB.
+  NexSpec.
 
 ## Decision Log
 
@@ -153,7 +153,7 @@ No startup, `Coordinator::resume()`:
   não conhecidas (ver Risks acima).
 - Granularidade de commit: **todo o ciclo de sync é uma unidade** (não por
   nó/edge individual) — alinhado com REQ-007 e com o modelo de Tree-Diff
-  Incremental Sync da Fase 2 (um `specdb sync` = um `git diff` = uma versão).
+  Incremental Sync da Fase 2 (um `nexspec sync` = um `git diff` = uma versão).
 - WAL é append-only com commit-markers em vez de truncar/reescrever — mais
   simples de raciocinar sobre crash-safety (nunca há um "meio de escrita" que
   sobrescreve dado válido); custo de espaço em disco é aceitável dado o volume

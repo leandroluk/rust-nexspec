@@ -1,4 +1,4 @@
-# SpecDB
+# NexSpec
 
 ## O que é
 
@@ -31,7 +31,7 @@ roadmap).
 
 O `graphify` atual (Python) é a dependência de índice da skill `graph-spec-design`.
 Funciona, mas paga custo de startup de interpretador, GIL, e não é distribuível como
-binário único. A tese do SpecDB: reimplementar o mesmo contrato de saída
+binário único. A tese do NexSpec: reimplementar o mesmo contrato de saída
 (`graph.json`, `GRAPH_REPORT.md`, comandos `query`/`path`/`explain`) em Rust nativo,
 como binário estático zero-instalação, embutindo storage (redb), grafo (rkyv/CSR),
 Git (gix), AST (tree-sitter), léxico (tantivy) e vetorial (ort/HNSW) no mesmo
@@ -52,7 +52,7 @@ processo — sem daemons externos, sem runtime interpretado.
   (base + delta mesclados)
 - Serialização de contexto compacta para LLM (Markdown denso, tokenizer plugável,
   margem de segurança, fallback offline)
-- CLI (`specdb init/sync/compact/search/trace/blame/diff`) e servidor MCP embutido
+- CLI (`nexspec init/sync/compact/search/trace/blame/diff`) e servidor MCP embutido
   com superfície de tools unificada
 - Substituição drop-in do `graphify` dentro da skill `graph-spec-design`
   (mesmo contrato de saída em `.specs/graph/`)
@@ -66,15 +66,15 @@ processo — sem daemons externos, sem runtime interpretado.
 ## Stack
 
 Rust. Ver `.specs/codebase/STACK.md` para a matriz de crates por módulo (fonte:
-`.defs/SpecDB.md`, mantido como documento de referência gerado com Gemini — não
+`.defs/NexSpec.md`, mantido como documento de referência gerado com Gemini — não
 editar diretamente, promover decisões relevantes para `.specs/`).
 
 ## Contexto de uso
 
 Este próprio repositório usa a skill `graph-spec-design` para se auto-organizar
-(specs, tasks, execução) enquanto o SpecDB ainda não existe como binário — ou seja,
+(specs, tasks, execução) enquanto o NexSpec ainda não existe como binário — ou seja,
 "bootstrapping": construímos a ferramenta que um dia vai indexar este mesmo
-repositório. Até o binário `specdb` (ou o `graphify` Python) estar disponível e
+repositório. Até o binário `nexspec` (ou o `graphify` Python) estar disponível e
 instalado, a skill opera em **modo degradado** (leitura direta de arquivos, sem
-grafo). Assim que houver código suficiente e um `graphify`/`specdb` funcional,
+grafo). Assim que houver código suficiente e um `graphify`/`nexspec` funcional,
 reindexar com `graph-spec-design . --update --no-viz`.

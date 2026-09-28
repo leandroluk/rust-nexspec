@@ -2,7 +2,7 @@
 
 ## Summary
 
-SpecDB persiste o mesmo grafo lógico em quatro stores fisicamente independentes:
+NexSpec persiste o mesmo grafo lógico em quatro stores fisicamente independentes:
 `redb` (metadados), o arquivo CSR (topologia), Tantivy (léxico) e HNSW (vetorial).
 Cada um faz commit por conta própria. Sem coordenação central, um crash no meio de
 um `sync` pode deixar esses stores divergentes entre si (ex.: uma edge gravada no
@@ -23,7 +23,7 @@ um `sync_version` disponível em `redb`.
 - REQ-003: Cada store grava sua mutação num caminho de staging próprio (ex.:
   `edges.bin.staging`) e só é promovido ao caminho real (rename atômico) depois
   que os quatro stores confirmarem sucesso para aquela versão.
-- REQ-004: Se o processo cair com entradas não confirmadas no WAL, `specdb sync
+- REQ-004: Se o processo cair com entradas não confirmadas no WAL, `nexspec sync
   --resume` no próximo start detecta isso e decide deterministicamente: reaplica
   (se a mutação nunca foi promovida em nenhum store) ou descarta (se já foi
   promovida em todos) — nunca deixa o índice servindo estado parcial.
@@ -34,7 +34,7 @@ um `sync_version` disponível em `redb`.
   commit() | abort()`) que os módulos das fases seguintes (1–5) usam para
   qualquer escrita — nenhum módulo escreve diretamente em `redb`/CSR/Tantivy/HNSW
   fora desse caminho.
-- REQ-007: `specdb sync` normal (sem crash) deve ser observável de fora como uma
+- REQ-007: `nexspec sync` normal (sem crash) deve ser observável de fora como uma
   transação atômica: um leitor concorrente nunca vê metade das mutações de um
   ciclo aplicadas e a outra metade não.
 
@@ -61,7 +61,7 @@ existir).
   si.
 - Compactação do CSR delta layer (é consumidor deste coordinator, especificado na
   Fase 1).
-- Replicação ou sync entre múltiplas máquinas — SpecDB é single-process,
+- Replicação ou sync entre múltiplas máquinas — NexSpec é single-process,
   single-repo; "sync" aqui é sempre local (índice ↔ Git working tree).
 - Métricas/observabilidade do coordinator (pode entrar como feature própria
   depois, não bloqueia a Fase 0).
@@ -81,7 +81,7 @@ bloqueiam o início):
   (`stage`/`commit`/`abort`) e o único participante real inicialmente é o próprio
   `redb`; CSR/Tantivy/HNSW passam a implementar essa trait quando suas fases
   chegarem. Isso evita bloquear a Fase 0 esperando as Fases 1/3/4 existirem.
-- **Granularidade de uma "versão" de sync**: um `sync_version` por `specdb sync`
+- **Granularidade de uma "versão" de sync**: um `sync_version` por `nexspec sync`
   completo (todas as mudanças de um `git diff` desde o último índice), não por
   arquivo individual. Alinhado com o modelo de Tree-Diff Incremental Sync da
   Fase 2.

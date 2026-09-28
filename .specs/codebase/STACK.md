@@ -1,7 +1,7 @@
 # Stack
 
 Rust. Nenhum crate ainda foi adicionado ao `Cargo.toml` (projeto ainda não tem
-código-fonte). Matriz abaixo é a decisão de stack vinda de `.defs/SpecDB.md`,
+código-fonte). Matriz abaixo é a decisão de stack vinda de `.defs/NexSpec.md`,
 promovida aqui como referência de arquitetura.
 
 | Módulo | Crate principal | Papel |
@@ -20,4 +20,4 @@ promovida aqui como referência de arquitetura.
 | Token Budgeting | `tiktoken-rs` | Estimativa BPE em tempo real, plugável via trait `Tokenizer` |
 
 Detalhes de cada fase (o que cada crate resolve concretamente) estão em
-`.specs/project/ROADMAP.md` e no documento de origem `.defs/SpecDB.md`.
+`.specs/project/ROADMAP.md` e no documento de origem `.defs/NexSpec.md`.
