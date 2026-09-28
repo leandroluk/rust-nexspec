@@ -150,6 +150,17 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
   Não é SPEC_DEVIATION do REQ-106 (que só fala do delta) — é extensão natural
   do mesmo padrão para a base. Gate: `cargo test graph::csr` → 11/11 pass,
   incluindo compactação automática ao cruzar o threshold.
+- 2026-09-28 T-108 completo. `graph::markdown::extract()`: single-pass sobre
+  os blocos top-level do AST do `comrak` (headings, listas, parágrafos são
+  todos irmãos no nível do documento em CommonMark — nenhuma travessia de
+  siblings foi necessária). Reconhece `REQ-\d+` em itens de lista e
+  `TASK-\d+`/`ADR-\d+` em headings; parágrafos logo após um heading
+  TASK/ADR são escaneados por menções a REQs já vistos → edge `Satisfies`.
+  Adicionada dependência `blake3` (REQ-102 exigia hash real, não usado até
+  agora). Limitação conhecida, não bloqueante: referências forward (REQ
+  citado antes de ser parseado) não geram edge — documentado no código, não
+  exigido pelo critério de "Done" da task. Gate: `cargo test graph::markdown`
+  → 2/2 pass.
 
 ## Known Issues
 - Os 3 subagentes em `.claude/agents/` (po.md, dev.md, qa.md) foram copiados de
@@ -177,7 +188,7 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
 - [x] T-105: `CsrDelta` — estrutura append-only — Execute
 - [x] T-106: `Csr` — fachada lock-free — Execute
 - [x] T-107: `CsrParticipant` — implementação de `SyncParticipant` — Execute
-- [ ] T-108: `markdown::extract` — parser comrak — Execute
+- [x] T-108: `markdown::extract` — parser comrak — Execute
 - [ ] T-109: Integração fim-a-fim via `Coordinator` — Execute
 - [ ] T-110: Lint e superfície pública — Execute
 

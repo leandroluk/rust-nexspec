@@ -100,7 +100,7 @@
   vazio, base cresce).
 - **Gate**: `cargo test graph::csr::participant`
 
-## T-108: `markdown::extract` — parser de `.specs/*.md` via comrak
+## T-108: `markdown::extract` — parser de `.specs/*.md` via comrak [x]
 - **REQ**: REQ-108
 - **What**: `extract(path: &Path) -> MutationSet` — parseia um arquivo
   Markdown com `comrak`, reconhece padrões `REQ-\d+`, `TASK-\d+`, `ADR-\d+` em
