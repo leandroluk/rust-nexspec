@@ -172,6 +172,22 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
   quem quiser consultar o grafo depois precisa de um handle compartilhado
   guardado antes do move. Gate: suíte completa `cargo test` → 36/36 pass
   (31 unit + 1 integração nova + 4 crash-recovery da Fase 0).
+- 2026-09-28 T-110 completo. `lib.rs` exporta `graph::{Csr, CsrParticipant,
+  Edge, EdgeType, Node, NodeType}`. Corrigidos: doc-link privado
+  (`CsrBaseData` não é pub — trocado por texto simples no doc comment),
+  `clippy::unnecessary_sort_by` (`sort_by` → `sort_by_key`),
+  `clippy::cloned_ref_to_slice_refs` (`&[x.clone()]` →
+  `std::slice::from_ref(&x)`), import não usado no teste de integração.
+  Gate: `cargo doc --no-deps` e `cargo clippy --all-targets -- -D warnings`
+  limpos; `cargo test` → 36/36 pass.
+
+## Feature "storage-primitives" (Fase 1): COMPLETA
+Todas as 10 tasks (T-101..T-110) concluídas, 36/36 testes passando, `cargo
+doc`/`cargo clippy -- -D warnings` limpos. `Node`/`Edge` tipados, CSR duas
+camadas (base mmap + delta lock-free via `ArcSwap`, compactação automática
+por threshold), extração de Markdown via `comrak`, tudo integrado ao
+`sync::Coordinator` da Fase 0 como `SyncParticipant` real (contrato da Fase 0
+validado na prática, sem precisar mudar a trait).
 
 ## Known Issues
 - Os 3 subagentes em `.claude/agents/` (po.md, dev.md, qa.md) foram copiados de
@@ -201,7 +217,7 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
 - [x] T-107: `CsrParticipant` — implementação de `SyncParticipant` — Execute
 - [x] T-108: `markdown::extract` — parser comrak — Execute
 - [x] T-109: Integração fim-a-fim via `Coordinator` — Execute
-- [ ] T-110: Lint e superfície pública — Execute
+- [x] T-110: Lint e superfície pública — Execute
 
 ## Progress [window: last 10]
 - 2026-09-28 T-101 completo. `cargo add memmap2 arc-swap zstd comrak`. Ajuste:
@@ -227,4 +243,9 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
   comum. Gate: `cargo test graph::csr` → 5/5 pass.
 
 ## Next Steps
-- Rodar Execute em T-102/T-103 em paralelo [P-A] em seguida.
+- Feature "storage-primitives" (Fase 1) completa e commitada. Próxima:
+  Specify da Fase 2 (Git Integration & Incremental Sync) — `gix` embutido,
+  tree-diff incremental, blame por símbolo com janela de co-change limitada,
+  linking commit→spec. É o que vai decidir "o que mudou" para alimentar
+  `markdown::extract()` (Fase 1) e o parser Tree-sitter (Fase 3) de forma
+  incremental, em vez de reprocessar tudo a cada sync.

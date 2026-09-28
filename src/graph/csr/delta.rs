@@ -119,7 +119,7 @@ mod tests {
     #[test]
     fn delta_removal_hides_base_edge() {
         let removed_edge = edge([3u8; 32], [10u8; 32], [13u8; 32], EdgeType::Implements);
-        let (_file, base) = base_with(&[removed_edge.clone()]);
+        let (_file, base) = base_with(std::slice::from_ref(&removed_edge));
         let mut delta = CsrDelta::default();
         delta.remove(removed_edge.id);
 

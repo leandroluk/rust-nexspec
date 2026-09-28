@@ -130,7 +130,7 @@
   da Fase 0.
 - **Gate**: `cargo test --test graph_storage_integration`
 
-## T-110: Lint e superfície pública
+## T-110: Lint e superfície pública [x]
 - **REQ**: (todos — fechamento da fase, mesmo padrão de T-010 na Fase 0)
 - **What**: Exportar `graph::{Node, NodeType, Edge, EdgeType, Csr,
   CsrParticipant}` de `src/lib.rs`. Doc comments em toda API pública.

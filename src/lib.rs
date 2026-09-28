@@ -6,4 +6,5 @@
 pub mod graph;
 pub mod sync;
 
+pub use graph::{Csr, CsrParticipant, Edge, EdgeType, Node, NodeType};
 pub use sync::{Coordinator, MutationSet, SyncParticipant};

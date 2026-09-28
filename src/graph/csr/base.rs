@@ -3,7 +3,7 @@
 //! wholesale only on compaction (see `CsrParticipant`, T-107); never mutated
 //! in place between compactions.
 //!
-//! On-disk layout: an `rkyv`-archived [`CsrBaseData`] — a flat `edges` array
+//! On-disk layout: an `rkyv`-archived `CsrBaseData` (internal) — a flat `edges` array
 //! plus a small `index` of `(from, edge_type) -> (start, len)` ranges into it,
 //! sorted for grouping. `open()` eagerly hashes the (small) index into a
 //! `HashMap` for O(1) average-case lookup, while `edges` stays mmap-backed and
@@ -59,7 +59,7 @@ impl CsrBase {
     /// type's).
     pub fn build(edges: &[Edge], path: &Path) -> Result<(), CsrError> {
         let mut sorted: Vec<Edge> = edges.to_vec();
-        sorted.sort_by(|a, b| (a.from, a.edge_type as u8).cmp(&(b.from, b.edge_type as u8)));
+        sorted.sort_by_key(|a| (a.from, a.edge_type as u8));
 
         let mut index = Vec::new();
         let mut i = 0usize;

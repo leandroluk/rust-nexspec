@@ -10,9 +10,7 @@ use nexspec::graph::csr::{Csr, CsrBase, CsrParticipant};
 use nexspec::graph::edge::EdgeType;
 use nexspec::graph::markdown::extract;
 use nexspec::graph::node::NodePayload;
-use nexspec::sync::{
-    Coordinator, NodeMutation, RedbParticipant, SyncParticipant, VersionPointer, Wal,
-};
+use nexspec::sync::{Coordinator, NodeMutation, RedbParticipant, VersionPointer, Wal};
 use redb::Database;
 use tempfile::NamedTempFile;
 
