@@ -55,6 +55,15 @@ pub(crate) mod test_support {
         pub fail_stage: bool,
     }
 
+    impl TestParticipant {
+        pub fn failing() -> Self {
+            Self {
+                fail_stage: true,
+                ..Default::default()
+            }
+        }
+    }
+
     impl SyncParticipant for TestParticipant {
         fn stage(&self, target_version: u64, mutations: &MutationSet) -> Result<(), SyncError> {
             if self.fail_stage {

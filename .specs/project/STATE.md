@@ -53,6 +53,13 @@
   limpa staging sem tocar committed. `stage`/`commit` checam
   `committed_version() >= target_version` primeiro → idempotentes por
   construção. Gate: `cargo test sync::` → 10/10 pass.
+- 2026-09-28 T-007 completo. `Coordinator::stage()` (`src/sync/coordinator.rs`):
+  WAL append → fan-out `stage()` → (falha ⇒ abort em todos, versão intacta,
+  frame WAL permanece pendente) → fan-out `commit()` → bump `sync_version` →
+  `wal.mark_done()`. Gate: `cargo test sync::` → 12/12 pass (fluxo feliz +
+  falha de 1 participante no meio do fan-out, via `TestParticipant::failing()`,
+  novo construtor adicionado ao mock de T-005 já que os campos internos são
+  privados).
 
 ## Decisions [window: last 10]
 - 2026-09-28 Design completo para "sync-coordinator" em
@@ -86,7 +93,7 @@
 - [x] T-004: `VersionPointer` — `sync_version` atômico em redb — Execute [P-A]
 - [x] T-005: Trait `SyncParticipant` — Execute [P-A]
 - [x] T-006: `RedbParticipant` — implementação real da trait — Execute
-- [ ] T-007: `Coordinator` — stage/commit/abort (fluxo feliz) — Execute
+- [x] T-007: `Coordinator` — stage/commit/abort (fluxo feliz) — Execute
 - [ ] T-008: `Coordinator::resume()` — recovery determinístico — Execute
 - [ ] T-009: Testes de injeção de crash (integração) — Execute
 - [ ] T-010: Superfície pública e lint final — Execute

@@ -82,7 +82,7 @@
   descartado), stage→stage→commit (idempotência, sem duplicar).
 - **Gate**: `cargo test sync::redb_participant`
 
-## T-007: `Coordinator` — `stage()`/`commit()`/`abort()` (fluxo feliz)
+## T-007: `Coordinator` — `stage()`/`commit()`/`abort()` (fluxo feliz) [x]
 - **REQ**: REQ-001, REQ-003, REQ-006, REQ-007
 - **Graph node**: n/a
 - **What**: `Coordinator::new(wal, version_pointer, participants:
