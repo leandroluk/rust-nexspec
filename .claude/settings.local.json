@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python \"C:\\\\Users\\\\Leandro\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--dev-github-com-leandroluk-condominium-management-system\\\\2fe1db0c-10d2-4d17-8a57-b13e5cd03c4d\\\\scratchpad\\\\fill_entity_names.py\")",
+      "Bash(python \"C:\\\\Users\\\\Leandro\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--dev-github-com-leandroluk-condominium-management-system\\\\2fe1db0c-10d2-4d17-8a57-b13e5cd03c4d\\\\scratchpad\\\\fill_columns.py\")",
+      "Bash(bc)",
+      "Bash(awk '{s+=$1} END {print \"entities:\", s}')",
+      "Bash(awk '{s+=$1} END {print \"columns:\", s}')",
+      "Bash(npx tsc *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(git rm *)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'feat\\(nest-sql\\): type TypeORM entity columns and table names from DDL *)",
+      "Bash(git commit -m 'chore\\(workspace\\): rename @pkgs/ce export condition to @pkgs/source, add tooling scripts *)",
+      "Bash(pnpm run *)",
+      "Bash(git commit -m 'feat\\(nest-sql\\): add unit-of-work and reader modules, expand sql port *)",
+      "Bash(git commit -q -m 'feat\\(shared-domain\\): add DTOs, auth state, and fingerprint type for the auth/condominium domain *)",
+      "Bash(git commit -q -m 'feat\\(nest-cache\\): use FingerprintType for session identification, add keepTtl *)",
+      "Bash(git commit *)",
+      "Bash(git log *)",
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch -f --msg-filter 'sed -e \"/^Co-Authored-By:/Id\" -e \"/^Co-authored-by:/Id\"' -- --all)",
+      "Bash(echo \"exit: $? \\(0 lines above = clean\\)\")",
+      "Bash(git update-ref *)",
+      "Bash(git reflog *)",
+      "Bash(git gc *)"
+    ]
+  }
+}
