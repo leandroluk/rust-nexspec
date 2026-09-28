@@ -107,7 +107,7 @@
   `RedbParticipant`/`CsrParticipant` ao final.
 - **Gate**: `cargo test sync_orchestrator`
 
-## T-208: Testes de estados não-triviais do repositório
+## T-208: Testes de estados não-triviais do repositório [x]
 - **REQ**: REQ-208
 - **What**: Testes de integração cobrindo HEAD destacado (checkout de um
   commit específico) e working tree suja (arquivo modificado sem commit) —

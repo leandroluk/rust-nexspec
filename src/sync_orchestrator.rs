@@ -8,6 +8,7 @@
 use std::path::Path;
 
 use crate::git::cochange::CoChangeWindow;
+use crate::git::dirty_cache::DirtyCache;
 use crate::git::source::{GitError, GitSource};
 use crate::graph::markdown;
 use crate::graph::node::{NodePayload, file_node_id};
@@ -33,12 +34,17 @@ pub struct SyncReport {
     pub files_added: usize,
     pub files_modified: usize,
     pub files_deleted: usize,
+    /// Working-tree files with uncommitted changes processed this cycle
+    /// (REQ-204) — independent of `files_added`/`files_modified`, which
+    /// only reflect committed history.
+    pub files_dirty: usize,
 }
 
 pub struct SyncOrchestrator<'a> {
     git: GitSource,
     coordinator: Coordinator<'a>,
     version: VersionPointer<'a>,
+    dirty_cache: DirtyCache,
 }
 
 impl<'a> SyncOrchestrator<'a> {
@@ -47,6 +53,7 @@ impl<'a> SyncOrchestrator<'a> {
             git,
             coordinator,
             version,
+            dirty_cache: DirtyCache::new(),
         }
     }
 
@@ -90,6 +97,29 @@ impl<'a> SyncOrchestrator<'a> {
             .edges
             .extend(self.git.co_change_edges(&CoChangeWindow::default())?);
 
+        // REQ-204: uncommitted working-tree changes also enter the sync,
+        // independent of the committed-history diff above (a repo can have
+        // no new commits but a dirty tree, or vice versa).
+        let mut files_dirty = 0usize;
+        if self.git.is_dirty()?
+            && let Some(root) = self.git.work_dir()
+        {
+            let tracked = self.git.tracked_paths_at_head()?;
+            let dirty_paths = self.dirty_cache.scan(root, &tracked);
+            for path in &dirty_paths {
+                if is_markdown(path)
+                    && let Ok(text) = std::fs::read_to_string(root.join(path))
+                {
+                    let extracted = markdown::extract(&text);
+                    combined.nodes.extend(extracted.nodes);
+                    combined.edges.extend(extracted.edges);
+                    combined.docs.extend(extracted.docs);
+                }
+                combined.nodes.push(file_node_mutation(path));
+            }
+            files_dirty = dirty_paths.len();
+        }
+
         let has_changes =
             !combined.nodes.is_empty() || !combined.edges.is_empty() || !combined.docs.is_empty();
         let target_version = if has_changes {
@@ -106,6 +136,7 @@ impl<'a> SyncOrchestrator<'a> {
             files_added: diff.added.len(),
             files_modified: diff.modified.len(),
             files_deleted: diff.deleted.len(),
+            files_dirty,
         })
     }
 }

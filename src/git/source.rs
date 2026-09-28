@@ -62,6 +62,26 @@ impl GitSource {
         self.repo.is_dirty().map_err(op_err)
     }
 
+    /// The working tree root, if this repo isn't bare.
+    pub fn work_dir(&self) -> Option<&Path> {
+        self.repo.workdir()
+    }
+
+    /// Every blob path reachable from `HEAD` — used both by `diff_since`
+    /// (when there's no prior index) and by callers wanting to scan the
+    /// working tree for dirty files (REQ-204) against a known tracked set.
+    pub fn tracked_paths_at_head(&self) -> Result<Vec<PathBuf>, GitError> {
+        let head_commit = self.repo.head_commit().map_err(op_err)?;
+        let tree = head_commit.tree().map_err(op_err)?;
+        let mut paths = Vec::new();
+        for entry in tree.traverse().breadthfirst.files().map_err(op_err)? {
+            if entry.mode.is_blob() {
+                paths.push(PathBuf::from(entry.filepath.to_string()));
+            }
+        }
+        Ok(paths)
+    }
+
     /// Files changed between `since` (exclusive) and `HEAD` (inclusive).
     /// `since: None` means "never indexed" — every blob reachable from
     /// `HEAD` is reported as `Added`.
@@ -70,14 +90,8 @@ impl GitSource {
         let head_tree = head_commit.tree().map_err(op_err)?;
 
         let Some(since) = since else {
-            let mut added = Vec::new();
-            for entry in head_tree.traverse().breadthfirst.files().map_err(op_err)? {
-                if entry.mode.is_blob() {
-                    added.push(PathBuf::from(entry.filepath.to_string()));
-                }
-            }
             return Ok(TreeDiff {
-                added,
+                added: self.tracked_paths_at_head()?,
                 modified: Vec::new(),
                 deleted: Vec::new(),
             });

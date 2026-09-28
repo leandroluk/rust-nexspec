@@ -263,7 +263,7 @@ validado na prática, sem precisar mudar a trait).
 - [x] T-205: `EdgeType::CoChanges` + `co_change_edges` — Execute [P-A]
 - [x] T-206: `extract_commit_links` — linking temporal — Execute [P-A]
 - [x] T-207: `SyncOrchestrator::run_once()` — integração — Execute
-- [ ] T-208: Testes de estados não-triviais do repositório — Execute
+- [x] T-208: Testes de estados não-triviais do repositório — Execute
 - [ ] T-209: Lint e superfície pública — Execute
 
 ## Progress [window: last 10]
@@ -340,6 +340,21 @@ validado na prática, sem precisar mudar a trait).
   que a 2ª chamada com diff vazio não reprocessa nada e a 3ª pega só o commit
   novo.
 
+- 2026-09-28 T-208 completo, mas com uma correção de escopo antes: o
+  `SyncOrchestrator` (T-207) **não incorporava `DirtyCache` (T-204)** — só
+  fazia diff de histórico committed, ignorando REQ-204 por completo. Corrigi
+  antes de escrever os testes desta task (não faria sentido testar um
+  cenário "dirty tree" que o código não tratava de verdade): adicionado
+  `GitSource::work_dir()`/`tracked_paths_at_head()`, e `run_once()` agora
+  roda um bloco independente que só escaneia o working tree quando
+  `is_dirty()` é true (evita hash Blake3 desnecessário quando o git já sabe
+  que está limpo), extrai `.md` sujos direto do filesystem (não de
+  `read_blob_at_head`, que só vê conteúdo committed) e soma ao mesmo
+  `MutationSet` combinado. `SyncReport` ganhou `files_dirty`.
+  `tests/git_edge_cases.rs`: HEAD destacado (2 testes) e working tree suja
+  fim-a-fim via `SyncOrchestrator` real. Gate:
+  `cargo test --test git_edge_cases` → 2/2. Suíte completa após a correção:
+  `cargo test` → 53/53 pass (40 unit + 13 integração).
+
 ## Next Steps
-- T-208 (estados não-triviais do repositório) e T-209 (lint/superfície
-  pública, fecha a Fase 2).
+- T-209 (lint/superfície pública) — última task, fecha a Fase 2.
