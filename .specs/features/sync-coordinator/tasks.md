@@ -68,7 +68,7 @@
   `#[cfg(test)]` usado nos testes das tasks seguintes.
 - **Gate**: `cargo build`
 
-## T-006: `RedbParticipant` — implementação real da trait
+## T-006: `RedbParticipant` — implementação real da trait [x]
 - **REQ**: REQ-003, REQ-005
 - **Graph node**: n/a
 - **What**: Implementar `SyncParticipant` para `redb`: `stage()` grava em

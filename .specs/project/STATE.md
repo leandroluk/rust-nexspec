@@ -46,6 +46,13 @@
   os tipos archived do rkyv — decode agora copia o corpo do frame para um
   `rkyv::util::AlignedVec<16>` antes de `from_bytes` (não é SPEC_DEVIATION,
   detalhe de uso da API do rkyv 0.8).
+- 2026-09-28 T-006 completo. `RedbParticipant` (`src/sync/redb_participant.rs`):
+  stage grava blob de mutações + `staged_version` em tabelas de staging;
+  commit desserializa o blob e aplica upsert/remove em tabelas `redb_nodes`/
+  `redb_edges`/`redb_docs`, grava `committed_version`, limpa staging; abort
+  limpa staging sem tocar committed. `stage`/`commit` checam
+  `committed_version() >= target_version` primeiro → idempotentes por
+  construção. Gate: `cargo test sync::` → 10/10 pass.
 
 ## Decisions [window: last 10]
 - 2026-09-28 Design completo para "sync-coordinator" em
@@ -78,7 +85,7 @@
 - [x] T-003: WAL — frame format, append e leitura de pendências — Execute
 - [x] T-004: `VersionPointer` — `sync_version` atômico em redb — Execute [P-A]
 - [x] T-005: Trait `SyncParticipant` — Execute [P-A]
-- [ ] T-006: `RedbParticipant` — implementação real da trait — Execute
+- [x] T-006: `RedbParticipant` — implementação real da trait — Execute
 - [ ] T-007: `Coordinator` — stage/commit/abort (fluxo feliz) — Execute
 - [ ] T-008: `Coordinator::resume()` — recovery determinístico — Execute
 - [ ] T-009: Testes de injeção de crash (integração) — Execute
