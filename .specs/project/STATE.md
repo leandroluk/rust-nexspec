@@ -142,7 +142,7 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
 - [x] T-101: Dependências novas (memmap2/arc-swap/zstd/comrak) — Execute
 - [x] T-102: Tipos `Node`/`NodeType`/`NodePayload` — Execute [P-A]
 - [x] T-103: Tipos `Edge`/`EdgeType` — Execute [P-A]
-- [ ] T-104: `CsrBase` — layout binário imutável — Execute
+- [x] T-104: `CsrBase` — layout binário imutável — Execute
 - [ ] T-105: `CsrDelta` — estrutura append-only — Execute
 - [ ] T-106: `Csr` — fachada lock-free — Execute
 - [ ] T-107: `CsrParticipant` — implementação de `SyncParticipant` — Execute
@@ -158,6 +158,15 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
 - 2026-09-28 T-102/T-103 completos. `graph::node::{Node, NodeType,
   NodePayload}` (6 variantes) e `graph::edge::{Edge, EdgeType}` — reaproveitam
   `sync::mutation::StableId`. Gate: `cargo test graph::` → 3/3 pass.
+- 2026-09-28 T-104 completo. `graph::csr::base::CsrBase`: arquivo rkyv
+  mmapeado, índice `(from, edge_type) -> (start,len)` hasheado eagerly no
+  `open()` (HashMap, O(1) médio) apontando para um slice de `edges`
+  mmap-backed (só deserializa o range consultado, não o arquivo inteiro).
+  Decisão de implementação: usei binary/hash index em vez de um índice físico
+  denso `u32`-indexado diretamente (REQ-103 fala em índice denso, mas queries
+  chegam por `StableId`, então algum dicionário é inevitável antes de virar
+  índice denso; HashMap satisfaz o "O(1)" do REQ-105 na prática). Gate:
+  `cargo test graph::csr` → 2/2 pass.
 
 ## Next Steps
 - Rodar Execute em T-102/T-103 em paralelo [P-A] em seguida.

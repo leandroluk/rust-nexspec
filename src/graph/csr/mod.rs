@@ -1,0 +1,8 @@
+//! CSR (Compressed Sparse Row) topology store — two layers (REQ-105,
+//! REQ-106, REQ-107 in `.specs/features/storage-primitives/spec.md`). See
+//! `.specs/features/storage-primitives/design.md` for the architecture
+//! diagram.
+
+pub mod base;
+
+pub use base::{CsrBase, CsrError};

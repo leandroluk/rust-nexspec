@@ -34,7 +34,7 @@
 - **Done when**: roundtrip de serialização preserva dados.
 - **Gate**: `cargo test graph::edge`
 
-## T-104: `CsrBase` — layout binário imutável (rkyv + mmap)
+## T-104: `CsrBase` — layout binário imutável (rkyv + mmap) [x]
 - **REQ**: REQ-105
 - **What**: Formato do arquivo `edges.bin`: índice denso `u32 -> Vec<Edge
   offset>` por direção (out-edges) e por `EdgeType`, mapa `StableId -> u32`
