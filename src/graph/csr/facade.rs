@@ -15,22 +15,26 @@ use crate::graph::edge::{Edge, EdgeType};
 use crate::sync::mutation::StableId;
 
 pub struct Csr {
-    base: CsrBase,
+    // Both layers are COW/lock-free: `base` also swaps atomically so that
+    // compaction (T-107) — which rebuilds and remaps it — never blocks a
+    // reader either, not just delta publication.
+    base: ArcSwap<CsrBase>,
     delta: ArcSwap<CsrDelta>,
 }
 
 impl Csr {
     pub fn new(base: CsrBase) -> Self {
         Self {
-            base,
+            base: ArcSwap::from_pointee(base),
             delta: ArcSwap::from_pointee(CsrDelta::default()),
         }
     }
 
     /// Merged view of base + the currently published delta.
     pub fn edges_from(&self, from: &StableId, edge_type: EdgeType) -> Vec<Edge> {
+        let base = self.base.load();
         let delta = self.delta.load();
-        delta.merge_into(&self.base, from, edge_type)
+        delta.merge_into(&base, from, edge_type)
     }
 
     /// Atomically swap in `new_delta` as the current one. Readers already
@@ -46,12 +50,14 @@ impl Csr {
         self.delta.load_full()
     }
 
-    pub fn base(&self) -> &CsrBase {
-        &self.base
+    pub fn current_base(&self) -> Arc<CsrBase> {
+        self.base.load_full()
     }
 
-    pub fn replace_base(&mut self, new_base: CsrBase) {
-        self.base = new_base;
+    /// Publish a freshly compacted base and reset the delta to empty —
+    /// everything the old delta held is now folded into `new_base`.
+    pub fn replace_base(&self, new_base: CsrBase) {
+        self.base.store(Arc::new(new_base));
         self.delta.store(Arc::new(CsrDelta::default()));
     }
 }

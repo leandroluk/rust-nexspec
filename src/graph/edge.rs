@@ -11,6 +11,30 @@ pub enum EdgeType {
     DefinedIn,
 }
 
+impl EdgeType {
+    /// The `u16` code used by `sync::mutation::EdgeMutation`, which stays
+    /// generic/opaque at the coordinator level (REQ-109's boundary: the
+    /// coordinator never interprets domain edge types).
+    pub fn to_code(self) -> u16 {
+        match self {
+            EdgeType::Satisfies => 0,
+            EdgeType::DependsOn => 1,
+            EdgeType::Implements => 2,
+            EdgeType::DefinedIn => 3,
+        }
+    }
+
+    pub fn from_code(code: u16) -> Option<Self> {
+        match code {
+            0 => Some(EdgeType::Satisfies),
+            1 => Some(EdgeType::DependsOn),
+            2 => Some(EdgeType::Implements),
+            3 => Some(EdgeType::DefinedIn),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct Edge {
     pub id: StableId,

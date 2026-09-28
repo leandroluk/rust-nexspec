@@ -137,6 +137,19 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
   (`ArcSwap::load` sempre devolve um `Arc<CsrDelta>` inteiro), não algo que um
   teste de timing frágil precisasse provar. Gate: `cargo test graph::csr` →
   7/7 pass.
+- 2026-09-28 T-107 completo. `graph::csr::participant::CsrParticipant`
+  (`SyncParticipant` real): `stage()` clona o delta publicado atual +
+  reaplica `EdgeMutation`s (idempotente); `commit()` publica via
+  `Csr::publish_delta`, aciona `compact()` automaticamente quando
+  `delta.len()/base.edge_count() >= 5%`; `compact()` funde base+delta,
+  escreve em `.staging`, rename atômico, reabre mmap, zera delta via
+  `Csr::replace_base`. Refino de design durante a implementação: `Csr::base`
+  virou `ArcSwap<CsrBase>` (era campo simples + `&mut replace_base` no
+  T-106) — necessário porque `SyncParticipant` exige `&self`, então a troca
+  de base na compactação também precisa ser lock-free/COW, não só o delta.
+  Não é SPEC_DEVIATION do REQ-106 (que só fala do delta) — é extensão natural
+  do mesmo padrão para a base. Gate: `cargo test graph::csr` → 11/11 pass,
+  incluindo compactação automática ao cruzar o threshold.
 
 ## Known Issues
 - Os 3 subagentes em `.claude/agents/` (po.md, dev.md, qa.md) foram copiados de
@@ -163,7 +176,7 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
 - [x] T-104: `CsrBase` — layout binário imutável — Execute
 - [x] T-105: `CsrDelta` — estrutura append-only — Execute
 - [x] T-106: `Csr` — fachada lock-free — Execute
-- [ ] T-107: `CsrParticipant` — implementação de `SyncParticipant` — Execute
+- [x] T-107: `CsrParticipant` — implementação de `SyncParticipant` — Execute
 - [ ] T-108: `markdown::extract` — parser comrak — Execute
 - [ ] T-109: Integração fim-a-fim via `Coordinator` — Execute
 - [ ] T-110: Lint e superfície pública — Execute

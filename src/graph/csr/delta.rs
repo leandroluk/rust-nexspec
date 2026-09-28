@@ -50,6 +50,10 @@ impl CsrDelta {
         self.added.is_empty()
     }
 
+    pub fn is_removed(&self, id: &StableId) -> bool {
+        self.removed.contains(id)
+    }
+
     /// All edges currently staged for the next compaction, in an
     /// unspecified order — used by `CsrParticipant::compact()` to fold this
     /// delta into a fresh `CsrBase`.

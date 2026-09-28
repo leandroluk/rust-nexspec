@@ -122,6 +122,26 @@ impl CsrBase {
         })
     }
 
+    /// Total number of edges in this base file — used by `CsrParticipant` to
+    /// evaluate the compaction threshold (REQ-107) without deserializing
+    /// anything.
+    pub fn edge_count(&self) -> usize {
+        self.archived.edges.len()
+    }
+
+    /// Every edge in this base file, deserialized. Used only by
+    /// `CsrParticipant::compact()` to fold this base with the current delta
+    /// into a fresh one — never on a hot read path.
+    pub fn all_edges(&self) -> Vec<Edge> {
+        self.archived
+            .edges
+            .iter()
+            .map(|e| {
+                rkyv::deserialize::<Edge, RkyvError>(e).expect("archived edge failed to validate")
+            })
+            .collect()
+    }
+
     /// O(1) average-case: hashmap lookup for the range, then deserialize only
     /// the matching slice of `edges` (never the whole file).
     pub fn edges_from(&self, from: &StableId, edge_type: EdgeType) -> Vec<Edge> {

@@ -78,7 +78,7 @@
   verificada por construção do tipo, não por teste de timing frágil).
 - **Gate**: `cargo test graph::csr::mod`
 
-## T-107: `CsrParticipant` — implementação de `SyncParticipant`
+## T-107: `CsrParticipant` — implementação de `SyncParticipant` [x]
 - **REQ**: REQ-106, REQ-107, REQ-109
 - **What**: `CsrParticipant` guarda `Csr` (T-106) + um `RwLock<Option<(u64,
   CsrDelta)>>` de staging. `stage()` constrói o próximo `CsrDelta` (mescla

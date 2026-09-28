@@ -6,7 +6,9 @@
 pub mod base;
 pub mod delta;
 pub mod facade;
+pub mod participant;
 
 pub use base::{CsrBase, CsrError};
 pub use delta::CsrDelta;
 pub use facade::Csr;
+pub use participant::CsrParticipant;
