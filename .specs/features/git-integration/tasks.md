@@ -1,6 +1,6 @@
 # Tasks: Git Integration & Incremental Sync (Fase 2)
 
-## T-201: Dependência `gix` e fixtures de teste
+## T-201: Dependência `gix` e fixtures de teste [x]
 - **REQ**: REQ-201
 - **What**: `cargo add gix`. Criar `tests/fixtures/git_repo.rs` — helper que
   cria um repositório Git temporário programaticamente (via `gix` ou

@@ -256,7 +256,7 @@ validado na prática, sem precisar mudar a trait).
   em T-204/T-205/T-206.
 
 ## Todos
-- [ ] T-201: Dependência `gix` e fixtures de teste — Execute
+- [x] T-201: Dependência `gix` e fixtures de teste — Execute
 - [ ] T-202: `GitSource` — abrir repositório e ler HEAD — Execute
 - [ ] T-203: `TreeDiff` — diff de árvore desde `last_indexed_commit` — Execute
 - [ ] T-204: `DirtyCache` — mudanças não commitadas — Execute [P-A]
@@ -266,6 +266,17 @@ validado na prática, sem precisar mudar a trait).
 - [ ] T-208: Testes de estados não-triviais do repositório — Execute
 - [ ] T-209: Lint e superfície pública — Execute
 
+## Progress [window: last 10]
+- 2026-09-28 T-201 completo. `cargo add gix` (defaults — footprint maior que
+  o resto do projeto, ~125 crates transitivos incluindo suporte a rede/
+  credenciais que não usamos; candidato a `default-features = false` +
+  seleção fina depois, não bloqueante agora). `tests/fixtures/mod.rs`:
+  `FixtureRepo` (shell para `git` real só em `tests/`, nunca em `src/`, por
+  isolamento e simplicidade — criar commits via API de escrita do `gix`
+  diretamente seria mais "puro" mas bem mais código). Smoke test em
+  `tests/fixture_smoke.rs`. Gate: `cargo build` → sucesso;
+  `cargo test --test fixture_smoke` → 1/1 pass.
+
 ## Next Steps
-- Rodar Execute começando por T-201; T-204/T-205/T-206 em paralelo [P-A]
+- Rodar Execute em T-202 (`GitSource`); T-204/T-205/T-206 em paralelo [P-A]
   depois de T-202.

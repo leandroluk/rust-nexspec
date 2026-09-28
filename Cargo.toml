@@ -8,6 +8,7 @@ arc-swap = "1.9.2"
 blake3 = "1.8.7"
 comrak = { version = "0.55.0", default-features = false }
 crc32fast = "1.5.2"
+gix = "0.88.0"
 memmap2 = "0.9.11"
 redb = "4.3.0"
 rkyv = "0.8.18"
