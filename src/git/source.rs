@@ -23,7 +23,7 @@ pub enum GitError {
     UnsupportedHash(usize),
 }
 
-fn op_err<E: std::fmt::Display>(e: E) -> GitError {
+pub(crate) fn op_err<E: std::fmt::Display>(e: E) -> GitError {
     GitError::Op(e.to_string())
 }
 
@@ -40,7 +40,7 @@ pub struct TreeDiff {
 }
 
 pub struct GitSource {
-    repo: gix::Repository,
+    pub(crate) repo: gix::Repository,
 }
 
 impl GitSource {

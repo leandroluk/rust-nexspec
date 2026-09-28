@@ -39,7 +39,7 @@
   os dois; teste com `since: None` retorna tudo como `Added`.
 - **Gate**: `cargo test git::source::tree_diff`
 
-## T-204: `DirtyCache` — mudanças não commitadas
+## T-204: `DirtyCache` — mudanças não commitadas [x]
 - **REQ**: REQ-204
 - **What**: `DirtyCache` (HashMap em memória `PathBuf -> [u8;32]` Blake3).
   `DirtyCache::scan(&mut self, repo_root: &Path, tracked_paths: &[PathBuf]) -> Vec<PathBuf>`
@@ -54,7 +54,7 @@
   arquivo entre varreduras faz ele reaparecer.
 - **Gate**: `cargo test git::dirty_cache`
 
-## T-205: `EdgeType::CoChanges` + `co_change_edges`
+## T-205: `EdgeType::CoChanges` + `co_change_edges` [x]
 - **REQ**: REQ-206
 - **What**: Adicionar variante `CoChanges` a `graph::edge::EdgeType` (+
   `to_code`/`from_code`). `CoChangeWindow { max_commits: usize, max_age:

@@ -259,8 +259,8 @@ validado na prática, sem precisar mudar a trait).
 - [x] T-201: Dependência `gix` e fixtures de teste — Execute
 - [x] T-202: `GitSource` — abrir repositório e ler HEAD — Execute
 - [x] T-203: `TreeDiff` — diff de árvore desde `last_indexed_commit` — Execute
-- [ ] T-204: `DirtyCache` — mudanças não commitadas — Execute [P-A]
-- [ ] T-205: `EdgeType::CoChanges` + `co_change_edges` — Execute [P-A]
+- [x] T-204: `DirtyCache` — mudanças não commitadas — Execute [P-A]
+- [x] T-205: `EdgeType::CoChanges` + `co_change_edges` — Execute [P-A]
 - [ ] T-206: `extract_commit_links` — linking temporal — Execute [P-A]
 - [ ] T-207: `SyncOrchestrator::run_once()` — integração — Execute
 - [ ] T-208: Testes de estados não-triviais do repositório — Execute
@@ -303,5 +303,17 @@ validado na prática, sem precisar mudar a trait).
   20 bytes. Gate: `cargo test --test git_tree_diff` → 2/2,
   `cargo test sync::version` → 4/4.
 
+- 2026-09-28 T-204/T-205 completos (onda [P-A]). `git::dirty_cache::DirtyCache`
+  (HashMap em memória `PathBuf -> Blake3`, `scan()` retorna paths mudados,
+  primeira leitura conta tudo como "mudado"). `EdgeType::CoChanges` (código 4)
+  + `GitSource::co_change_edges()` — implementado como **método de
+  `GitSource`** (não função livre `co_change_edges(&GitSource, ...)` como o
+  `tasks.md` esboçou) para manter o campo `repo: gix::Repository` privado e a
+  fronteira "todo gix passa por GitSource" (REQ-201) intacta; exigiu tornar
+  `repo` e `op_err` `pub(crate)` para outros módulos de `git::` acessarem.
+  Janela por commits via `head_id().ancestors().all()`, corte por idade via
+  `commit.time()?.seconds`, walk é newest-first então corta assim que um
+  commit fica velho demais. Gate: `cargo test git::` → 5/5 pass.
+
 ## Next Steps
-- T-204/T-205/T-206 em paralelo [P-A] (todas dependem só de T-202, pronto).
+- T-206 (`extract_commit_links`) — última da onda [P-A], depende só de T-202.

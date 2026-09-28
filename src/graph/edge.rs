@@ -9,6 +9,12 @@ pub enum EdgeType {
     DependsOn,
     Implements,
     DefinedIn,
+    /// Files that tend to change together in the same commits (REQ-206 in
+    /// `.specs/features/git-integration/spec.md`). Represented as a regular
+    /// directed `Edge` — a co-change relationship is recorded as two edges,
+    /// `A->B` and `B->A`, rather than introducing an undirected edge concept
+    /// into the CSR (see `.specs/features/git-integration/design.md`).
+    CoChanges,
 }
 
 impl EdgeType {
@@ -21,6 +27,7 @@ impl EdgeType {
             EdgeType::DependsOn => 1,
             EdgeType::Implements => 2,
             EdgeType::DefinedIn => 3,
+            EdgeType::CoChanges => 4,
         }
     }
 
@@ -30,6 +37,7 @@ impl EdgeType {
             1 => Some(EdgeType::DependsOn),
             2 => Some(EdgeType::Implements),
             3 => Some(EdgeType::DefinedIn),
+            4 => Some(EdgeType::CoChanges),
             _ => None,
         }
     }
