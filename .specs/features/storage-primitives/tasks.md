@@ -1,6 +1,6 @@
 # Tasks: Storage Primitives & Graph Topology (Fase 1)
 
-## T-101: Dependências novas (`memmap2`, `arc-swap`, `zstd`, `comrak`)
+## T-101: Dependências novas (`memmap2`, `arc-swap`, `zstd`, `comrak`) [x]
 - **REQ**: (infra — pré-requisito de todos os REQs desta fase)
 - **What**: `cargo add memmap2 arc-swap zstd comrak`.
 - **Where**: `Cargo.toml`

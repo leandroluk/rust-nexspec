@@ -139,7 +139,7 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
 - [x] T-010: Superfície pública e lint final — Execute
 
 ## Todos
-- [ ] T-101: Dependências novas (memmap2/arc-swap/zstd/comrak) — Execute
+- [x] T-101: Dependências novas (memmap2/arc-swap/zstd/comrak) — Execute
 - [ ] T-102: Tipos `Node`/`NodeType`/`NodePayload` — Execute [P-A]
 - [ ] T-103: Tipos `Edge`/`EdgeType` — Execute [P-A]
 - [ ] T-104: `CsrBase` — layout binário imutável — Execute
@@ -150,5 +150,11 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
 - [ ] T-109: Integração fim-a-fim via `Coordinator` — Execute
 - [ ] T-110: Lint e superfície pública — Execute
 
+## Progress [window: last 10]
+- 2026-09-28 T-101 completo. `cargo add memmap2 arc-swap zstd comrak`. Ajuste:
+  `comrak` com `default-features = false` — as features default incluíam CLI/
+  syntect/bon (~90 crates transitivos) irrelevantes para só parsear Markdown.
+  Gate: `cargo build` → sucesso.
+
 ## Next Steps
-- Rodar Execute começando por T-101; T-102/T-103 em paralelo [P-A] em seguida.
+- Rodar Execute em T-102/T-103 em paralelo [P-A] em seguida.
