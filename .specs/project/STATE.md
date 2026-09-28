@@ -3,11 +3,12 @@
 ## Degraded Mode
 - Grafo NÃO construído — `.specs/graph/graph.json` não existe. Rule #1 da skill
   segue em modo degradado: contexto lido diretamente dos arquivos.
-- Já existe código Rust real (crate `nexspec`, módulos `sync`/`graph`, 27
-  testes) o suficiente para valer a pena indexar, mas ainda não há um
-  `graphify`/`nexspec` funcional para gerar o grafo. Reindexar assim que a
-  Fase 1 (CSR) estiver perto do fim, ou quando `graphify` (Python) for
-  instalado manualmente como alternativa temporária.
+- Já existe código Rust real (crate `nexspec`, módulos `sync`/`graph`, 36
+  testes, Fase 0 e Fase 1 completas) o suficiente para valer a pena indexar,
+  mas ainda não há um `graphify`/`nexspec` funcional para gerar o grafo.
+  Reindexar quando `graphify` (Python) for instalado manualmente como
+  alternativa temporária, ou quando o próprio `nexspec` tiver CLI (Fase 6) —
+  a ironia de "a ferramenta que ainda não pode se auto-indexar" persiste.
 
 ## Progress [window: last 10]
 - 2026-09-28 — Sessão iniciada. Skill `graph-spec-design` invocada pela primeira vez
@@ -242,10 +243,29 @@ validado na prática, sem precisar mudar a trait).
   `ArcSwap` (T-106), não do `CsrDelta` em si — este é um builder mutável
   comum. Gate: `cargo test graph::csr` → 5/5 pass.
 
+## Decisions [window: last 10]
+- 2026-09-28 Feature "git-integration" (Fase 2) especificada, desenhada e
+  quebrada em tasks: `.specs/features/git-integration/{spec,design,tasks}.md`.
+  REQ count: 8 (REQ-201..208). Escopo `Complex`. Decisões: cobertura de
+  submodules/LFS/sparse-checkout adiada (fora de escopo, registrado como
+  débito técnico, não bloqueio); `SyncOrchestrator` vive fora de `sync::`/
+  `graph::` (primeiro componente que depende dos dois); co-change vira
+  `EdgeType::CoChanges` reaproveitando o CSR da Fase 1 (não um novo tipo de
+  store); `last_indexed_commit` reaproveita a tabela `meta` do
+  `VersionPointer` (não um store novo). 9 tasks (T-201..T-209), onda [P-A]
+  em T-204/T-205/T-206.
+
+## Todos
+- [ ] T-201: Dependência `gix` e fixtures de teste — Execute
+- [ ] T-202: `GitSource` — abrir repositório e ler HEAD — Execute
+- [ ] T-203: `TreeDiff` — diff de árvore desde `last_indexed_commit` — Execute
+- [ ] T-204: `DirtyCache` — mudanças não commitadas — Execute [P-A]
+- [ ] T-205: `EdgeType::CoChanges` + `co_change_edges` — Execute [P-A]
+- [ ] T-206: `extract_commit_links` — linking temporal — Execute [P-A]
+- [ ] T-207: `SyncOrchestrator::run_once()` — integração — Execute
+- [ ] T-208: Testes de estados não-triviais do repositório — Execute
+- [ ] T-209: Lint e superfície pública — Execute
+
 ## Next Steps
-- Feature "storage-primitives" (Fase 1) completa e commitada. Próxima:
-  Specify da Fase 2 (Git Integration & Incremental Sync) — `gix` embutido,
-  tree-diff incremental, blame por símbolo com janela de co-change limitada,
-  linking commit→spec. É o que vai decidir "o que mudou" para alimentar
-  `markdown::extract()` (Fase 1) e o parser Tree-sitter (Fase 3) de forma
-  incremental, em vez de reprocessar tudo a cada sync.
+- Rodar Execute começando por T-201; T-204/T-205/T-206 em paralelo [P-A]
+  depois de T-202.
