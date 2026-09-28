@@ -257,7 +257,7 @@ validado na prática, sem precisar mudar a trait).
 
 ## Todos
 - [x] T-201: Dependência `gix` e fixtures de teste — Execute
-- [ ] T-202: `GitSource` — abrir repositório e ler HEAD — Execute
+- [x] T-202: `GitSource` — abrir repositório e ler HEAD — Execute
 - [ ] T-203: `TreeDiff` — diff de árvore desde `last_indexed_commit` — Execute
 - [ ] T-204: `DirtyCache` — mudanças não commitadas — Execute [P-A]
 - [ ] T-205: `EdgeType::CoChanges` + `co_change_edges` — Execute [P-A]
@@ -277,6 +277,20 @@ validado na prática, sem precisar mudar a trait).
   `tests/fixture_smoke.rs`. Gate: `cargo build` → sucesso;
   `cargo test --test fixture_smoke` → 1/1 pass.
 
+- 2026-09-28 T-202 completo. `git::source::GitSource` (`open`,
+  `head_commit_oid`, `is_dirty`) — API estreita sobre `gix::Repository`.
+  OIDs representados como `[u8;20]` (SHA-1); repo SHA-256 falharia com erro
+  explícito (`GitError::UnsupportedHash`), não truncamento silencioso —
+  limitação documentada, não tratada agora. Ajuste de escopo do gate: os
+  testes ficaram em `tests/git_source.rs` (integração, via `FixtureRepo`) em
+  vez de unit tests `#[cfg(test)]` dentro de `src/git/source.rs` como o
+  `tasks.md` sugeria (`cargo test git::source`) — testes de `GitSource`
+  precisam de repositórios Git reais, que só o helper de `tests/fixtures`
+  fornece; unit tests dentro do crate não têm acesso a esse helper (crates
+  de teste de integração são compilados separadamente). Gate ajustado:
+  `cargo test --test git_source` → 3/3 pass, cobrindo HEAD em branch, HEAD
+  destacado e detecção de dirty.
+
 ## Next Steps
-- Rodar Execute em T-202 (`GitSource`); T-204/T-205/T-206 em paralelo [P-A]
-  depois de T-202.
+- Rodar Execute em T-203 (`TreeDiff`); T-204/T-205/T-206 em paralelo [P-A]
+  já podem começar (dependem só de T-202, que está pronto).

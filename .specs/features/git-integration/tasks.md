@@ -12,7 +12,7 @@
   e retorna seu path.
 - **Gate**: `cargo build`
 
-## T-202: `GitSource` — abrir repositório e ler HEAD
+## T-202: `GitSource` — abrir repositório e ler HEAD [x]
 - **REQ**: REQ-201, REQ-208
 - **What**: `GitSource::open(path: &Path) -> Result<GitSource, GitError>`
   (wrap `gix::open`). `GitSource::head_commit_oid(&self) -> Result<[u8;20], GitError>`
