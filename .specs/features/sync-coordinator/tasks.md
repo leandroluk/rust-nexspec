@@ -24,7 +24,7 @@
 - **Done when**: roundtrip de serialização preserva os dados exatamente.
 - **Gate**: `cargo test sync::mutation`
 
-## T-003: WAL — frame format, append e leitura de pendências
+## T-003: WAL — frame format, append e leitura de pendências [x]
 - **REQ**: REQ-001, REQ-004
 - **Graph node**: n/a
 - **What**: Implementar `Wal` com `append_frame(target_version, &MutationSet)`

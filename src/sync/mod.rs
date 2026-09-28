@@ -5,7 +5,9 @@
 pub mod mutation;
 pub mod participant;
 pub mod version;
+pub mod wal;
 
 pub use mutation::{DocMutation, EdgeMutation, MutationSet, NodeMutation, StableId};
 pub use participant::{SyncError, SyncParticipant};
 pub use version::{VersionError, VersionPointer};
+pub use wal::{Wal, WalError};

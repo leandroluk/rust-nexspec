@@ -39,6 +39,13 @@
   `use redb::ReadableDatabase` para `begin_read()` (não documentado no design,
   corrigido durante implementação — não é SPEC_DEVIATION, é detalhe de versão
   de dependência).
+- 2026-09-28 T-003 completo. `Wal` (`src/sync/wal.rs`): frames length-prefixed
+  com tipo (mutation/commit-marker), crc32, fsync (`sync_data`) após cada
+  append; `pending_frames()`/`mark_done()`. Gate: `cargo test sync::` → 7/7
+  pass. Ajuste de implementação: bytes lidos do arquivo não vêm alinhados para
+  os tipos archived do rkyv — decode agora copia o corpo do frame para um
+  `rkyv::util::AlignedVec<16>` antes de `from_bytes` (não é SPEC_DEVIATION,
+  detalhe de uso da API do rkyv 0.8).
 
 ## Decisions [window: last 10]
 - 2026-09-28 Design completo para "sync-coordinator" em
@@ -68,7 +75,7 @@
 ## Todos
 - [x] T-001: Inicializar projeto Rust e dependências base — Execute
 - [x] T-002: `MutationSet` e tipos de mutação (rkyv) — Execute [P-A]
-- [ ] T-003: WAL — frame format, append e leitura de pendências — Execute
+- [x] T-003: WAL — frame format, append e leitura de pendências — Execute
 - [x] T-004: `VersionPointer` — `sync_version` atômico em redb — Execute [P-A]
 - [x] T-005: Trait `SyncParticipant` — Execute [P-A]
 - [ ] T-006: `RedbParticipant` — implementação real da trait — Execute
