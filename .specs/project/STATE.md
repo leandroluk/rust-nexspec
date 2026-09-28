@@ -128,6 +128,15 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
   (`rust-specdb`) e o remoto no GitHub **não** foram renomeados nesta sessão —
   o usuário disse que troca isso por conta própria depois. Rebuild completo
   após o rename: `cargo test` → 27/27 pass sob o novo nome de crate.
+- 2026-09-28 T-106 completo. `graph::csr::facade::Csr` (`base: CsrBase`,
+  `delta: ArcSwap<CsrDelta>`): `edges_from()` faz `delta.load()` (snapshot
+  atômico) + merge com a base; `publish_delta()` troca o ponteiro via
+  `ArcSwap::store`. Teste de concorrência com `thread::scope` (1 thread
+  publicando 200 deltas, outra lendo 500x em paralelo) confirma ausência de
+  panic/deadlock — a garantia de "nunca ver delta parcial" é estrutural
+  (`ArcSwap::load` sempre devolve um `Arc<CsrDelta>` inteiro), não algo que um
+  teste de timing frágil precisasse provar. Gate: `cargo test graph::csr` →
+  7/7 pass.
 
 ## Known Issues
 - Os 3 subagentes em `.claude/agents/` (po.md, dev.md, qa.md) foram copiados de
@@ -153,7 +162,7 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
 - [x] T-103: Tipos `Edge`/`EdgeType` — Execute [P-A]
 - [x] T-104: `CsrBase` — layout binário imutável — Execute
 - [x] T-105: `CsrDelta` — estrutura append-only — Execute
-- [ ] T-106: `Csr` — fachada lock-free — Execute
+- [x] T-106: `Csr` — fachada lock-free — Execute
 - [ ] T-107: `CsrParticipant` — implementação de `SyncParticipant` — Execute
 - [ ] T-108: `markdown::extract` — parser comrak — Execute
 - [ ] T-109: Integração fim-a-fim via `Coordinator` — Execute

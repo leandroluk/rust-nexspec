@@ -63,7 +63,7 @@
   no delta desaparece do merge mesmo estando na base.
 - **Gate**: `cargo test graph::csr::delta`
 
-## T-106: `Csr` — fachada lock-free (`ArcSwap<CsrDelta>`)
+## T-106: `Csr` — fachada lock-free (`ArcSwap<CsrDelta>`) [x]
 - **REQ**: REQ-106
 - **What**: `Csr { base: CsrBase, delta: ArcSwap<CsrDelta> }`. `edges_from()`
   público faz `delta.load()` (snapshot atômico) + `merge_into(base, ...)`.

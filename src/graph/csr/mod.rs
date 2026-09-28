@@ -5,6 +5,8 @@
 
 pub mod base;
 pub mod delta;
+pub mod facade;
 
 pub use base::{CsrBase, CsrError};
 pub use delta::CsrDelta;
+pub use facade::Csr;
