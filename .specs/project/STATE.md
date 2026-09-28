@@ -140,8 +140,8 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
 
 ## Todos
 - [x] T-101: Dependências novas (memmap2/arc-swap/zstd/comrak) — Execute
-- [ ] T-102: Tipos `Node`/`NodeType`/`NodePayload` — Execute [P-A]
-- [ ] T-103: Tipos `Edge`/`EdgeType` — Execute [P-A]
+- [x] T-102: Tipos `Node`/`NodeType`/`NodePayload` — Execute [P-A]
+- [x] T-103: Tipos `Edge`/`EdgeType` — Execute [P-A]
 - [ ] T-104: `CsrBase` — layout binário imutável — Execute
 - [ ] T-105: `CsrDelta` — estrutura append-only — Execute
 - [ ] T-106: `Csr` — fachada lock-free — Execute
@@ -155,6 +155,9 @@ Fase 1 (Storage Primitives & Graph Topology / CSR).
   `comrak` com `default-features = false` — as features default incluíam CLI/
   syntect/bon (~90 crates transitivos) irrelevantes para só parsear Markdown.
   Gate: `cargo build` → sucesso.
+- 2026-09-28 T-102/T-103 completos. `graph::node::{Node, NodeType,
+  NodePayload}` (6 variantes) e `graph::edge::{Edge, EdgeType}` — reaproveitam
+  `sync::mutation::StableId`. Gate: `cargo test graph::` → 3/3 pass.
 
 ## Next Steps
 - Rodar Execute em T-102/T-103 em paralelo [P-A] em seguida.

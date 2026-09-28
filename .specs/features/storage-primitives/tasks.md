@@ -8,7 +8,7 @@
 - **Done when**: `cargo build` compila com as novas deps resolvidas.
 - **Gate**: `cargo build`
 
-## T-102: Tipos `Node`/`NodeType`/`NodePayload`
+## T-102: Tipos `Node`/`NodeType`/`NodePayload` [x]
 - **REQ**: REQ-101, REQ-102
 - **What**: Enum `NodeType` (Requirement, Task, Adr, DocSection, Symbol, File);
   enum `NodePayload` com uma variante por tipo (campos mínimos: `title`,
@@ -23,7 +23,7 @@
   para cada variante.
 - **Gate**: `cargo test graph::node`
 
-## T-103: Tipos `Edge`/`EdgeType`
+## T-103: Tipos `Edge`/`EdgeType` [x]
 - **REQ**: REQ-101, REQ-102
 - **What**: Enum `EdgeType` (Satisfies, DependsOn, Implements, DefinedIn);
   struct `Edge { id: StableId, from: StableId, to: StableId, edge_type:
