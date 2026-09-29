@@ -15,7 +15,7 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
 (REQ-301..308, 10 tasks T-301..T-310). Próximo: Execute a partir de T-301.
 
 ## Todos
-- [ ] T-301: Dependências (tree-sitter + 4 gramáticas, rayon, tantivy)
+- [x] T-301: Dependências (tree-sitter + 4 gramáticas, rayon, tantivy)
 - [ ] T-302: `Language` + parsing de símbolos de um arquivo
 - [ ] T-303: Edges `DefinedIn`/`DependsOn` (mesmo arquivo)
 - [ ] T-304: Edge `Satisfies` via `@spec`/`@adr`
@@ -59,6 +59,10 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
   de produto detalhado, etc.).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 T-301 completo. `cargo add tree-sitter tree-sitter-{typescript,
+  javascript,python,go,rust} rayon tantivy`. Gate: `cargo build` → sucesso
+  (~39s, dependency tree bem maior que as fases anteriores — esperado dado
+  4 gramáticas + motor de busca completo).
 - 2026-09-29 STATE.md compactado, `STATE_ARCHIVE.md` criado com o histórico
   completo de progresso/decisões das Fases 0-2.
 - 2026-09-28 Fase 2 (git-integration) COMPLETA. T-201..T-209, 53/53 testes,

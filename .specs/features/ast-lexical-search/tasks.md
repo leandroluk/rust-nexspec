@@ -1,6 +1,6 @@
 # Tasks: Multi-Language AST Parsing & Lexical Search (Fase 3)
 
-## T-301: Dependências (`tree-sitter` + 4 gramáticas, `rayon`, `tantivy`)
+## T-301: Dependências (`tree-sitter` + 4 gramáticas, `rayon`, `tantivy`) [x]
 - **REQ**: REQ-301, REQ-305, REQ-307
 - **What**: `cargo add tree-sitter tree-sitter-typescript tree-sitter-javascript
   tree-sitter-python tree-sitter-go tree-sitter-rust rayon tantivy`.
