@@ -53,6 +53,36 @@ impl From<tantivy::query::QueryParserError> for SearchError {
     }
 }
 
+/// Anything that can be queried: an exact-id lookup or a BM25 text search
+/// only needs the reader (for a `Searcher` snapshot) and the schema (for
+/// field handles) — implemented by [`TantivyParticipant`] itself and by
+/// [`TantivyHandle`], a lightweight clone kept before the participant is
+/// moved into a [`crate::sync::coordinator::Coordinator`]'s participant
+/// list (mirrors `CsrParticipant::csr_handle()`'s reasoning).
+pub trait TantivyQueryable {
+    fn reader(&self) -> &IndexReader;
+    fn schema(&self) -> &TantivySchema;
+}
+
+/// A cheap, cloneable handle for querying after the owning
+/// [`TantivyParticipant`] has been moved into a `Coordinator`.
+/// `IndexReader` wraps an `Arc` internally, so cloning is cheap and every
+/// handle observes the same committed state.
+#[derive(Clone)]
+pub struct TantivyHandle {
+    reader: IndexReader,
+    schema: TantivySchema,
+}
+
+impl TantivyQueryable for TantivyHandle {
+    fn reader(&self) -> &IndexReader {
+        &self.reader
+    }
+    fn schema(&self) -> &TantivySchema {
+        &self.schema
+    }
+}
+
 pub struct TantivyParticipant {
     schema: TantivySchema,
     writer: Mutex<IndexWriter<TantivyDocument>>,
@@ -78,12 +108,22 @@ impl TantivyParticipant {
         })
     }
 
-    pub fn schema(&self) -> &TantivySchema {
-        &self.schema
+    /// A cloneable handle to keep for querying — call this before moving
+    /// `self` into a `Coordinator`'s participant list.
+    pub fn handle(&self) -> TantivyHandle {
+        TantivyHandle {
+            reader: self.reader.clone(),
+            schema: self.schema.clone(),
+        }
     }
+}
 
-    pub fn reader(&self) -> &IndexReader {
+impl TantivyQueryable for TantivyParticipant {
+    fn reader(&self) -> &IndexReader {
         &self.reader
+    }
+    fn schema(&self) -> &TantivySchema {
+        &self.schema
     }
 }
 

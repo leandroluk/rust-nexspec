@@ -9,4 +9,4 @@ pub mod tantivy_participant;
 
 pub use query::{find_by_id, search_text};
 pub use schema::TantivySchema;
-pub use tantivy_participant::{SearchError, TantivyParticipant};
+pub use tantivy_participant::{SearchError, TantivyHandle, TantivyParticipant, TantivyQueryable};

@@ -23,7 +23,7 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
 - [x] T-306: `SyncOrchestrator` roteia arquivos de código
 - [x] T-307: `TantivySchema` + `TantivyParticipant`
 - [x] T-308: Fast-path de busca exata + BM25
-- [ ] T-309: Integração fim-a-fim (3 participantes reais)
+- [x] T-309: Integração fim-a-fim (3 participantes reais)
 - [ ] T-310: Lint e superfície pública
 
 ## Active Blockers
@@ -59,6 +59,20 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
   de produto detalhado, etc.).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 T-309 completo. `tests/three_participants_integration.rs`:
+  `Coordinator` real com `[RedbParticipant, CsrParticipant,
+  TantivyParticipant]`, `SyncOrchestrator::run_once()` sobre fixture com
+  `.md` + `.rs` (REQ satisfeito por símbolo via `@spec`). Confirma
+  consistência nos 3 stores: nós em `redb`, edge `Satisfies` no CSR,
+  achável por id exato e por BM25 no Tantivy. Adicionado
+  `TantivyParticipant::handle()`/`TantivyHandle`/trait `TantivyQueryable`
+  (mesmo padrão do `csr_handle()` da Fase 1) — necessário porque o
+  participante é movido para dentro do `Coordinator`, então quem quiser
+  consultar depois precisa de um handle guardado antes do move; `find_by_id`/
+  `search_text` (T-308) generalizados para aceitar `&impl TantivyQueryable`
+  em vez de `&TantivyParticipant` fixo. Gate:
+  `cargo test --test three_participants_integration` → 1/1; suíte completa
+  → 72/72.
 - 2026-09-29 T-308 completo. `search::query::{find_by_id, search_text}` —
   `find_by_id` via `TermQuery` no campo `id` (lookup de termo, não scan);
   `search_text` via `QueryParser` + BM25 sobre `text`. `id` mudou de

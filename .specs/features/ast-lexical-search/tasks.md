@@ -108,7 +108,7 @@
   resultados ranqueados contendo o termo, sem falso-positivo óbvio.
 - **Gate**: `cargo test search::query`
 
-## T-309: Integração fim-a-fim: 3 participantes reais
+## T-309: Integração fim-a-fim: 3 participantes reais [x]
 - **REQ**: (todos — valida a fase inteira junto)
 - **What**: Teste de integração com `Coordinator` real e
   `[RedbParticipant, CsrParticipant, TantivyParticipant]` — um ciclo de sync

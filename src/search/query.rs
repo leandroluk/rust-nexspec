@@ -8,13 +8,15 @@ use tantivy::schema::IndexRecordOption;
 use tantivy::{TantivyDocument, Term};
 
 use crate::search::schema::hex;
-use crate::search::tantivy_participant::{SearchError, TantivyParticipant};
+use crate::search::tantivy_participant::{SearchError, TantivyQueryable};
 use crate::sync::mutation::StableId;
 
 /// Exact lookup by stable id — a single `TermQuery` on the untokenized `id`
-/// field, not a linear scan.
+/// field, not a linear scan. Works with any [`TantivyQueryable`]
+/// (`TantivyParticipant` or a `TantivyHandle` kept from before it was moved
+/// into a `Coordinator`).
 pub fn find_by_id(
-    participant: &TantivyParticipant,
+    participant: &impl TantivyQueryable,
     id: &StableId,
 ) -> Result<Option<TantivyDocument>, SearchError> {
     let searcher = participant.reader().searcher();
@@ -29,7 +31,7 @@ pub fn find_by_id(
 
 /// Free-text BM25 search over the `text` field, ranked, top `limit` results.
 pub fn search_text(
-    participant: &TantivyParticipant,
+    participant: &impl TantivyQueryable,
     query_text: &str,
     limit: usize,
 ) -> Result<Vec<TantivyDocument>, SearchError> {
@@ -46,6 +48,7 @@ pub fn search_text(
 mod tests {
     use super::*;
     use crate::graph::node::NodePayload;
+    use crate::search::tantivy_participant::TantivyParticipant;
     use crate::sync::mutation::{MutationSet, NodeMutation};
     use crate::sync::participant::SyncParticipant;
     use tantivy::schema::Value;
