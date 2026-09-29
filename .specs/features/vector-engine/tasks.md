@@ -79,7 +79,7 @@ executadas antes, sem bloqueio.
   não tenta rede.
 - **Gate**: `cargo test vector::embedder`
 
-## T-406: Inferência real — modelo de embedding (REQUER CONFIRMAÇÃO DO USUÁRIO)
+## T-406: Inferência real — modelo de embedding (REQUER CONFIRMAÇÃO DO USUÁRIO) [x]
 - **REQ**: REQ-401, REQ-402
 - **What**: Baixar o modelo quantizado (`all-MiniLM-L6-v2` ou
   `bge-small-en-v1.5`, ONNX INT8, ~30MB) + tokenizer de uma fonte

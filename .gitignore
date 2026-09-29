@@ -13,6 +13,10 @@ target
 # Contains mutation testing data
 **/mutants.out*/
 
+# Embedding model + tokenizer (T-406, ~23MB) -- downloaded, not committed.
+# See .specs/features/vector-engine/tasks.md for the source.
+.models/
+
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore

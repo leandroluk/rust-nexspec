@@ -11,12 +11,13 @@ crc32fast = "1.5.2"
 gix = "0.88.0"
 instant-distance = { version = "0.6.1", optional = true }
 memmap2 = "0.9.11"
-ort = { version = "2.0.0-rc.13", optional = true }
+ort = { version = "2.0.0-rc.13", optional = true, features = ["download-binaries"] }
 rayon = "1.12.0"
 redb = "4.3.0"
 rkyv = "0.8.18"
 tantivy = "0.26.2"
 thiserror = "2.0.21"
+tokenizers = { version = "0.23.2", optional = true, default-features = false, features = ["fancy-regex"] }
 tree-sitter = "0.27.0"
 tree-sitter-go = "0.25.0"
 tree-sitter-javascript = "0.25.0"
@@ -33,5 +34,5 @@ default = ["full"]
 # REQ-404: the vector engine (ort + HNSW) is the only optional part of the
 # crate. `full` (default) includes it; `lean` builds omit it entirely --
 # `cargo build --no-default-features --features lean`.
-full = ["dep:ort", "dep:instant-distance"]
+full = ["dep:ort", "dep:instant-distance", "dep:tokenizers"]
 lean = []

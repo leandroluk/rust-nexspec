@@ -4,18 +4,20 @@
 
 ## Current Work
 
-Fases 0-3 completas. Fase 4 (Local Vector Engine & Hybrid Traversal): 8 de
-9 tasks completas (T-401..T-405, T-407..T-409) — 85/85 testes (build
-`full`) e 78/78 (build `lean`), `cargo doc`/`cargo clippy -- -D warnings`
-limpos nos dois builds, tudo commitado e no GitHub
+Fases 0-4 completas (9/9 tasks da Fase 4, incluindo T-406 — inferência real
+de embeddings). Suíte completa: 85/85 (build `full`) + 2 testes de
+inferência real (antes `--ignored`, agora rodam contra o modelo baixado em
+`.models/`), 78/78 (build `lean`). `cargo doc`/`cargo clippy -- -D
+warnings` limpos nos dois builds. Tudo commitado e no GitHub
 (`leandroluk/rust-specdb`, branch `main`). Produto renomeado de "SpecDB"
 para "NexSpec" (crate `nexspec`) — repo/pasta local seguem com o nome antigo
 até o usuário trocar por conta própria.
 
-**T-406 (baixar o modelo real de embedding, ~30MB) é a única task pendente
-da Fase 4 — requer confirmação explícita do usuário antes de rodar.** Sem
-ela, a fase entrega tudo (HNSW, RRF, k-hop, feature `lean`) exceto
-inferência real de embeddings.
+Modelo `all-MiniLM-L6-v2` quantizado INT8 (~23MB, `Xenova/all-MiniLM-L6-v2`
+no Hugging Face) + tokenizer baixados para `.models/` (gitignored, não
+versionado). `Embedder` faz inferência real via `ort` + `tokenizers`, mean
+pooling + normalização L2, confirmado determinístico e semanticamente
+coerente (frases parecidas rankeiam mais perto que não-relacionadas).
 
 ## Todos
 - [x] T-401: Feature `lean` + deps opcionais (`ort`, `instant-distance`)
@@ -23,14 +25,13 @@ inferência real de embeddings.
 - [x] T-403: `hybrid::expand` (k-hop sobre o CSR) [P-A]
 - [x] T-404: `hybrid::seed_discovery` (fusão RRF)
 - [x] T-405: `Embedder` — scaffold lazy + caminho "modelo ausente"
-- [ ] T-406: Inferência real (**requer confirmação do usuário**)
+- [x] T-406: Inferência real (usuário confirmou o download)
 - [x] T-407: Verificação da feature `lean`
 - [x] T-408: Integração — 4 participantes reais via `Coordinator`
 - [x] T-409: Lint e superfície pública
 
 ## Active Blockers
-- T-406 aguardando confirmação do usuário para baixar o modelo de embedding
-  real (~30MB) — não bloqueia as outras 8 tasks da fase.
+- none
 
 ## Degraded Mode
 - Grafo do próprio NexSpec NÃO construído — `.specs/graph/graph.json` não
@@ -61,15 +62,32 @@ inferência real de embeddings.
 - Ver `STATE_ARCHIVE.md` para decisões anteriores (Fase 0 spec/design, rename
   de produto detalhado, etc.).
 
-## Feature "vector-engine" (Fase 4): 8/9 tasks completas
-T-401..T-405, T-407..T-409 concluídas: 85/85 testes (`full`), 78/78
-(`lean`), `cargo doc`/`cargo clippy -- -D warnings` limpos nos dois builds.
-`HnswParticipant` é o 4º `SyncParticipant` real; `hybrid::{expand,
-seed_discovery}` prontos; `Embedder` tem o caminho "modelo ausente"
-funcionando. Falta só **T-406** (inferência real — aguardando confirmação
-do usuário para baixar o modelo, ~30MB).
+## Feature "vector-engine" (Fase 4): COMPLETA (9/9)
+Todas as 9 tasks concluídas. `HnswParticipant` é o 4º `SyncParticipant`
+real; `hybrid::{expand, seed_discovery}` prontos; `Embedder` faz inferência
+real via `ort`+`tokenizers` contra `all-MiniLM-L6-v2` quantizado (baixado
+em `.models/`, gitignored). Gate final: `cargo doc`/`cargo clippy -- -D
+warnings` limpos em `full` e `lean`; suíte completa 85/85 (`full`) + 2
+testes de inferência real, 78/78 (`lean`).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 T-406 completo. Baixado `all-MiniLM-L6-v2` quantizado INT8
+  (~23MB, `Xenova/all-MiniLM-L6-v2` no Hugging Face) + `tokenizer.json` +
+  `config.json` para `.models/` (novo, gitignored). Adicionada dependência
+  `tokenizers` (feature `fancy-regex`, já que `onig` exige lib C) e
+  `ort` ganhou a feature `download-binaries` (baixa a lib nativa do ONNX
+  Runtime automaticamente). `Embedder::embed()` agora: tokeniza →
+  `input_ids`/`attention_mask`/`token_type_ids` como tensores i64 → roda a
+  sessão ONNX → mean pooling sobre tokens não-padding → normalização L2 →
+  `Vec<f32>` de 384 dimensões. 2 testes `#[ignore]` (só rodam com o modelo
+  presente, via `cargo test -- --ignored`) confirmam: determinístico,
+  norma ≈1, e frases semanticamente parecidas rankeiam mais perto entre si
+  do que frases não relacionadas — validação real de correção semântica,
+  não só "não deu panic". Sugestões do usuário registradas em Deferred
+  Ideas: Fase 6 deve automatizar esse download (`nexspec init` por padrão,
+  `--no-model` para pular). Gate: `cargo test -- --ignored` (os 2 testes de
+  inferência) → 2/2; suíte completa → 85/85 (`full`), 78/78 (`lean`);
+  `cargo clippy -- -D warnings` limpo nos dois builds.
 - 2026-09-29 T-409 completo. `lib.rs` exporta `hybrid::{expand,
   seed_discovery}` e, sob a feature `full`, `vector::{Embedder,
   HnswParticipant, VectorError}`. Corrigidos 2 lints clippy
@@ -276,3 +294,13 @@ contra specs do mesmo ciclo.
   `run_once()` já é pull-based/on-demand, sem loop de polling embutido;
   isso é sobre *quem* e *quando* chama `run_once()`, que ainda não foi
   especificado (é exatamente o papel da Fase 6).
+- 2026-09-29 (sugestão do usuário) Para a Fase 6 (CLI): comando/flag para
+  baixar automaticamente modelo+tokenizer de embedding, em vez de exigir
+  que o usuário baixe manualmente (como foi feito nesta sessão via `curl`
+  direto em `.models/` para viabilizar T-406). Refinado numa segunda
+  mensagem: `nexspec init` baixa modelo+tokenizer **por padrão**; flag
+  `--no-model` pula o download e só cria a pasta `.models/` com um config
+  mínimo (sem os binários) — não bloqueia o resto do `init`. O `Embedder`
+  (Fase 4) já aceita caminhos de modelo/tokenizer configuráveis, então o
+  comando da CLI só precisa decidir URL/destino padrão e chamar
+  `curl`/`reqwest`; não exige mudança na Fase 4 em si.
