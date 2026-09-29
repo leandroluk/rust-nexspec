@@ -47,6 +47,11 @@ impl From<tantivy::directory::error::OpenDirectoryError> for SearchError {
         SearchError::Tantivy(e.to_string())
     }
 }
+impl From<tantivy::query::QueryParserError> for SearchError {
+    fn from(e: tantivy::query::QueryParserError) -> Self {
+        SearchError::Tantivy(e.to_string())
+    }
+}
 
 pub struct TantivyParticipant {
     schema: TantivySchema,

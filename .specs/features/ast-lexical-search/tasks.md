@@ -95,7 +95,7 @@
   busca exata de `id` e por busca BM25 em `text`.
 - **Gate**: `cargo test search::tantivy_participant`
 
-## T-308: Fast-path de busca exata + BM25
+## T-308: Fast-path de busca exata + BM25 [x]
 - **REQ**: REQ-307
 - **What**: `search::query::find_by_id(&TantivyParticipant, id: &str) ->
   Option<...>` (fast-path, campo `id` não tokenizado) e

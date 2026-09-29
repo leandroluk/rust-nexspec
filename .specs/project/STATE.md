@@ -22,7 +22,7 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
 - [x] T-305: `code::batch::extract_all` (paralelo via rayon)
 - [x] T-306: `SyncOrchestrator` roteia arquivos de código
 - [x] T-307: `TantivySchema` + `TantivyParticipant`
-- [ ] T-308: Fast-path de busca exata + BM25
+- [x] T-308: Fast-path de busca exata + BM25
 - [ ] T-309: Integração fim-a-fim (3 participantes reais)
 - [ ] T-310: Lint e superfície pública
 
@@ -59,6 +59,12 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
   de produto detalhado, etc.).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 T-308 completo. `search::query::{find_by_id, search_text}` —
+  `find_by_id` via `TermQuery` no campo `id` (lookup de termo, não scan);
+  `search_text` via `QueryParser` + BM25 sobre `text`. `id` mudou de
+  parâmetro (`&str`) para `&StableId` no fast-path — mais coerente com o
+  resto do crate (que só circula `StableId` bytes, não hex string, exceto
+  internamente no schema). Gate: `cargo test search::query` → 3/3 pass.
 - 2026-09-29 T-307 completo. `search::schema::TantivySchema` (`id`/`kind`/
   `text`/`path`) + `search::tantivy_participant::TantivyParticipant`
   (terceiro `SyncParticipant` real). `stage`/`commit`/`abort` mapeiam direto
