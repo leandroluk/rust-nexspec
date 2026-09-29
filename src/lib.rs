@@ -10,6 +10,7 @@ pub mod hybrid;
 pub mod search;
 pub mod sync;
 pub mod sync_orchestrator;
+pub mod token;
 #[cfg(feature = "full")]
 pub mod vector;
 
@@ -20,5 +21,8 @@ pub use hybrid::{expand, seed_discovery};
 pub use search::{TantivyParticipant, find_by_id, search_text};
 pub use sync::{Coordinator, MutationSet, SyncParticipant};
 pub use sync_orchestrator::SyncOrchestrator;
+pub use token::budget::{Budget, CharHeuristicTokenizer, TieredItem, Tier, TiktokenTokenizer, TokenError, Tokenizer};
+pub use token::pruner::prune_symbol;
+pub use token::serializer::serialize;
 #[cfg(feature = "full")]
 pub use vector::{Embedder, HnswParticipant, VectorError};

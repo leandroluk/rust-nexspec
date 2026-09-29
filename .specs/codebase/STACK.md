@@ -1,8 +1,8 @@
 # Stack
 
-Rust. Nenhum crate ainda foi adicionado ao `Cargo.toml` (projeto ainda não tem
-código-fonte). Matriz abaixo é a decisão de stack vinda de `.defs/NexSpec.md`,
-promovida aqui como referência de arquitetura.
+Rust. Matriz abaixo é a decisão de stack vinda de `.defs/NexSpec.md`,
+promovida aqui como referência de arquitetura. Todos os módulos até a Fase 5
+já têm crate e código correspondentes em `src/`.
 
 | Módulo | Crate principal | Papel |
 |---|---|---|

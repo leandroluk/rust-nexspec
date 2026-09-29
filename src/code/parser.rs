@@ -33,7 +33,7 @@ impl Language {
         }
     }
 
-    fn ts_language(self) -> tree_sitter::Language {
+    pub(crate) fn ts_language(self) -> tree_sitter::Language {
         match self {
             Language::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
             Language::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
@@ -47,7 +47,7 @@ impl Language {
     /// for its line range) for every function/method/type this language
     /// grammar exposes at a granularity worth indexing (REQ-302's decision:
     /// no variable/field-level symbols — too much noise).
-    fn symbol_query(self) -> &'static str {
+    pub(crate) fn symbol_query(self) -> &'static str {
         match self {
             Language::Rust => {
                 "(function_item name: (_) @name) @def

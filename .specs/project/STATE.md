@@ -4,14 +4,11 @@
 
 ## Current Work
 
-Fases 0-4 completas. Fase 5 (Token Budgeting & LLM Serialization)
-especificada, desenhada e quebrada em 9 tasks (T-501..T-509) — execução
-iniciando agora. REQ count: 5 (REQ-501..505). Escopo `Complex` (domínio
-novo: pruning AST por Tree-sitter, tokenização plugável, serialização).
-
-Suíte completa (fim da Fase 4): 85/85 (build `full`) + 2 testes de
-inferência real, 78/78 (build `lean`). `cargo doc`/`cargo clippy -- -D
-warnings` limpos nos dois builds. Tudo commitado e no GitHub
+Fases 0-5 completas. Fase 5 (Token Budgeting & LLM Serialization) — 9/9
+tasks (T-501..T-509). Suíte completa: 82/82 testes de lib (3 ignored) +
+todos os binários de integração verdes (build `full`); 75/75 testes de lib
+(1 ignored) no build `lean`. `cargo doc`/`cargo clippy -- -D warnings`
+limpos nos dois builds. Tudo commitado e no GitHub
 (`leandroluk/rust-specdb`, branch `main`). Produto renomeado de "SpecDB"
 para "NexSpec" (crate `nexspec`) — repo/pasta local seguem com o nome antigo
 até o usuário trocar por conta própria.
@@ -23,15 +20,15 @@ pooling + normalização L2, confirmado determinístico e semanticamente
 coerente (frases parecidas rankeiam mais perto que não-relacionadas).
 
 ## Todos
-- [ ] T-501: Dependência `tiktoken-rs` + módulo `token::` scaffold
-- [ ] T-502: `Tokenizer` trait + `CharHeuristicTokenizer`
-- [ ] T-503: `TiktokenTokenizer`
-- [ ] T-504: `Budget` — margem de segurança + `Tier`/`TieredItem`
-- [ ] T-505: `Budget::fit` — corte por prioridade
-- [ ] T-506: `token::pruner::prune_symbol`
-- [ ] T-507: `token::serializer::serialize`
-- [ ] T-508: Integração fim-a-fim (pruner → budget → serializer)
-- [ ] T-509: Lint e superfície pública
+- [x] T-501: Dependência `tiktoken-rs` + módulo `token::` scaffold
+- [x] T-502: `Tokenizer` trait + `CharHeuristicTokenizer`
+- [x] T-503: `TiktokenTokenizer`
+- [x] T-504: `Budget` — margem de segurança + `Tier`/`TieredItem`
+- [x] T-505: `Budget::fit` — corte por prioridade
+- [x] T-506: `token::pruner::prune_symbol`
+- [x] T-507: `token::serializer::serialize`
+- [x] T-508: Integração fim-a-fim (pruner → budget → serializer)
+- [x] T-509: Lint e superfície pública
 
 ## Active Blockers
 - none
@@ -42,7 +39,31 @@ coerente (frases parecidas rankeiam mais perto que não-relacionadas).
   disponível (a ironia de "a ferramenta que ainda não pode se auto-indexar"
   persiste até a Fase 6 ter CLI).
 
+## Feature "token-budgeting" (Fase 5): COMPLETA (9/9)
+`token::budget::{Tokenizer, TiktokenTokenizer, CharHeuristicTokenizer,
+Budget, Tier, TieredItem}`, `token::pruner::prune_symbol`,
+`token::serializer::serialize`. Pruner reusa `code::parser::Language`/
+`symbol_query` (agora `pub(crate)`) para relocalizar o mesmo nó de definição
+pela linha e substituir seu corpo por `{ ... }`/`...`; sem corpo
+identificável, cai para o texto original inalterado. `Budget::fit` corta
+por tier (`Target`/`Seed`/`Dependency`) de forma determinística: para no
+primeiro item que estouraria o limite com margem (default 90%), descarta
+todo o resto por inteiro (não faz best-effort tentando os próximos itens
+menores). `tiktoken-rs` é dependência obrigatória (não gated por `lean`).
+Teste de integração (`tests/token_budgeting_integration.rs`) confirma o
+fluxo pruner→budget→serializer fim-a-fim com `CharHeuristicTokenizer`
+(sem dependência de rede). Gate final: `cargo doc`/`cargo clippy -- -D
+warnings` limpos em `full` e `lean`; suíte completa verde nos dois builds.
+
 ## Recent Decisions (Last 15)
+- 2026-09-29 Fase 5 (token-budgeting) implementada e fechada, 9/9 tasks.
+  Decisão de implementação notável: `Budget::fit` usa corte "hard stop" (um
+  item que não cabe interrompe a inclusão de todos os itens seguintes,
+  mesmo que algum deles individualmente coubesse) — não um "melhor esforço"
+  que pula o item grande e tenta o próximo menor. Isso é o que a spec
+  (REQ-504) pedia ("nós além desse ponto de corte são omitidos
+  inteiramente"), mas exigiu ajustar um teste inicial que assumia
+  comportamento best-effort.
 - 2026-09-29 Feature "token-budgeting" (Fase 5) especificada e desenhada.
   REQ-501..505. Decisões: `token::` módulo top-level novo (sibling de
   `hybrid`/`graph`/`code`); pruning é função pura sobre texto-fonte

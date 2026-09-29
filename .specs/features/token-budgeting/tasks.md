@@ -1,6 +1,6 @@
 # Tasks: Token Budgeting & LLM Serialization (Fase 5)
 
-## T-501: Dependência `tiktoken-rs` + módulo `token::` scaffold
+## T-501: Dependência `tiktoken-rs` + módulo `token::` scaffold [x]
 - **REQ**: REQ-502
 - **What**: `cargo add tiktoken-rs` (dependência obrigatória, não opcional —
   ver Decision Log em design.md). Criar `src/token/mod.rs`,
@@ -11,7 +11,7 @@
 - **Done when**: `cargo build` (default) e `cargo build --no-default-features --features lean` compilam ambos.
 - **Gate**: `cargo build && cargo build --no-default-features --features lean`
 
-## T-502: `Tokenizer` trait + `CharHeuristicTokenizer`
+## T-502: `Tokenizer` trait + `CharHeuristicTokenizer` [x]
 - **REQ**: REQ-502
 - **What**: `trait Tokenizer { fn estimate(&self, text: &str) -> u32; }`;
   `CharHeuristicTokenizer` — `estimate` = `(text.chars().count() as f32 /
@@ -23,7 +23,7 @@
   string vazia, string curta e string com caracteres multi-byte (UTF-8).
 - **Gate**: `cargo test token::budget::char_heuristic`
 
-## T-503: `TiktokenTokenizer`
+## T-503: `TiktokenTokenizer` [x]
 - **REQ**: REQ-502
 - **What**: `TiktokenTokenizer` — `new() -> Result<Self, TokenError>`
   (`TokenError::Unavailable(String)` se `tiktoken_rs::cl100k_base()`
@@ -39,7 +39,7 @@
   nesta task, igual T-406).
 - **Gate**: `cargo test token::budget::tiktoken` (+ `-- --ignored` se rede disponível)
 
-## T-504: `Budget` — margem de segurança + `Tier`/`TieredItem`
+## T-504: `Budget` — margem de segurança + `Tier`/`TieredItem` [x]
 - **REQ**: REQ-503, REQ-504
 - **What**: `enum Tier { Target, Seed, Dependency }` (ordem de prioridade =
   ordem de declaração, `Target < Seed < Dependency` via `#[derive(PartialOrd,
@@ -56,7 +56,7 @@
 - **Done when**: testes de `effective_limit` e validação de `margin` passam.
 - **Gate**: `cargo test token::budget::budget`
 
-## T-505: `Budget::fit` — corte por prioridade
+## T-505: `Budget::fit` — corte por prioridade [x]
 - **REQ**: REQ-504
 - **What**: `Budget::fit(&self, items: Vec<TieredItem>, tokenizer: &impl
   Tokenizer) -> Vec<TieredItem>` — ordena por `tier` (estável, preserva
@@ -73,7 +73,7 @@
   individual maior que o orçamento) passam.
 - **Gate**: `cargo test token::budget::fit`
 
-## T-506: `token::pruner::prune_symbol`
+## T-506: `token::pruner::prune_symbol` [x]
 - **REQ**: REQ-501
 - **What**: `prune_symbol(source: &str, language: code::parser::Language,
   line_start: u32, line_end: u32) -> String` — reparsa `source` com
@@ -94,7 +94,7 @@
 - **Done when**: os testes descritos acima passam para as 5 linguagens.
 - **Gate**: `cargo test token::pruner`
 
-## T-507: `token::serializer::serialize`
+## T-507: `token::serializer::serialize` [x]
 - **REQ**: REQ-505
 - **What**: `serialize(items: &[TieredItem]) -> String` — para cada item,
   emite `### <tier ou label>\n\`\`\`\n<text>\n\`\`\`\n\n` (linguagem do
@@ -109,7 +109,7 @@
   exata, não só "contém").
 - **Gate**: `cargo test token::serializer`
 
-## T-508: Integração fim-a-fim (pruner → budget → serializer)
+## T-508: Integração fim-a-fim (pruner → budget → serializer) [x]
 - **REQ**: (todos — valida a fase inteira junto)
 - **What**: Teste de integração combinando os 3 módulos: fixture com um
   símbolo de código real (arquivo `.rs` de exemplo), um `Requirement` e um
@@ -123,7 +123,7 @@
 - **Done when**: teste passa fim-a-fim.
 - **Gate**: `cargo test --test token_budgeting_integration`
 
-## T-509: Lint e superfície pública
+## T-509: Lint e superfície pública [x]
 - **REQ**: (todos — fechamento da fase, mesmo padrão de T-010/T-110/T-209/T-310/T-409)
 - **What**: Exportar `token::{Tokenizer, TiktokenTokenizer,
   CharHeuristicTokenizer, Budget, Tier, TieredItem, TokenError,
