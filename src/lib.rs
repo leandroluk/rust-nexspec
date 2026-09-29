@@ -6,9 +6,12 @@
 pub mod code;
 pub mod git;
 pub mod graph;
+pub mod hybrid;
 pub mod search;
 pub mod sync;
 pub mod sync_orchestrator;
+#[cfg(feature = "full")]
+pub mod vector;
 
 pub use code::{Language, extract as extract_code};
 pub use git::GitSource;

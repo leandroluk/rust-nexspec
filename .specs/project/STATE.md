@@ -19,8 +19,8 @@ tasks usam vetores sintéticos e não dependem disso.
 
 ## Todos
 - [x] T-401: Feature `lean` + deps opcionais (`ort`, `instant-distance`)
-- [ ] T-402: `HnswIndex` + `HnswParticipant` (vetores sintéticos) [P-A]
-- [ ] T-403: `hybrid::expand` (k-hop sobre o CSR) [P-A]
+- [x] T-402: `HnswIndex` + `HnswParticipant` (vetores sintéticos) [P-A]
+- [x] T-403: `hybrid::expand` (k-hop sobre o CSR) [P-A]
 - [ ] T-404: `hybrid::seed_discovery` (fusão RRF)
 - [ ] T-405: `Embedder` — scaffold lazy + caminho "modelo ausente"
 - [ ] T-406: Inferência real (**requer confirmação do usuário**)
@@ -62,6 +62,23 @@ tasks usam vetores sintéticos e não dependem disso.
   de produto detalhado, etc.).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 T-402/T-403 completos (onda [P-A]).
+  `vector::hnsw::{HnswIndex, HnswParticipant}` — 4º `SyncParticipant` real.
+  Simplificação deliberada vs. CsrParticipant: `instant-distance` só
+  constrói em lote (sem inserção incremental), então em vez de um
+  base+delta de verdade, `commit()` funde o staged no conjunto completo de
+  pontos committed e **reconstrói o índice inteiro** — aceitável na escala
+  de vetores desta fase, revisitar se perfilamento pedir. Convenção
+  específica desta fase: payload de `NodeMutation::Upsert` é lido como
+  vetor `f32` little-endian bruto (`encode_vector`/`decode_vector`) — não
+  existe variante de embedding em `NodePayload` ainda; revisitar quando
+  T-406 ligar geração real de embeddings ao `SyncOrchestrator`. Bug pego
+  nos testes: `NamedTempFile::new()` cria arquivo vazio que *existe* (0
+  bytes) — `path.exists()` sozinho não basta para decidir "tem pontos
+  persistidos", precisa checar tamanho > 0 também.
+  `hybrid::expand` — BFS limitado por `max_depth` sobre `Csr::edges_from`
+  (Fase 1, inalterado). Gate: `cargo test vector::hnsw` → 4/4,
+  `cargo test hybrid::` → 3/3; build `lean` seguiu compilando.
 - 2026-09-29 T-401 completo. `cargo add ort instant-distance --optional`;
   `[features]` reorganizado: `default = ["full"]`, `full = ["dep:ort",
   "dep:instant-distance"]`, `lean = []` (build sem elas via

@@ -20,7 +20,7 @@ executadas antes, sem bloqueio.
 - **Done when**: os dois builds acima compilam.
 - **Gate**: `cargo build && cargo build --no-default-features --features lean`
 
-## T-402: `HnswIndex` + `HnswParticipant` (vetores sintéticos)
+## T-402: `HnswIndex` + `HnswParticipant` (vetores sintéticos) [x]
 - **REQ**: REQ-403
 - **What**: `HnswIndex` (wrap `instant_distance::Hnsw`), `search(vec: &[f32],
   k: usize) -> Vec<(StableId, f32)>` (cosine). `HnswParticipant` — mesmo
@@ -35,7 +35,7 @@ executadas antes, sem bloqueio.
   próximo correto entre vetores sintéticos conhecidos.
 - **Gate**: `cargo test vector::hnsw`
 
-## T-403: `hybrid::expand` (k-hop limitado sobre o CSR)
+## T-403: `hybrid::expand` (k-hop limitado sobre o CSR) [x]
 - **REQ**: REQ-406
 - **What**: `expand(seeds: &[StableId], csr: &Csr, edge_types: &[EdgeType],
   max_depth: u8) -> Vec<StableId>` — BFS a partir dos seeds via
