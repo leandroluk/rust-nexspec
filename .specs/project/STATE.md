@@ -19,7 +19,7 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
 - [x] T-302: `Language` + parsing de símbolos de um arquivo
 - [x] T-303: Edges `DefinedIn`/`DependsOn` (mesmo arquivo)
 - [x] T-304: Edge `Satisfies` via `@spec`/`@adr`
-- [ ] T-305: `code::batch::extract_all` (paralelo via rayon)
+- [x] T-305: `code::batch::extract_all` (paralelo via rayon)
 - [ ] T-306: `SyncOrchestrator` roteia arquivos de código
 - [ ] T-307: `TantivySchema` + `TantivyParticipant`
 - [ ] T-308: Fast-path de busca exata + BM25
@@ -59,6 +59,12 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
   de produto detalhado, etc.).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 T-305 completo. `code::batch::extract_all(files,
+  known_markers)` — `files.par_iter().map(extract).collect::<Result<Vec<_>,
+  _>>()` (rayon), merge sequencial dos `MutationSet`s. Falha rápida no
+  primeiro arquivo com erro (sem modo best-effort). Gate: `cargo test
+  code::batch` → 1/1, confirmando paridade com chamar `extract()` arquivo a
+  arquivo.
 - 2026-09-29 T-304 completo. `extract()` ganhou parâmetro
   `known_markers: &HashMap<String, StableId>` — o id de um REQ/ADR depende
   do corpo do texto dele (ver `markdown::extract`), que o código-fonte não

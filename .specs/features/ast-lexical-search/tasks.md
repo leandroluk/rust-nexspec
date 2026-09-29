@@ -52,7 +52,7 @@
   `MutationSet`/contexto de teste).
 - **Gate**: `cargo test code::parser::satisfies`
 
-## T-305: `code::batch::extract_all` (paralelo via rayon)
+## T-305: `code::batch::extract_all` (paralelo via rayon) [x]
 - **REQ**: REQ-305
 - **What**: `extract_all(files: &[(PathBuf, String, Language)]) -> MutationSet`
   — `files.par_iter().map(|f| code::extract(...)).collect()`, merge
