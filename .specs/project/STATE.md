@@ -4,28 +4,23 @@
 
 ## Current Work
 
-Fases 0-5 completas. Fase 6 (Interface, MCP Server & Tooling) especificada
-e desenhada — escopo **reduzido por instrução explícita do usuário**:
+**Fases 0-6 completas — todo o roadmap do NexSpec implementado neste
+repositório.** Fase 6 (Interface, MCP Server & Tooling) — 12/12 tasks
+(T-601..T-612), escopo reduzido por instrução explícita do usuário:
 integração com a skill `graph-spec-design` fica para outro repositório/
-sessão; esta fase entrega só o binário `nexspec` (CLI `clap`) e o servidor
-MCP (`rmcp`, stdio) como ferramenta de uso geral. REQ-601..609, 12 tasks
-(T-601..T-612). Dependências novas já resolvidas e no `Cargo.toml`/
-`Cargo.lock` (ainda não commitadas — entram junto com T-601):
-`clap`(derive), `tokio`(rt-multi-thread/macros/io-std), `rmcp`
-v3.5.0(server/macros/transport-io), `serde`/`serde_json`/`schemars`. API
-do `rmcp` (macros `#[tool_router]`/`#[tool]`/`#[tool_handler]`,
-`Parameters<T>`, `ServiceExt::serve`, `transport::stdio()`) confirmada
-lendo o código-fonte baixado localmente
-(`~/.cargo/registry/src/.../rmcp-3.5.0`), não de memória — a mesma
-disciplina que evitou repetir a surpresa de API do Tantivy na Fase 3.
+sessão; esta fase entregou só o binário `nexspec` (CLI `clap`:
+init/sync/compact/search/trace/blame/diff/mcp) e o servidor MCP embutido
+(`rmcp`, stdio, 6 tools: query_context/semantic_search/trace_requirement/
+find_impacted_code/get_symbol_history/sync_workspace).
 
-Suíte completa (fim da Fase 5): 82/82 testes de lib (3 ignored) + todos os
-binários de integração verdes (build `full`); 75/75 testes de lib (1
+Suíte completa: 93/93 testes de lib (3 ignored) + todos os binários de
+integração verdes (build `full`, incluindo `tests/cli_integration.rs` que
+roda o binário real via `CARGO_BIN_EXE_nexspec`); 86/86 testes de lib (1
 ignored) no build `lean`. `cargo doc`/`cargo clippy -- -D warnings` limpos
 nos dois builds. Tudo commitado e no GitHub (`leandroluk/rust-specdb`,
-branch `main`) até o fim da Fase 5. Produto renomeado de "SpecDB" para
-"NexSpec" (crate `nexspec`) — repo/pasta local seguem com o nome antigo até
-o usuário trocar por conta própria.
+branch `main`). Produto renomeado de "SpecDB" para "NexSpec" (crate
+`nexspec`) — repo/pasta local seguem com o nome antigo até o usuário
+trocar por conta própria.
 
 Modelo `all-MiniLM-L6-v2` quantizado INT8 (~23MB, `Xenova/all-MiniLM-L6-v2`
 no Hugging Face) + tokenizer baixados para `.models/` (gitignored, não
@@ -34,27 +29,16 @@ pooling + normalização L2, confirmado determinístico e semanticamente
 coerente (frases parecidas rankeiam mais perto que não-relacionadas).
 
 ## Todos
-- [x] T-601: Deps (`clap`/`tokio`/`rmcp`/`serde`/`serde_json`/`schemars`) + `Engine` scaffold
-- [x] T-602: `Engine::sync`/`Engine::resume`
-- [x] T-603: `CsrParticipant::compact_now` + `Engine::compact`
-- [x] T-604: `git::blame::blame_symbol` [P]
-- [x] T-605: `Engine::search` [P]
-- [x] T-606: `Engine::trace` [P]
-- [x] T-607: `Engine::diff_staged`
-- [ ] T-608: CLI (`clap`) — `src/bin/nexspec.rs`
-- [ ] T-609: CLI `blame` + `Engine::blame`
-- [ ] T-610: Servidor MCP (`rmcp`) — `src/mcp.rs` + subcomando `mcp`
-- [ ] T-611: Integração fim-a-fim (init→sync→search/trace/blame/diff via CLI)
-- [ ] T-612: Lint e superfície pública
+- [x] T-601..T-612: Fase 6 completa (ver Feature "cli-mcp-server" abaixo)
 
 ## Active Blockers
 - none
 
 ## Degraded Mode
 - Grafo do próprio NexSpec NÃO construído — `.specs/graph/graph.json` não
-  existe. Fora do escopo da Fase 6 deste repositório (ver Current Work) —
-  fica para quando o repositório que integra a skill `graph-spec-design`
-  consumir o binário `nexspec`.
+  existe. Fora do escopo deste repositório (ver Feature "cli-mcp-server" →
+  Out of Scope) — fica para quando o repositório que integra a skill
+  `graph-spec-design` consumir o binário `nexspec`.
 
 ## Feature "token-budgeting" (Fase 5): COMPLETA (9/9)
 `token::budget::{Tokenizer, TiktokenTokenizer, CharHeuristicTokenizer,
@@ -72,7 +56,36 @@ fluxo pruner→budget→serializer fim-a-fim com `CharHeuristicTokenizer`
 (sem dependência de rede). Gate final: `cargo doc`/`cargo clippy -- -D
 warnings` limpos em `full` e `lean`; suíte completa verde nos dois builds.
 
+## Feature "cli-mcp-server" (Fase 6): COMPLETA (12/12)
+`src/engine.rs` (`Engine`, composition root), `src/git/blame.rs`
+(AST-aware blame), `src/mcp.rs` (`NexSpecMcp`, 6 tools via `rmcp`),
+`src/bin/nexspec.rs` (CLI `clap`, 8 subcomandos incl. `mcp`). Novas deps
+não-opcionais: `clap`, `tokio`, `rmcp` v3.5.0, `serde`/`serde_json`/
+`schemars`. Escopo reduzido por instrução do usuário: sem integração com a
+skill `graph-spec-design` neste repositório. Gate final: `cargo doc`/
+`cargo clippy -- -D warnings` limpos em `full`/`lean`; suíte completa
+verde nos dois builds, incluindo `tests/cli_integration.rs` (roda o
+binário real via `CARGO_BIN_EXE_nexspec`, cobrindo init→sync→search→
+trace→blame→diff fim-a-fim).
+
 ## Recent Decisions (Last 15)
+- 2026-09-29 Fase 6 fechada — 5/5 tasks finais (T-608..T-612). CLI
+  (`clap`) com 8 subcomandos, todos delegando a `Engine` (nenhuma lógica
+  duplicada entre CLI e MCP). Servidor MCP (`src/mcp.rs`) usa DTOs
+  próprios (`NodeDto`/`SearchResponse`/etc., `#[derive(Serialize)]`) em vez
+  de derivar `Serialize` nos tipos internos do `Engine` — mantém `StableId`
+  convertido para hex e `NodePayload` resumido (kind+summary) na borda de
+  apresentação, sem acoplar os tipos ricos internos a `serde`/JSON.
+  `main()` usa `std::process::ExitCode` + `Box<dyn std::error::Error>` (sem
+  `anyhow`, que só chegaria como dependência transitiva não-direta). Teste
+  de integração roda o binário de verdade via `CARGO_BIN_EXE_nexspec`
+  (padrão do Cargo para testes de integração alcançarem um binário irmão),
+  não só a biblioteca — inclui um cenário de árvore suja para validar
+  `diff --staged` de ponta a ponta. Smoke test manual confirmou
+  `search --max-tokens` produzindo Markdown podado real. Gate: suíte
+  completa 93/93 lib (`full`, 3 ignored) + todos os binários de
+  integração; 86/86 lib (`lean`, 1 ignored); `cargo doc`/`cargo clippy -- -D
+  warnings` limpos nos dois builds.
 - 2026-09-29 T-604 completo. `git::blame::blame_symbol` via
   `gix::Repository::blame_file` (feature `blame` do `gix` já vem habilitada
   por padrão via `extras`, confirmado lendo `gix-0.88.0/Cargo.toml`

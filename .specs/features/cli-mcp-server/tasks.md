@@ -102,7 +102,7 @@
   dependente indexado retorna esse dependente na lista de impacto.
 - **Gate**: `cargo test engine::diff_staged`
 
-## T-608: CLI (`clap`) — `src/bin/nexspec.rs`
+## T-608: CLI (`clap`) — `src/bin/nexspec.rs` [x]
 - **REQ**: REQ-602, REQ-603, REQ-604, REQ-605, REQ-606, REQ-608
 - **What**: `clap` `#[derive(Parser)]` com subcomandos `init <path>`, `sync
   [--resume]`, `compact`, `search "<query>" [--max-tokens N]`, `trace
@@ -116,7 +116,7 @@
   roda sem erro; `--help` lista todos os subcomandos.
 - **Gate**: `cargo build --bin nexspec`
 
-## T-609: CLI `blame` + `Engine::blame`
+## T-609: CLI `blame` + `Engine::blame` [x]
 - **REQ**: REQ-607
 - **What**: `Engine::blame(&self, symbol_name: &str, full_history: bool) ->
   Result<BlameResult, EngineError>` — resolve o símbolo, chama
@@ -129,7 +129,7 @@
   que introduziram suas linhas.
 - **Gate**: `cargo test engine::blame`
 
-## T-610: Servidor MCP (`rmcp`) — `src/mcp.rs` + subcomando `nexspec mcp`
+## T-610: Servidor MCP (`rmcp`) — `src/mcp.rs` + subcomando `nexspec mcp` [x]
 - **REQ**: REQ-609
 - **What**: `NexSpecMcp(Arc<Engine>)`, `#[tool_router]`/`#[tool_handler]`
   com 6 `#[tool]`: `query_context`, `trace_requirement`,
@@ -147,7 +147,7 @@
   válido na saída de sucesso.
 - **Gate**: `cargo test mcp::`
 
-## T-611: Integração fim-a-fim (init → sync → search/trace/blame/diff via CLI)
+## T-611: Integração fim-a-fim (init → sync → search/trace/blame/diff via CLI) [x]
 - **REQ**: (todos — valida a fase inteira junto)
 - **What**: Teste de integração que roda o binário `nexspec` via
   `std::process::Command` (ou chama `Engine` diretamente, decidido na
@@ -159,7 +159,7 @@
 - **Done when**: teste passa fim-a-fim.
 - **Gate**: `cargo test --test cli_integration`
 
-## T-612: Lint e superfície pública
+## T-612: Lint e superfície pública [x]
 - **REQ**: (todos — fechamento da fase, mesmo padrão de T-010/.../T-509)
 - **What**: Exportar `Engine`, `EngineError`, tipos de resultado
   (`SearchResult`, `TraceResult`, `BlameResult`, `DiffResult`) de

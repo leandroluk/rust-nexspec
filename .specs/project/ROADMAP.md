@@ -15,7 +15,7 @@ começar a ser trabalhada.
 | 3 | Multi-Language AST & Lexical Search | Tree-sitter (TS/JS, Python, Go, Rust) com parsing paralelo via `rayon` no cold-start, índice Tantivy (BM25) | **Completo** (`.specs/features/ast-lexical-search/`) |
 | 4 | Vector Engine & Hybrid Traversal | ONNX (ort) **lazy-loaded** + modelo INT8 quantizado, flag de compilação "lean" (sem ort/HNSW), HNSW, RRF, expansão k-hop sobre base+delta | **Completo** (`.specs/features/vector-engine/`) |
 | 5 | Token Budgeting & LLM Serialization | Pruning AST, `Tokenizer` trait plugável (default tiktoken-rs) com margem de segurança (90% do budget), fallback offline (`char_count / 3.5`), serializer Markdown denso | **Completo** (`.specs/features/token-budgeting/`) |
-| 6 | Interface, MCP Server & Tooling | CLI (`clap`: init/sync/compact/search/trace/blame/diff), servidor MCP (`rmcp`) com tool surface unificado, integração drop-in na skill `graph-spec-design` | Não iniciado |
+| 6 | Interface, MCP Server & Tooling | CLI (`clap`: init/sync/compact/search/trace/blame/diff), servidor MCP (`rmcp`) com tool surface unificado | **Completo** (`.specs/features/cli-mcp-server/`) — integração drop-in na skill `graph-spec-design` **fora do escopo deste repositório** por instrução do usuário (ver nota abaixo) |
 
 ### Nota — por que a Fase 0 existe e vem antes de tudo
 
@@ -36,12 +36,17 @@ de remendar isso depois.
 
 ## Integração com a skill graph-spec-design
 
+**Atualização (2026-09-29): fora do escopo deste repositório**, por
+instrução explícita do usuário — será feita em outro repositório/sessão,
+consumindo o binário `nexspec` já pronto (Fase 6 completa) a partir daqui.
+
 Hoje a skill chama `graphify` (Python) via `uv`/`pip`. Meta: expor `nexspec` com CLI
 e contrato de I/O suficientemente compatíveis para que o Rule #1 da skill
 (`references/init.md`, `references/session.md`) passe a detectar e preferir
 `nexspec` no lugar de `graphify`, sem exigir mudança na skill além de trocar o
-binário/comando invocado. Essa troca será uma feature própria
-(`.specs/features/nexspec-skill-integration/`) quando a Fase 6 estiver perto.
+binário/comando invocado. Essa troca é uma feature própria
+(`nexspec-skill-integration`), especificada e implementada fora deste
+repositório.
 
 ## Ordem de trabalho sugerida
 

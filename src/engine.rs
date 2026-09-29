@@ -19,10 +19,11 @@ use std::sync::Arc;
 use redb::Database;
 
 use crate::code::{self, CodeError, Language};
-use crate::git::{GitError, GitSource};
+use crate::git::cochange::CoChangeWindow;
+use crate::git::{BlameHunk, GitError, GitSource, blame_symbol};
 use crate::graph::csr::{Csr, CsrBase, CsrError, CsrParticipant};
 use crate::graph::edge::EdgeType;
-use crate::graph::node::NodePayload;
+use crate::graph::node::{NodePayload, file_node_id};
 use crate::hybrid::{expand, seed_discovery};
 use crate::search::{SearchError, TantivyParticipant, TantivyQueryable, hex, search_text, unhex};
 use crate::sync::coordinator::Coordinator;
@@ -126,6 +127,11 @@ pub struct ImpactedSymbol {
 #[derive(Default)]
 pub struct DiffResult {
     pub changed_symbols: Vec<ImpactedSymbol>,
+}
+
+pub struct BlameResult {
+    pub hunks: Vec<BlameHunk>,
+    pub co_changed_files: Vec<String>,
 }
 
 pub struct Engine {
@@ -397,6 +403,50 @@ impl Engine {
         hit.ok_or_else(|| EngineError::TargetNotFound(target.to_string()))
     }
 
+    /// REQ-607: AST-aware blame for `symbol_name` — resolves it, finds the
+    /// file it's defined in (via `DefinedIn`), runs `git::blame_symbol`
+    /// scoped to its line range, and adds files that co-change with that
+    /// file (REQ-206's window, or unrestricted when `full_history`).
+    pub fn blame(&self, symbol_name: &str, full_history: bool) -> Result<BlameResult, EngineError> {
+        let symbol_id = self.resolve_target(symbol_name)?;
+        let Some(NodePayload::Symbol { line_start, line_end, .. }) = self.node_payload(&symbol_id)? else {
+            return Err(EngineError::TargetNotFound(symbol_name.to_string()));
+        };
+        let file_edge = self
+            .csr
+            .edges_from(&symbol_id, EdgeType::DefinedIn)
+            .into_iter()
+            .next()
+            .ok_or_else(|| EngineError::TargetNotFound(symbol_name.to_string()))?;
+        let Some(NodePayload::File { path, .. }) = self.node_payload(&file_edge.to)? else {
+            return Err(EngineError::TargetNotFound(symbol_name.to_string()));
+        };
+
+        let git = GitSource::open(&self.repo_root)?;
+        let hunks = blame_symbol(&git, Path::new(&path), line_start, line_end)?;
+
+        let window = if full_history {
+            CoChangeWindow {
+                max_commits: usize::MAX,
+                max_age: std::time::Duration::MAX,
+            }
+        } else {
+            CoChangeWindow::default()
+        };
+        let file_id = file_node_id(&path);
+        let mut co_changed_files = Vec::new();
+        for edge in git.co_change_edges(&window)? {
+            if let crate::sync::mutation::EdgeMutation::Upsert { from, to, .. } = edge
+                && from == file_id
+                && let Some(NodePayload::File { path: other_path, .. }) = self.node_payload(&to)?
+            {
+                co_changed_files.push(other_path);
+            }
+        }
+
+        Ok(BlameResult { hunks, co_changed_files })
+    }
+
     /// REQ-608: structural impact analysis over the dirty working tree —
     /// changed symbols plus whoever `DependsOn` them (1 hop), no Tantivy/
     /// HNSW touched (lean by design).
@@ -467,7 +517,6 @@ pub fn id_hex(id: &StableId) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::node::file_node_id;
     use crate::sync::mutation::{EdgeMutation, MutationSet};
     use std::process::Command;
     use tempfile::TempDir;
@@ -612,8 +661,6 @@ mod tests {
             #[cfg(feature = "full")]
             embedder: Embedder::new("nonexistent.onnx", "nonexistent.json"),
         };
-        let _ = file_node_id("unused"); // keep import used across cfg combinations
-
         let result = engine.trace(&id_hex(&symbol_id)).unwrap();
         assert_eq!(result.hops.len(), 1);
         assert_eq!(result.hops[0].id, req_id);
@@ -630,5 +677,36 @@ mod tests {
 
         let result = engine.diff_staged().unwrap();
         assert!(result.changed_symbols.is_empty());
+    }
+
+    #[test]
+    fn blame_finds_the_commit_that_introduced_a_symbol() {
+        let repo_dir = TempDir::new().unwrap();
+        for args in [
+            vec!["init", "--quiet", "--initial-branch=main"],
+            vec!["config", "user.email", "fixture@nexspec.test"],
+            vec!["config", "user.name", "Fixture"],
+            vec!["config", "commit.gpgsign", "false"],
+        ] {
+            assert!(Command::new("git").args(&args).current_dir(repo_dir.path()).status().unwrap().success());
+        }
+        std::fs::write(repo_dir.path().join("lib.rs"), "fn hello() {}\n").unwrap();
+        assert!(Command::new("git").args(["add", "-A"]).current_dir(repo_dir.path()).status().unwrap().success());
+        assert!(
+            Command::new("git")
+                .args(["commit", "--quiet", "-m", "add hello"])
+                .current_dir(repo_dir.path())
+                .status()
+                .unwrap()
+                .success()
+        );
+
+        let index_dir = TempDir::new().unwrap();
+        let engine = Engine::open(index_dir.path(), repo_dir.path()).unwrap();
+        engine.sync().unwrap();
+
+        let result = engine.blame("hello", false).unwrap();
+        assert_eq!(result.hunks.len(), 1);
+        assert_eq!(result.hunks[0].author_email, "fixture@nexspec.test");
     }
 }
