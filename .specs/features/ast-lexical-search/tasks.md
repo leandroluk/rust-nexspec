@@ -120,7 +120,7 @@
 - **Done when**: teste passa fim-a-fim sem mocks.
 - **Gate**: `cargo test --test three_participants_integration`
 
-## T-310: Lint e superfície pública
+## T-310: Lint e superfície pública [x]
 - **REQ**: (todos — fechamento da fase, mesmo padrão de T-010/T-110/T-209)
 - **What**: Exportar `code::{Language, extract}`, `search::{TantivyParticipant,
   query}` de `src/lib.rs`. Doc comments em toda API pública.

@@ -10,7 +10,9 @@ pub mod search;
 pub mod sync;
 pub mod sync_orchestrator;
 
+pub use code::{Language, extract as extract_code};
 pub use git::GitSource;
 pub use graph::{Csr, CsrParticipant, Edge, EdgeType, Node, NodeType};
+pub use search::{TantivyParticipant, find_by_id, search_text};
 pub use sync::{Coordinator, MutationSet, SyncParticipant};
 pub use sync_orchestrator::SyncOrchestrator;

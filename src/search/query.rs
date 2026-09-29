@@ -1,4 +1,4 @@
-//! Query helpers over [`TantivyParticipant`] (REQ-307): exact-id fast path
+//! Query helpers over a `TantivyParticipant` (REQ-307): exact-id fast path
 //! (`TermQuery` on the untokenized `id` field — a term lookup, not a scan)
 //! and free-text BM25 ranking over `text`.
 

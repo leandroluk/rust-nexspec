@@ -4,15 +4,15 @@
 
 ## Current Work
 
-Fases 0 (Sync Coordinator), 1 (Storage Primitives/CSR) e 2 (Git Integration)
-completas — 53/53 testes, `cargo doc`/`cargo clippy -- -D warnings` limpos,
-tudo commitado e no GitHub (`leandroluk/rust-specdb`, branch `main`).
-Produto renomeado de "SpecDB" para "NexSpec" (crate `nexspec`) — repo/pasta
-local seguem com o nome antigo até o usuário trocar por conta própria.
+Fases 0 (Sync Coordinator), 1 (Storage Primitives/CSR), 2 (Git Integration)
+e 3 (AST Parsing & Lexical Search) completas — 72/72 testes, `cargo doc`/
+`cargo clippy -- -D warnings` limpos, tudo commitado e no GitHub
+(`leandroluk/rust-specdb`, branch `main`). Produto renomeado de "SpecDB"
+para "NexSpec" (crate `nexspec`) — repo/pasta local seguem com o nome antigo
+até o usuário trocar por conta própria.
 
-Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
-`.specs/features/ast-lexical-search/{spec,design,tasks}.md` já escritos
-(REQ-301..308, 10 tasks T-301..T-310). Próximo: Execute a partir de T-301.
+Próximo: Specify da Fase 4 (Local Vector Engine & Hybrid Traversal — ONNX
+lazy-loaded, HNSW, RRF). Ainda não iniciado.
 
 ## Todos
 - [x] T-301: Dependências (tree-sitter + 4 gramáticas, rayon, tantivy)
@@ -24,7 +24,7 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
 - [x] T-307: `TantivySchema` + `TantivyParticipant`
 - [x] T-308: Fast-path de busca exata + BM25
 - [x] T-309: Integração fim-a-fim (3 participantes reais)
-- [ ] T-310: Lint e superfície pública
+- [x] T-310: Lint e superfície pública
 
 ## Active Blockers
 - none
@@ -59,6 +59,23 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
   de produto detalhado, etc.).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 T-310 completo, fecha a Fase 3. `lib.rs` exporta
+  `code::{Language, extract as extract_code}`, `search::{TantivyParticipant,
+  find_by_id, search_text}` (renomeado para `extract_code` para não colidir
+  em prosa com `markdown::extract`). Corrigido 1 doc-link quebrado
+  (`[TantivyParticipant]` em `query.rs` sem import no escopo do módulo).
+  Gate: `cargo doc --no-deps` e `cargo clippy --all-targets -- -D warnings`
+  limpos de primeira; `cargo test` → 72/72 pass.
+
+## Feature "ast-lexical-search" (Fase 3): COMPLETA
+Todas as 10 tasks (T-301..T-310) concluídas, 72/72 testes, `cargo doc`/
+`cargo clippy -- -D warnings` limpos. Tree-sitter (5 linguagens) extrai
+símbolos + edges `DefinedIn`/`DependsOn`/`Satisfies`; `rayon` paraleliza
+cold-start; `TantivyParticipant` é o terceiro `SyncParticipant` real,
+validando o contrato da Fase 0 sob um modelo de storage bem diferente de
+`redb`/CSR (buffer/commit/rollback nativo do Tantivy). `SyncOrchestrator`
+agora roteia `.md` e código na mesma passagem, com `@spec`/`@adr` resolvendo
+contra specs do mesmo ciclo.
 - 2026-09-29 T-309 completo. `tests/three_participants_integration.rs`:
   `Coordinator` real com `[RedbParticipant, CsrParticipant,
   TantivyParticipant]`, `SyncOrchestrator::run_once()` sobre fixture com
