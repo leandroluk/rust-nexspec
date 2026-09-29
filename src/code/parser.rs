@@ -2,11 +2,13 @@
 //! `.specs/features/ast-lexical-search/spec.md`). One `Query` per
 //! [`Language`], selecting function/method/type definitions.
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
 
 use crate::graph::edge::EdgeType;
+use crate::graph::markdown::find_markers;
 use crate::graph::node::{NodePayload, file_node_id};
 use crate::sync::mutation::{EdgeMutation, MutationSet, NodeMutation, StableId};
 
@@ -130,10 +132,21 @@ fn edge_id(kind: &str, from: &StableId, to: &StableId) -> StableId {
 /// Parse `source` (the file at `path`) and return: one
 /// [`crate::graph::node::NodeType::Symbol`] node per function/method/type
 /// definition (REQ-302), a `DefinedIn` edge from each symbol to the file
-/// node (REQ-303), and a `DependsOn` edge for each call site whose callee
+/// node (REQ-303), a `DependsOn` edge for each call site whose callee
 /// resolves to another symbol *in the same file* (REQ-303's documented
-/// same-file-only scope).
-pub fn extract(source: &str, language: Language, path: &Path) -> Result<MutationSet, CodeError> {
+/// same-file-only scope), and a `Satisfies` edge for each symbol whose
+/// immediately preceding comment mentions `@spec REQ-XXX`/`@adr ADR-XXX`
+/// **and** that marker is a key in `known_markers` (REQ-304) — a symbol's
+/// own id can be computed locally, but a requirement/ADR's id depends on
+/// its body text (see `graph::markdown::extract`), which this function has
+/// no way to see; the caller (which already ran `markdown::extract` over
+/// `.specs/`) supplies the resolved marker → id map.
+pub fn extract(
+    source: &str,
+    language: Language,
+    path: &Path,
+    known_markers: &HashMap<String, StableId>,
+) -> Result<MutationSet, CodeError> {
     let ts_language = language.ts_language();
     let mut parser = Parser::new();
     parser
@@ -187,6 +200,27 @@ pub fn extract(source: &str, language: Language, path: &Path) -> Result<Mutation
                     edge_type: EdgeType::DefinedIn.to_code(),
                     payload: Vec::new(),
                 });
+
+                if let Some(comment) = def_node
+                    .prev_sibling()
+                    .filter(|s| s.kind().contains("comment"))
+                    && let Ok(comment_text) = comment.utf8_text(source_bytes)
+                {
+                    let mut markers = find_markers(comment_text, "REQ-");
+                    markers.extend(find_markers(comment_text, "ADR-"));
+                    for marker in markers {
+                        if let Some(&target) = known_markers.get(&marker) {
+                            edges.push(EdgeMutation::Upsert {
+                                id: edge_id("satisfies", &id, &target),
+                                from: id,
+                                to: target,
+                                edge_type: EdgeType::Satisfies.to_code(),
+                                payload: Vec::new(),
+                            });
+                        }
+                    }
+                }
+
                 symbols.push(SymbolInfo {
                     id,
                     name: name.to_string(),
@@ -260,7 +294,7 @@ mod tests {
     }
 
     fn extract_at(source: &str, language: Language) -> MutationSet {
-        extract(source, language, Path::new("test_file")).unwrap()
+        extract(source, language, Path::new("test_file"), &HashMap::new()).unwrap()
     }
 
     #[test]
@@ -322,6 +356,7 @@ mod tests {
             "fn a() {}\nfn b() {}\n",
             Language::Rust,
             Path::new("src/lib.rs"),
+            &HashMap::new(),
         )
         .unwrap();
         let file_id = file_node_id("src/lib.rs");
@@ -344,6 +379,28 @@ mod tests {
         let set = extract_at("fn a() { unknown_function(); }\n", Language::Rust);
         assert!(set.edges.iter().all(|e| !matches!(e,
             EdgeMutation::Upsert { edge_type, .. } if *edge_type == EdgeType::DependsOn.to_code()
+        )));
+    }
+
+    #[test]
+    fn satisfies_edge_links_symbol_to_known_requirement() {
+        let req_id: StableId = [42u8; 32];
+        let mut known = HashMap::new();
+        known.insert("REQ-701".to_string(), req_id);
+
+        let source = "// @spec REQ-701\nfn f() {}\n";
+        let set = extract(source, Language::Rust, Path::new("f.rs"), &known).unwrap();
+
+        let f = symbol_id(&set, "f");
+        assert!(has_edge(&set, f, req_id, EdgeType::Satisfies));
+    }
+
+    #[test]
+    fn satisfies_edge_absent_when_marker_unknown() {
+        let source = "// @spec REQ-999\nfn f() {}\n";
+        let set = extract_at(source, Language::Rust);
+        assert!(set.edges.iter().all(|e| !matches!(e,
+            EdgeMutation::Upsert { edge_type, .. } if *edge_type == EdgeType::Satisfies.to_code()
         )));
     }
 }

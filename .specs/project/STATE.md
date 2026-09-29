@@ -18,7 +18,7 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
 - [x] T-301: Dependências (tree-sitter + 4 gramáticas, rayon, tantivy)
 - [x] T-302: `Language` + parsing de símbolos de um arquivo
 - [x] T-303: Edges `DefinedIn`/`DependsOn` (mesmo arquivo)
-- [ ] T-304: Edge `Satisfies` via `@spec`/`@adr`
+- [x] T-304: Edge `Satisfies` via `@spec`/`@adr`
 - [ ] T-305: `code::batch::extract_all` (paralelo via rayon)
 - [ ] T-306: `SyncOrchestrator` roteia arquivos de código
 - [ ] T-307: `TantivySchema` + `TantivyParticipant`
@@ -59,6 +59,15 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
   de produto detalhado, etc.).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 T-304 completo. `extract()` ganhou parâmetro
+  `known_markers: &HashMap<String, StableId>` — o id de um REQ/ADR depende
+  do corpo do texto dele (ver `markdown::extract`), que o código-fonte não
+  tem como recalcular sozinho, então o chamador (que já rodou
+  `markdown::extract` sobre `.specs/`) fornece o mapa resolvido. Para cada
+  símbolo, olha o irmão anterior na AST (`prev_sibling`); se o `kind()`
+  contém "comment", escaneia por `REQ-`/`ADR-` via `find_markers`
+  (reaproveitada pela terceira vez) e emite `Satisfies` só para marcadores
+  presentes no mapa. Gate: `cargo test code::` → 6/6 pass.
 - 2026-09-29 T-303 completo. `code::parser::extract` ganhou parâmetro `path`
   (necessário para `file_node_id`); edge `DefinedIn` de cada símbolo para o
   nó de arquivo; segunda `Query` por linguagem captura call expressions de

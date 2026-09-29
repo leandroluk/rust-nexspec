@@ -37,7 +37,7 @@
   gera edge (nem erro).
 - **Gate**: `cargo test code::parser::depends_on`
 
-## T-304: Edge `Satisfies` via `@spec`/`@adr`
+## T-304: Edge `Satisfies` via `@spec`/`@adr` [x]
 - **REQ**: REQ-304
 - **What**: Reconhecer comentário/docstring imediatamente anterior a um
   símbolo contendo `@spec REQ-XXX` ou `@adr ADR-XXX` (via
