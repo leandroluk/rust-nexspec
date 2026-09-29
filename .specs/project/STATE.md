@@ -21,7 +21,7 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
 - [x] T-304: Edge `Satisfies` via `@spec`/`@adr`
 - [x] T-305: `code::batch::extract_all` (paralelo via rayon)
 - [x] T-306: `SyncOrchestrator` roteia arquivos de código
-- [ ] T-307: `TantivySchema` + `TantivyParticipant`
+- [x] T-307: `TantivySchema` + `TantivyParticipant`
 - [ ] T-308: Fast-path de busca exata + BM25
 - [ ] T-309: Integração fim-a-fim (3 participantes reais)
 - [ ] T-310: Lint e superfície pública
@@ -59,6 +59,18 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
   de produto detalhado, etc.).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 T-307 completo. `search::schema::TantivySchema` (`id`/`kind`/
+  `text`/`path`) + `search::tantivy_participant::TantivyParticipant`
+  (terceiro `SyncParticipant` real). `stage`/`commit`/`abort` mapeiam direto
+  em `IndexWriter::add_document`/`commit`/`rollback`; idempotência via
+  `staged_version: Option<u64>` (restage do mesmo ciclo não readiciona
+  documentos, já que Tantivy não tem upsert-por-id nativo). Ajuste de API:
+  `TopDocs::with_limit(n)` sozinho não implementa mais `Collector` nesta
+  versão do tantivy (0.26) — precisa de `.order_by_score()` encadeado
+  (mudança de API não documentada nos meus exemplos mentais, descoberta via
+  erro de compilação). `NodeMutation::Remove` ainda não reflete no índice
+  (sem `delete_term`) — limitação documentada, fora do critério de "Done"
+  desta task. Gate: `cargo test search::` → 5/5 pass.
 - 2026-09-29 T-306 completo. `SyncOrchestrator::run_once()` reestruturado em
   2 passagens: (1) Markdown — diff committed + dirty tree, igual antes; (2)
   código — `code::Language::from_extension(path)` roteia `.ts/.py/.go/.rs`

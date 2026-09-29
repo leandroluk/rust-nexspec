@@ -77,7 +77,7 @@
   `.md` no mesmo commit produz nós de ambos os tipos após `run_once()`.
 - **Gate**: `cargo test --test sync_orchestrator_code_routing`
 
-## T-307: `TantivySchema` + `TantivyParticipant` (stage/commit/abort)
+## T-307: `TantivySchema` + `TantivyParticipant` (stage/commit/abort) [x]
 - **REQ**: REQ-307, REQ-308
 - **What**: Schema Tantivy (`id` stored+string fast-path, `kind`, `text`
   BM25, `path`). `TantivyParticipant::new(index_path: &Path) ->

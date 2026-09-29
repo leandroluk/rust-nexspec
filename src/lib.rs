@@ -6,6 +6,7 @@
 pub mod code;
 pub mod git;
 pub mod graph;
+pub mod search;
 pub mod sync;
 pub mod sync_orchestrator;
 
