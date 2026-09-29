@@ -25,7 +25,7 @@ tasks usam vetores sintéticos e não dependem disso.
 - [x] T-405: `Embedder` — scaffold lazy + caminho "modelo ausente"
 - [ ] T-406: Inferência real (**requer confirmação do usuário**)
 - [x] T-407: Verificação da feature `lean`
-- [ ] T-408: Integração — 4 participantes reais via `Coordinator`
+- [x] T-408: Integração — 4 participantes reais via `Coordinator`
 - [ ] T-409: Lint e superfície pública
 
 ## Active Blockers
@@ -62,6 +62,21 @@ tasks usam vetores sintéticos e não dependem disso.
   de produto detalhado, etc.).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 T-408 completo, mas revelou e corrigiu um bug real de
+  robustez numérica. `tests/four_participants_integration.rs`: `Coordinator`
+  real com `[Redb, Csr, Tantivy, Hnsw]` via `stage()` direto (não
+  `SyncOrchestrator`, que ainda não gera vetores). Bug encontrado: bytes
+  arbitrários decodificados como `f32` (convenção do `HnswParticipant`)
+  produzem componentes de magnitude extrema (perto de `f32::MAX`);
+  elevar ao quadrado em `f32` na função de distância cosseno estourava para
+  `Infinity`, e `Infinity/Infinity = NaN` fazia o HNSW devolver o vizinho
+  errado — silenciosamente, sem panic, só resultado incorreto. Corrigido:
+  `EmbeddingPoint::distance` agora acumula em `f64` (produto escalar e
+  normas), cosseno final clampado em `[-1,1]` antes de converter de volta
+  a `f32`. Teste de regressão dedicado
+  (`distance_stays_finite_for_extreme_magnitude_vectors`) adicionado a
+  `vector::hnsw`. Gate: `cargo test --test four_participants_integration`
+  → 1/1; suíte completa → 85/85 (era 72 antes da fase começar).
 - 2026-09-29 T-407 completo. `scripts/check-lean-build.sh` roda `cargo tree
   --no-default-features --features lean` e falha se `ort`/`instant-distance`
   aparecerem na árvore — validado que o grep realmente pegaria a falha

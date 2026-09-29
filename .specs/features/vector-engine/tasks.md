@@ -111,7 +111,7 @@ executadas antes, sem bloqueio.
   do build `lean`.
 - **Gate**: comando de verificação retorna sucesso
 
-## T-408: Integração: 4 participantes reais via `Coordinator`
+## T-408: Integração: 4 participantes reais via `Coordinator` [x]
 - **REQ**: (todos — valida a fase inteira junto)
 - **What**: Teste de integração com `Coordinator` real e `[RedbParticipant,
   CsrParticipant, TantivyParticipant, HnswParticipant]`, usando vetores

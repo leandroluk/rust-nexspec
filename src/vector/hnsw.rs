@@ -48,10 +48,19 @@ pub fn encode_vector(v: &[f32]) -> Vec<u8> {
     v.iter().flat_map(|f| f.to_le_bytes()).collect()
 }
 
+/// Decode raw little-endian `f32` bytes into a vector. Any chunk that
+/// doesn't decode to a finite value (arbitrary byte sequences — e.g. a
+/// `rkyv`-serialized struct's bytes, in tests that don't have a real
+/// embedding handy — routinely produce NaN/Infinity bit patterns) is
+/// sanitized to `0.0`, since a single non-finite component would otherwise
+/// poison every downstream cosine-distance comparison this crate makes.
 pub fn decode_vector(bytes: &[u8]) -> Vec<f32> {
     bytes
         .chunks_exact(4)
-        .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+        .map(|c| {
+            let f = f32::from_le_bytes(c.try_into().unwrap());
+            if f.is_finite() { f } else { 0.0 }
+        })
         .collect()
 }
 
@@ -62,13 +71,22 @@ impl instant_distance::Point for EmbeddingPoint {
     fn distance(&self, other: &Self) -> f32 {
         // 1 - cosine_similarity: 0 for identical direction, up to 2 for
         // opposite. instant-distance treats a smaller value as "closer".
-        let dot: f32 = self.0.iter().zip(&other.0).map(|(a, b)| a * b).sum();
-        let norm_a: f32 = self.0.iter().map(|a| a * a).sum::<f32>().sqrt();
-        let norm_b: f32 = other.0.iter().map(|b| b * b).sum::<f32>().sqrt();
+        //
+        // Accumulates in f64: a real embedding model's output is small and
+        // well-scaled, but this participant's "read arbitrary bytes as a
+        // vector" convention (see module docs) can produce individual f32
+        // components near f32::MAX from unrelated byte patterns — squaring
+        // those in f32 overflows to infinity, and infinity/infinity is NaN,
+        // which then poisons every comparison HNSW makes. f64 pushes that
+        // threshold far out of reach for any value an f32 can represent.
+        let dot: f64 = self.0.iter().zip(&other.0).map(|(a, b)| f64::from(*a) * f64::from(*b)).sum();
+        let norm_a: f64 = self.0.iter().map(|a| f64::from(*a) * f64::from(*a)).sum::<f64>().sqrt();
+        let norm_b: f64 = other.0.iter().map(|b| f64::from(*b) * f64::from(*b)).sum::<f64>().sqrt();
         if norm_a == 0.0 || norm_b == 0.0 {
             return 1.0;
         }
-        1.0 - dot / (norm_a * norm_b)
+        let cosine = (dot / (norm_a * norm_b)).clamp(-1.0, 1.0);
+        (1.0 - cosine) as f32
     }
 }
 
@@ -294,6 +312,34 @@ mod tests {
 
         assert_eq!(p.index().search(&[0.0, 0.0, 1.0], 5).len(), 1);
         assert_eq!(p.committed_version().unwrap(), 1);
+    }
+
+    /// Regression test for the overflow bug found while writing T-408's
+    /// integration test: components decoded from arbitrary bytes can be
+    /// near `f32::MAX`; squaring them in `f32` during distance computation
+    /// overflowed to infinity, and infinity/infinity produced NaN, which
+    /// made search return the wrong nearest neighbor entirely.
+    #[test]
+    fn distance_stays_finite_for_extreme_magnitude_vectors() {
+        let file = NamedTempFile::new().unwrap();
+        let p = HnswParticipant::new(file.path()).unwrap();
+        let a_bytes: Vec<u8> = (0u8..80).collect();
+        let b_bytes: Vec<u8> = (80u8..160).collect();
+        let a_vec = decode_vector(&a_bytes);
+        let b_vec = decode_vector(&b_bytes);
+
+        let mut set = MutationSet::default();
+        set.nodes.push(NodeMutation::Upsert { id: [1u8; 32], payload: a_bytes });
+        set.nodes.push(NodeMutation::Upsert { id: [2u8; 32], payload: b_bytes });
+        p.stage(1, &set).unwrap();
+        p.commit(1).unwrap();
+
+        let a_hits = p.index().search(&a_vec, 2);
+        let b_hits = p.index().search(&b_vec, 2);
+        assert_eq!(a_hits[0].0, [1u8; 32], "exact self-match must win despite extreme magnitude");
+        assert_eq!(b_hits[0].0, [2u8; 32], "exact self-match must win despite extreme magnitude");
+        assert!(a_hits.iter().all(|(_, d)| d.is_finite()));
+        assert!(b_hits.iter().all(|(_, d)| d.is_finite()));
     }
 
     #[test]
