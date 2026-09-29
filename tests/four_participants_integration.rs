@@ -5,6 +5,10 @@
 //! embeddings yet). Confirms the fourth participant coexists with the
 //! other three without regressing them, using synthetic vectors (no
 //! dependency on T-406's real model).
+//!
+//! Requires the `full` feature (REQ-404) — absent entirely from `lean`
+//! builds, along with the `vector` module it exercises.
+#![cfg(feature = "full")]
 
 use std::sync::Arc;
 

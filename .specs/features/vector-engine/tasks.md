@@ -124,7 +124,7 @@ executadas antes, sem bloqueio.
   esperado.
 - **Gate**: `cargo test --test four_participants_integration`
 
-## T-409: Lint e superfície pública
+## T-409: Lint e superfície pública [x]
 - **REQ**: (todos — fechamento da fase, mesmo padrão de T-010/T-110/T-209/T-310)
 - **What**: Exportar `vector::{HnswParticipant, Embedder, VectorError}`,
   `hybrid::{seed_discovery, expand}` de `src/lib.rs`. Doc comments em toda

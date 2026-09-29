@@ -13,7 +13,7 @@ começar a ser trabalhada.
 | 1 | Storage Primitives & Graph Topology | `Node`/`Edge` tipados, ID estável (Blake3) vs índice físico denso (`u32`), redb+zstd, CSR **duas camadas** (base rkyv/mmap + delta lock-free via `ArcSwap`/`crossbeam-epoch`, compactação por threshold), extração Markdown (comrak) | **Completo** (`.specs/features/storage-primitives/`) |
 | 2 | Git Integration & Incremental Sync | gix embutido, tree-diff incremental, grafo de co-mudança com janela limitada (default 500 commits/6 meses), linking commit→spec | **Completo** (`.specs/features/git-integration/`) |
 | 3 | Multi-Language AST & Lexical Search | Tree-sitter (TS/JS, Python, Go, Rust) com parsing paralelo via `rayon` no cold-start, índice Tantivy (BM25) | **Completo** (`.specs/features/ast-lexical-search/`) |
-| 4 | Vector Engine & Hybrid Traversal | ONNX (ort) **lazy-loaded** + modelo INT8 quantizado, flag de compilação "lean" (sem ort/HNSW), HNSW, RRF, expansão k-hop sobre base+delta | Não iniciado |
+| 4 | Vector Engine & Hybrid Traversal | ONNX (ort) **lazy-loaded** + modelo INT8 quantizado, flag de compilação "lean" (sem ort/HNSW), HNSW, RRF, expansão k-hop sobre base+delta | **8/9 tasks** (`.specs/features/vector-engine/`) — falta T-406 (inferência real, aguardando confirmação p/ baixar o modelo) |
 | 5 | Token Budgeting & LLM Serialization | Pruning AST, `Tokenizer` trait plugável (default tiktoken-rs) com margem de segurança (90% do budget), fallback offline (`char_count / 3.5`), serializer Markdown denso | Não iniciado |
 | 6 | Interface, MCP Server & Tooling | CLI (`clap`: init/sync/compact/search/trace/blame/diff), servidor MCP (`rmcp`) com tool surface unificado, integração drop-in na skill `graph-spec-design` | Não iniciado |
 

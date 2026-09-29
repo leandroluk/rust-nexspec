@@ -56,9 +56,11 @@ pub fn encode_vector(v: &[f32]) -> Vec<u8> {
 /// poison every downstream cosine-distance comparison this crate makes.
 pub fn decode_vector(bytes: &[u8]) -> Vec<f32> {
     bytes
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|c| {
-            let f = f32::from_le_bytes(c.try_into().unwrap());
+            let f = f32::from_le_bytes(*c);
             if f.is_finite() { f } else { 0.0 }
         })
         .collect()
@@ -144,11 +146,14 @@ struct PersistedPoint {
     vector: Vec<f32>,
 }
 
+/// A staged sync cycle: its target version plus the points to commit.
+type StagedPoints = (u64, Vec<(StableId, Vec<f32>)>);
+
 pub struct HnswParticipant {
     index: HnswIndex,
     path: PathBuf,
     committed_points: Mutex<HashMap<StableId, Vec<f32>>>,
-    staged: Mutex<Option<(u64, Vec<(StableId, Vec<f32>)>)>>,
+    staged: Mutex<Option<StagedPoints>>,
     committed_version: AtomicU64,
 }
 

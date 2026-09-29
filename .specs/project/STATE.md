@@ -4,18 +4,18 @@
 
 ## Current Work
 
-Fases 0 (Sync Coordinator), 1 (Storage Primitives/CSR), 2 (Git Integration)
-e 3 (AST Parsing & Lexical Search) completas — 72/72 testes, `cargo doc`/
-`cargo clippy -- -D warnings` limpos, tudo commitado e no GitHub
+Fases 0-3 completas. Fase 4 (Local Vector Engine & Hybrid Traversal): 8 de
+9 tasks completas (T-401..T-405, T-407..T-409) — 85/85 testes (build
+`full`) e 78/78 (build `lean`), `cargo doc`/`cargo clippy -- -D warnings`
+limpos nos dois builds, tudo commitado e no GitHub
 (`leandroluk/rust-specdb`, branch `main`). Produto renomeado de "SpecDB"
 para "NexSpec" (crate `nexspec`) — repo/pasta local seguem com o nome antigo
 até o usuário trocar por conta própria.
 
-Fase 4 (Local Vector Engine & Hybrid Traversal) especificada:
-`.specs/features/vector-engine/{spec,design,tasks}.md` (REQ-401..406, 9
-tasks T-401..T-409). **T-406 (baixar o modelo real de embedding, ~30MB)
-requer confirmação explícita do usuário antes de rodar** — todas as outras
-tasks usam vetores sintéticos e não dependem disso.
+**T-406 (baixar o modelo real de embedding, ~30MB) é a única task pendente
+da Fase 4 — requer confirmação explícita do usuário antes de rodar.** Sem
+ela, a fase entrega tudo (HNSW, RRF, k-hop, feature `lean`) exceto
+inferência real de embeddings.
 
 ## Todos
 - [x] T-401: Feature `lean` + deps opcionais (`ort`, `instant-distance`)
@@ -26,7 +26,7 @@ tasks usam vetores sintéticos e não dependem disso.
 - [ ] T-406: Inferência real (**requer confirmação do usuário**)
 - [x] T-407: Verificação da feature `lean`
 - [x] T-408: Integração — 4 participantes reais via `Coordinator`
-- [ ] T-409: Lint e superfície pública
+- [x] T-409: Lint e superfície pública
 
 ## Active Blockers
 - T-406 aguardando confirmação do usuário para baixar o modelo de embedding
@@ -61,7 +61,25 @@ tasks usam vetores sintéticos e não dependem disso.
 - Ver `STATE_ARCHIVE.md` para decisões anteriores (Fase 0 spec/design, rename
   de produto detalhado, etc.).
 
+## Feature "vector-engine" (Fase 4): 8/9 tasks completas
+T-401..T-405, T-407..T-409 concluídas: 85/85 testes (`full`), 78/78
+(`lean`), `cargo doc`/`cargo clippy -- -D warnings` limpos nos dois builds.
+`HnswParticipant` é o 4º `SyncParticipant` real; `hybrid::{expand,
+seed_discovery}` prontos; `Embedder` tem o caminho "modelo ausente"
+funcionando. Falta só **T-406** (inferência real — aguardando confirmação
+do usuário para baixar o modelo, ~30MB).
+
 ## Recent Progress (Last 10)
+- 2026-09-29 T-409 completo. `lib.rs` exporta `hybrid::{expand,
+  seed_discovery}` e, sob a feature `full`, `vector::{Embedder,
+  HnswParticipant, VectorError}`. Corrigidos 2 lints clippy
+  (`chunks_exact_to_as_chunks` → `as_chunks::<4>()`, `type_complexity` →
+  alias `StagedPoints`) e gate de feature faltante no teste de integração
+  de T-408 (`#![cfg(feature = "full")]`, já que ele usa `vector::` e não
+  compilaria — nem deveria — num build `lean`). Gate: `cargo doc --no-deps`
+  e `cargo clippy --all-targets -- -D warnings` limpos nos dois builds
+  (`full` e `--no-default-features --features lean`); suíte completa →
+  85/85 (`full`), 78/78 (`lean`).
 - 2026-09-29 T-408 completo, mas revelou e corrigiu um bug real de
   robustez numérica. `tests/four_participants_integration.rs`: `Coordinator`
   real com `[Redb, Csr, Tantivy, Hnsw]` via `stage()` direto (não
