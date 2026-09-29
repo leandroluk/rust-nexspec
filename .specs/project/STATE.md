@@ -21,7 +21,7 @@ tasks usam vetores sintéticos e não dependem disso.
 - [x] T-401: Feature `lean` + deps opcionais (`ort`, `instant-distance`)
 - [x] T-402: `HnswIndex` + `HnswParticipant` (vetores sintéticos) [P-A]
 - [x] T-403: `hybrid::expand` (k-hop sobre o CSR) [P-A]
-- [ ] T-404: `hybrid::seed_discovery` (fusão RRF)
+- [x] T-404: `hybrid::seed_discovery` (fusão RRF)
 - [ ] T-405: `Embedder` — scaffold lazy + caminho "modelo ausente"
 - [ ] T-406: Inferência real (**requer confirmação do usuário**)
 - [ ] T-407: Verificação da feature `lean`
@@ -62,6 +62,12 @@ tasks usam vetores sintéticos e não dependem disso.
   de produto detalhado, etc.).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 T-404 completo. `hybrid::seed_discovery(bm25_ranked,
+  hnsw_ranked) -> Vec<(StableId, f32)>` — RRF clássico (`Σ 1/(k+rank)`,
+  `k=60`, constante da literatura). Teste adversarial confirma que um
+  documento só em BM25 e outro só em HNSW não somem da fusão, e que
+  concordância entre os dois sinais (1º em ambos) supera qualquer um dos
+  dois sozinho. Gate: `cargo test hybrid::` → 5/5 pass.
 - 2026-09-29 T-402/T-403 completos (onda [P-A]).
   `vector::hnsw::{HnswIndex, HnswParticipant}` — 4º `SyncParticipant` real.
   Simplificação deliberada vs. CsrParticipant: `instant-distance` só

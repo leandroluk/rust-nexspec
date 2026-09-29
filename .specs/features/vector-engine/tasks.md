@@ -49,7 +49,7 @@ executadas antes, sem bloqueio.
   nó fora do alcance não aparece.
 - **Gate**: `cargo test hybrid::expand`
 
-## T-404: `hybrid::seed_discovery` (fusão RRF)
+## T-404: `hybrid::seed_discovery` (fusão RRF) [x]
 - **REQ**: REQ-405
 - **What**: `seed_discovery(bm25_ranked: &[StableId], hnsw_ranked:
   &[StableId]) -> Vec<(StableId, f32)>` — Reciprocal Rank Fusion
