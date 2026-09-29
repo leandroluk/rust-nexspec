@@ -4,14 +4,28 @@
 
 ## Current Work
 
-Fases 0-5 completas. Fase 5 (Token Budgeting & LLM Serialization) — 9/9
-tasks (T-501..T-509). Suíte completa: 82/82 testes de lib (3 ignored) +
-todos os binários de integração verdes (build `full`); 75/75 testes de lib
-(1 ignored) no build `lean`. `cargo doc`/`cargo clippy -- -D warnings`
-limpos nos dois builds. Tudo commitado e no GitHub
-(`leandroluk/rust-specdb`, branch `main`). Produto renomeado de "SpecDB"
-para "NexSpec" (crate `nexspec`) — repo/pasta local seguem com o nome antigo
-até o usuário trocar por conta própria.
+Fases 0-5 completas. Fase 6 (Interface, MCP Server & Tooling) especificada
+e desenhada — escopo **reduzido por instrução explícita do usuário**:
+integração com a skill `graph-spec-design` fica para outro repositório/
+sessão; esta fase entrega só o binário `nexspec` (CLI `clap`) e o servidor
+MCP (`rmcp`, stdio) como ferramenta de uso geral. REQ-601..609, 12 tasks
+(T-601..T-612). Dependências novas já resolvidas e no `Cargo.toml`/
+`Cargo.lock` (ainda não commitadas — entram junto com T-601):
+`clap`(derive), `tokio`(rt-multi-thread/macros/io-std), `rmcp`
+v3.5.0(server/macros/transport-io), `serde`/`serde_json`/`schemars`. API
+do `rmcp` (macros `#[tool_router]`/`#[tool]`/`#[tool_handler]`,
+`Parameters<T>`, `ServiceExt::serve`, `transport::stdio()`) confirmada
+lendo o código-fonte baixado localmente
+(`~/.cargo/registry/src/.../rmcp-3.5.0`), não de memória — a mesma
+disciplina que evitou repetir a surpresa de API do Tantivy na Fase 3.
+
+Suíte completa (fim da Fase 5): 82/82 testes de lib (3 ignored) + todos os
+binários de integração verdes (build `full`); 75/75 testes de lib (1
+ignored) no build `lean`. `cargo doc`/`cargo clippy -- -D warnings` limpos
+nos dois builds. Tudo commitado e no GitHub (`leandroluk/rust-specdb`,
+branch `main`) até o fim da Fase 5. Produto renomeado de "SpecDB" para
+"NexSpec" (crate `nexspec`) — repo/pasta local seguem com o nome antigo até
+o usuário trocar por conta própria.
 
 Modelo `all-MiniLM-L6-v2` quantizado INT8 (~23MB, `Xenova/all-MiniLM-L6-v2`
 no Hugging Face) + tokenizer baixados para `.models/` (gitignored, não
@@ -20,24 +34,27 @@ pooling + normalização L2, confirmado determinístico e semanticamente
 coerente (frases parecidas rankeiam mais perto que não-relacionadas).
 
 ## Todos
-- [x] T-501: Dependência `tiktoken-rs` + módulo `token::` scaffold
-- [x] T-502: `Tokenizer` trait + `CharHeuristicTokenizer`
-- [x] T-503: `TiktokenTokenizer`
-- [x] T-504: `Budget` — margem de segurança + `Tier`/`TieredItem`
-- [x] T-505: `Budget::fit` — corte por prioridade
-- [x] T-506: `token::pruner::prune_symbol`
-- [x] T-507: `token::serializer::serialize`
-- [x] T-508: Integração fim-a-fim (pruner → budget → serializer)
-- [x] T-509: Lint e superfície pública
+- [ ] T-601: Deps (`clap`/`tokio`/`rmcp`/`serde`/`serde_json`/`schemars`) + `Engine` scaffold
+- [ ] T-602: `Engine::sync`/`Engine::resume`
+- [ ] T-603: `CsrParticipant::compact_now` + `Engine::compact`
+- [ ] T-604: `git::blame::blame_symbol` [P]
+- [ ] T-605: `Engine::search` [P]
+- [ ] T-606: `Engine::trace` [P]
+- [ ] T-607: `Engine::diff_staged`
+- [ ] T-608: CLI (`clap`) — `src/bin/nexspec.rs`
+- [ ] T-609: CLI `blame` + `Engine::blame`
+- [ ] T-610: Servidor MCP (`rmcp`) — `src/mcp.rs` + subcomando `mcp`
+- [ ] T-611: Integração fim-a-fim (init→sync→search/trace/blame/diff via CLI)
+- [ ] T-612: Lint e superfície pública
 
 ## Active Blockers
 - none
 
 ## Degraded Mode
 - Grafo do próprio NexSpec NÃO construído — `.specs/graph/graph.json` não
-  existe. Reindexar quando um `graphify`/`nexspec` funcional estiver
-  disponível (a ironia de "a ferramenta que ainda não pode se auto-indexar"
-  persiste até a Fase 6 ter CLI).
+  existe. Fora do escopo da Fase 6 deste repositório (ver Current Work) —
+  fica para quando o repositório que integra a skill `graph-spec-design`
+  consumir o binário `nexspec`.
 
 ## Feature "token-budgeting" (Fase 5): COMPLETA (9/9)
 `token::budget::{Tokenizer, TiktokenTokenizer, CharHeuristicTokenizer,
@@ -56,6 +73,18 @@ fluxo pruner→budget→serializer fim-a-fim com `CharHeuristicTokenizer`
 warnings` limpos em `full` e `lean`; suíte completa verde nos dois builds.
 
 ## Recent Decisions (Last 15)
+- 2026-09-29 Feature "cli-mcp-server" (Fase 6) especificada e desenhada.
+  REQ-601..609. Decisão do usuário: integração com a skill
+  `graph-spec-design` explicitamente fora do escopo deste repositório
+  (outro repo/sessão fará isso) — Fase 6 aqui entrega só CLI+MCP como
+  ferramenta standalone, sem contrato `.specs/graph/graph.json`/
+  `GRAPH_REPORT.md` compatível com `graphify`. Decisão de arquitetura:
+  `Engine` (novo, `src/engine.rs`) é o primeiro componente a compor redb+
+  Csr+Tantivy+Hnsw+Git+Token ao mesmo tempo; reconstrói participantes por
+  chamada em vez de mantê-los vivos (evita struct auto-referenciada com
+  `Coordinator<'a>`). `blame` (REQ-607) fecha uma lacuna deliberadamente
+  deixada aberta na Fase 2 (precisava de `line_start`/`line_end` da Fase
+  3) via `gix::Repository::blame_file`. 12 tasks (T-601..T-612).
 - 2026-09-29 Fase 5 (token-budgeting) implementada e fechada, 9/9 tasks.
   Decisão de implementação notável: `Budget::fit` usa corte "hard stop" (um
   item que não cabe interrompe a inclusão de todos os itens seguintes,
