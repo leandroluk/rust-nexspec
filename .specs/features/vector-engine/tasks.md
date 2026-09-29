@@ -98,7 +98,7 @@ executadas antes, sem bloqueio.
   (marcado `#[ignore]` por padrão — só roda quando o modelo está presente,
   não trava CI/outros ambientes sem o arquivo)
 
-## T-407: Verificação da feature `lean`
+## T-407: Verificação da feature `lean` [x]
 - **REQ**: REQ-404
 - **What**: Confirmar programaticamente (script/task de CI, não só
   inspeção manual) que um build com `lean` não traz `ort`/

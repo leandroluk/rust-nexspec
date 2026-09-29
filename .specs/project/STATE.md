@@ -24,7 +24,7 @@ tasks usam vetores sintéticos e não dependem disso.
 - [x] T-404: `hybrid::seed_discovery` (fusão RRF)
 - [x] T-405: `Embedder` — scaffold lazy + caminho "modelo ausente"
 - [ ] T-406: Inferência real (**requer confirmação do usuário**)
-- [ ] T-407: Verificação da feature `lean`
+- [x] T-407: Verificação da feature `lean`
 - [ ] T-408: Integração — 4 participantes reais via `Coordinator`
 - [ ] T-409: Lint e superfície pública
 
@@ -62,6 +62,11 @@ tasks usam vetores sintéticos e não dependem disso.
   de produto detalhado, etc.).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 T-407 completo. `scripts/check-lean-build.sh` roda `cargo tree
+  --no-default-features --features lean` e falha se `ort`/`instant-distance`
+  aparecerem na árvore — validado que o grep realmente pegaria a falha
+  (testado contra a árvore `full`, onde as duas aparecem). Gate: script →
+  "OK: lean build excludes ort and instant-distance."
 - 2026-09-29 T-405 completo. `vector::embedder::Embedder` — construção não
   toca disco/rede; `embed()` retorna `VectorError::ModelNotAvailable`
   limpo se modelo/tokenizer não existem no path configurado. Decisão
