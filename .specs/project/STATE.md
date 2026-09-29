@@ -4,10 +4,13 @@
 
 ## Current Work
 
-Fases 0-4 completas (9/9 tasks da Fase 4, incluindo T-406 — inferência real
-de embeddings). Suíte completa: 85/85 (build `full`) + 2 testes de
-inferência real (antes `--ignored`, agora rodam contra o modelo baixado em
-`.models/`), 78/78 (build `lean`). `cargo doc`/`cargo clippy -- -D
+Fases 0-4 completas. Fase 5 (Token Budgeting & LLM Serialization)
+especificada, desenhada e quebrada em 9 tasks (T-501..T-509) — execução
+iniciando agora. REQ count: 5 (REQ-501..505). Escopo `Complex` (domínio
+novo: pruning AST por Tree-sitter, tokenização plugável, serialização).
+
+Suíte completa (fim da Fase 4): 85/85 (build `full`) + 2 testes de
+inferência real, 78/78 (build `lean`). `cargo doc`/`cargo clippy -- -D
 warnings` limpos nos dois builds. Tudo commitado e no GitHub
 (`leandroluk/rust-specdb`, branch `main`). Produto renomeado de "SpecDB"
 para "NexSpec" (crate `nexspec`) — repo/pasta local seguem com o nome antigo
@@ -20,15 +23,15 @@ pooling + normalização L2, confirmado determinístico e semanticamente
 coerente (frases parecidas rankeiam mais perto que não-relacionadas).
 
 ## Todos
-- [x] T-401: Feature `lean` + deps opcionais (`ort`, `instant-distance`)
-- [x] T-402: `HnswIndex` + `HnswParticipant` (vetores sintéticos) [P-A]
-- [x] T-403: `hybrid::expand` (k-hop sobre o CSR) [P-A]
-- [x] T-404: `hybrid::seed_discovery` (fusão RRF)
-- [x] T-405: `Embedder` — scaffold lazy + caminho "modelo ausente"
-- [x] T-406: Inferência real (usuário confirmou o download)
-- [x] T-407: Verificação da feature `lean`
-- [x] T-408: Integração — 4 participantes reais via `Coordinator`
-- [x] T-409: Lint e superfície pública
+- [ ] T-501: Dependência `tiktoken-rs` + módulo `token::` scaffold
+- [ ] T-502: `Tokenizer` trait + `CharHeuristicTokenizer`
+- [ ] T-503: `TiktokenTokenizer`
+- [ ] T-504: `Budget` — margem de segurança + `Tier`/`TieredItem`
+- [ ] T-505: `Budget::fit` — corte por prioridade
+- [ ] T-506: `token::pruner::prune_symbol`
+- [ ] T-507: `token::serializer::serialize`
+- [ ] T-508: Integração fim-a-fim (pruner → budget → serializer)
+- [ ] T-509: Lint e superfície pública
 
 ## Active Blockers
 - none
@@ -40,6 +43,15 @@ coerente (frases parecidas rankeiam mais perto que não-relacionadas).
   persiste até a Fase 6 ter CLI).
 
 ## Recent Decisions (Last 15)
+- 2026-09-29 Feature "token-budgeting" (Fase 5) especificada e desenhada.
+  REQ-501..505. Decisões: `token::` módulo top-level novo (sibling de
+  `hybrid`/`graph`/`code`); pruning é função pura sobre texto-fonte
+  (sem `NodePayload` novo, sem `SyncParticipant` — recomputado sob demanda);
+  `Budget::fit` recebe input já tiered/ordenado pelo chamador (não resolve
+  grafo sozinho, mesmo padrão de `hybrid::seed_discovery`/`expand` tomando
+  listas já rankeadas); `tiktoken-rs` é dependência obrigatória (não
+  gated por `lean` — leve, sem peso de binário nativo/modelo como
+  `ort`/`instant-distance`). 9 tasks (T-501..T-509).
 - 2026-09-29 STATE.md compactado (25KB → ver relatório abaixo). Formato
   legado (`## Progress`/`## Decisions` sem janela) migrado para o template
   windowed. Histórico completo das Fases 0-2 em `STATE_ARCHIVE.md`.
