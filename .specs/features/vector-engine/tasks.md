@@ -65,7 +65,7 @@ executadas antes, sem bloqueio.
   rankings fica em 1º na fusão.
 - **Gate**: `cargo test hybrid::seed_discovery`
 
-## T-405: `Embedder` — scaffold lazy + caminho "modelo ausente"
+## T-405: `Embedder` — scaffold lazy + caminho "modelo ausente" [x]
 - **REQ**: REQ-401, REQ-402
 - **What**: `vector::embedder::Embedder` com `ort::Session` atrás de
   `OnceLock`, inicializado só na primeira chamada de `embed()`.

@@ -22,7 +22,7 @@ tasks usam vetores sintéticos e não dependem disso.
 - [x] T-402: `HnswIndex` + `HnswParticipant` (vetores sintéticos) [P-A]
 - [x] T-403: `hybrid::expand` (k-hop sobre o CSR) [P-A]
 - [x] T-404: `hybrid::seed_discovery` (fusão RRF)
-- [ ] T-405: `Embedder` — scaffold lazy + caminho "modelo ausente"
+- [x] T-405: `Embedder` — scaffold lazy + caminho "modelo ausente"
 - [ ] T-406: Inferência real (**requer confirmação do usuário**)
 - [ ] T-407: Verificação da feature `lean`
 - [ ] T-408: Integração — 4 participantes reais via `Coordinator`
@@ -62,6 +62,16 @@ tasks usam vetores sintéticos e não dependem disso.
   de produto detalhado, etc.).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 T-405 completo. `vector::embedder::Embedder` — construção não
+  toca disco/rede; `embed()` retorna `VectorError::ModelNotAvailable`
+  limpo se modelo/tokenizer não existem no path configurado. Decisão
+  deliberada: **nenhum tipo do crate `ort` é tocado nesta task** — a
+  inferência real (T-406) exige um modelo de verdade para poder ser
+  testada/iterada de verdade contra a API real do `ort`, então escrever
+  esse código agora seria "adivinhar" uma API sem conseguir compilar
+  contra o caso real. `OnceLock<()>` como placeholder do slot "carregado
+  uma vez" (REQ-401), preenchido de verdade em T-406. Gate: `cargo test
+  vector::embedder` → 2/2 pass.
 - 2026-09-29 T-404 completo. `hybrid::seed_discovery(bm25_ranked,
   hnsw_ranked) -> Vec<(StableId, f32)>` — RRF clássico (`Σ 1/(k+rank)`,
   `k=60`, constante da literatura). Teste adversarial confirma que um
