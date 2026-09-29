@@ -64,7 +64,7 @@
   (mesmo resultado, só paralelizado).
 - **Gate**: `cargo test code::batch`
 
-## T-306: `SyncOrchestrator` roteia arquivos de código
+## T-306: `SyncOrchestrator` roteia arquivos de código [x]
 - **REQ**: REQ-306
 - **What**: `run_once()` ganha um branch `code_language(path) ->
   Option<Language>`; para `.md` usa `markdown::extract` (como já é), para

@@ -20,7 +20,7 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
 - [x] T-303: Edges `DefinedIn`/`DependsOn` (mesmo arquivo)
 - [x] T-304: Edge `Satisfies` via `@spec`/`@adr`
 - [x] T-305: `code::batch::extract_all` (paralelo via rayon)
-- [ ] T-306: `SyncOrchestrator` roteia arquivos de código
+- [x] T-306: `SyncOrchestrator` roteia arquivos de código
 - [ ] T-307: `TantivySchema` + `TantivyParticipant`
 - [ ] T-308: Fast-path de busca exata + BM25
 - [ ] T-309: Integração fim-a-fim (3 participantes reais)
@@ -59,6 +59,17 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
   de produto detalhado, etc.).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 T-306 completo. `SyncOrchestrator::run_once()` reestruturado em
+  2 passagens: (1) Markdown — diff committed + dirty tree, igual antes; (2)
+  código — `code::Language::from_extension(path)` roteia `.ts/.py/.go/.rs`
+  etc. para `code::extract()`, usando um `known_markers` construído a
+  partir dos nós `Requirement`/`Adr` já extraídos na passagem 1 do mesmo
+  ciclo (permite `@spec REQ-XXX` no código resolver contra specs commitadas
+  junto, REQ-304). `tests/sync_orchestrator_code_routing.rs`: commit com
+  `.md` + `.rs` juntos, símbolo de código com `@spec` resolve a edge
+  `Satisfies` até o REQ vindo do Markdown do mesmo ciclo. Gate:
+  `cargo test --test sync_orchestrator_code_routing` → 1/1; suíte completa
+  → 63/63.
 - 2026-09-29 T-305 completo. `code::batch::extract_all(files,
   known_markers)` — `files.par_iter().map(extract).collect::<Result<Vec<_>,
   _>>()` (rayon), merge sequencial dos `MutationSet`s. Falha rápida no
@@ -125,3 +136,11 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
   inclui suporte a rede/credenciais não usados nesta fase local-only.
 - Corrigir/genericizar os 3 subagentes em `.claude/agents/` (po/dev/qa) —
   ainda referenciam `condominium-management-system` internamente.
+- 2026-09-29 (sugestão do usuário, via Gemini) Para a Fase 6 (CLI/MCP
+  Server): disparar `SyncOrchestrator::run_once()` observando eventos de
+  kernel sobre `.git/` (ex. `.git/HEAD`, `.git/refs/`, `.git/index` via
+  `notify`/inotify/FSEvents/ReadDirectoryChangesW) em vez de polling por
+  tempo (`git diff` em loop custa CPU à toa). Não afeta o design atual —
+  `run_once()` já é pull-based/on-demand, sem loop de polling embutido;
+  isso é sobre *quem* e *quando* chama `run_once()`, que ainda não foi
+  especificado (é exatamente o papel da Fase 6).
