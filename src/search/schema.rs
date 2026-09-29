@@ -61,6 +61,19 @@ pub fn hex(id: &StableId) -> String {
     id.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// Inverse of [`hex`] — `None` for anything that isn't exactly 64 valid hex
+/// characters (a `StableId` is always 32 bytes).
+pub fn unhex(s: &str) -> Option<StableId> {
+    if s.len() != 64 {
+        return None;
+    }
+    let mut id = [0u8; 32];
+    for (i, byte) in id.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    Some(id)
+}
+
 fn describe(payload: &NodePayload) -> (&'static str, String, Option<String>) {
     match payload {
         NodePayload::Requirement { title, body, .. } => {

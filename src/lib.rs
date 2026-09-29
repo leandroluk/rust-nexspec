@@ -4,6 +4,7 @@
 //! `.specs/project/ROADMAP.md` for the phase-by-phase build plan.
 
 pub mod code;
+pub mod engine;
 pub mod git;
 pub mod graph;
 pub mod hybrid;
@@ -15,6 +16,7 @@ pub mod token;
 pub mod vector;
 
 pub use code::{Language, extract as extract_code};
+pub use engine::{DiffResult, Engine, EngineError, ImpactedSymbol, SearchHit, SearchResult, TraceHop, TraceResult};
 pub use git::GitSource;
 pub use graph::{Csr, CsrParticipant, Edge, EdgeType, Node, NodeType};
 pub use hybrid::{expand, seed_discovery};

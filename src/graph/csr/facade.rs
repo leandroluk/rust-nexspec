@@ -54,6 +54,22 @@ impl Csr {
         self.base.load_full()
     }
 
+    /// Every edge in the merged base+delta view, regardless of `from`
+    /// (REQ-608 in `.specs/features/cli-mcp-server/spec.md` — finding who
+    /// depends on a changed symbol needs a reverse scan, since the CSR only
+    /// indexes edges by `from`). Same merge logic as
+    /// [`CsrParticipant`](crate::graph::csr::CsrParticipant)'s internal
+    /// `compact()`, exposed here as a read-only query rather than
+    /// duplicated a third time.
+    pub fn all_edges(&self) -> Vec<Edge> {
+        let base = self.base.load();
+        let delta = self.delta.load();
+        let mut all = base.all_edges();
+        all.retain(|e| !delta.is_removed(&e.id));
+        all.extend(delta.added_edges().iter().cloned());
+        all
+    }
+
     /// Publish a freshly compacted base and reset the delta to empty —
     /// everything the old delta held is now folded into `new_base`.
     pub fn replace_base(&self, new_base: CsrBase) {

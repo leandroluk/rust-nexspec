@@ -1,6 +1,6 @@
 # Tasks: Interface, MCP Server & Tooling (Fase 6)
 
-## T-601: Dependências (`clap`, `tokio`, `rmcp`, `serde`/`serde_json`/`schemars`) + `Engine` scaffold
+## T-601: Dependências (`clap`, `tokio`, `rmcp`, `serde`/`serde_json`/`schemars`) + `Engine` scaffold [x]
 - **REQ**: REQ-601, REQ-602
 - **What**: `Engine::open(index_dir, repo_root) -> Result<Engine, EngineError>`
   — cria `.specs/.index/` (metadata.redb, sync.wal, edges.bin via
@@ -16,7 +16,7 @@
   para uma base vazia se já havia edges.
 - **Gate**: `cargo test engine::open` (+ `cargo build`/`cargo build --no-default-features --features lean`)
 
-## T-602: `Engine::sync`/`Engine::resume`
+## T-602: `Engine::sync`/`Engine::resume` [x]
 - **REQ**: REQ-603
 - **What**: Constrói `GitSource::open(&repo_root)`, participantes frescos
   (Redb/Csr/Tantivy/Hnsw-sob-`full`), `Coordinator`, `SyncOrchestrator`,
@@ -29,7 +29,7 @@
   depois.
 - **Gate**: `cargo test engine::sync`
 
-## T-603: `CsrParticipant::compact_now` + `Engine::compact`
+## T-603: `CsrParticipant::compact_now` + `Engine::compact` [x]
 - **REQ**: REQ-604
 - **What**: `CsrParticipant::compact_now(&self) -> Result<(), SyncError>`
   (novo método `pub`, wrapper de uma linha sobre o `compact()` privado
@@ -57,7 +57,7 @@
   no 2º) confirma que o hunk daquela linha aponta para o commit certo.
 - **Gate**: `cargo test git::blame`
 
-## T-605: `Engine::search`
+## T-605: `Engine::search` [x]
 - **REQ**: REQ-605
 - **What**: BM25 sempre (Tantivy read handle); HNSW só sob `full` **e**
   `Embedder::embed` bem-sucedido (senão lista vazia, nunca erro). Funde via
@@ -74,7 +74,7 @@
   com `max_tokens` pequeno retorna Markdown podado e cortado.
 - **Gate**: `cargo test engine::search`
 
-## T-606: `Engine::trace`
+## T-606: `Engine::trace` [x]
 - **REQ**: REQ-606
 - **What**: Resolve `target` (hex de `StableId` ou lookup textual via
   Tantivy) e faz BFS sobre `Csr::edges_from` em `{Satisfies, DependsOn,
@@ -88,7 +88,7 @@
   corretos.
 - **Gate**: `cargo test engine::trace`
 
-## T-607: `Engine::diff_staged`
+## T-607: `Engine::diff_staged` [x]
 - **REQ**: REQ-608
 - **What**: `GitSource::is_dirty`/`tracked_paths_at_head` + `DirtyCache`
   para achar arquivos sujos, `code::extract` sobre o conteúdo *atual* da

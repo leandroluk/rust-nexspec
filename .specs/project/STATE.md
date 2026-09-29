@@ -34,13 +34,13 @@ pooling + normalização L2, confirmado determinístico e semanticamente
 coerente (frases parecidas rankeiam mais perto que não-relacionadas).
 
 ## Todos
-- [ ] T-601: Deps (`clap`/`tokio`/`rmcp`/`serde`/`serde_json`/`schemars`) + `Engine` scaffold
-- [ ] T-602: `Engine::sync`/`Engine::resume`
-- [ ] T-603: `CsrParticipant::compact_now` + `Engine::compact`
+- [x] T-601: Deps (`clap`/`tokio`/`rmcp`/`serde`/`serde_json`/`schemars`) + `Engine` scaffold
+- [x] T-602: `Engine::sync`/`Engine::resume`
+- [x] T-603: `CsrParticipant::compact_now` + `Engine::compact`
 - [ ] T-604: `git::blame::blame_symbol` [P]
-- [ ] T-605: `Engine::search` [P]
-- [ ] T-606: `Engine::trace` [P]
-- [ ] T-607: `Engine::diff_staged`
+- [x] T-605: `Engine::search` [P]
+- [x] T-606: `Engine::trace` [P]
+- [x] T-607: `Engine::diff_staged`
 - [ ] T-608: CLI (`clap`) — `src/bin/nexspec.rs`
 - [ ] T-609: CLI `blame` + `Engine::blame`
 - [ ] T-610: Servidor MCP (`rmcp`) — `src/mcp.rs` + subcomando `mcp`
@@ -73,6 +73,23 @@ fluxo pruner→budget→serializer fim-a-fim com `CharHeuristicTokenizer`
 warnings` limpos em `full` e `lean`; suíte completa verde nos dois builds.
 
 ## Recent Decisions (Last 15)
+- 2026-09-29 T-601/602/603/605/606/607 completos (`src/engine.rs` novo).
+  `Engine::open` idempotente (cria metadata.redb/edges.bin/tantivy/ só se
+  ausentes); `sync`/`resume`/`compact` reconstroem participantes por
+  chamada, como planejado no design. Refinamentos sobre o design original:
+  `diff_staged` NÃO usa `DirtyCache` (ela assume estado persistido
+  entre chamadas do mesmo processo — "primeira vez que olha para um
+  arquivo = mudou", errado para um comando CLI de tiro único); comparação
+  direta `git.read_blob_at_head` vs `std::fs::read` do working tree, sem
+  estado. `Csr` ganhou `all_edges()` (merge base+delta, mesma lógica do
+  `compact()` interno do `CsrParticipant`, exposta como leitura) — CSR só
+  indexava por `from`, e REQ-608 precisa da direção reversa ("quem depende
+  de X"). `trace`'s resolução de `target` usa top-hit BM25 como fallback
+  textual (não "exact-match" como o design sugeria) — mais simples e
+  suficiente para este escopo. `search::schema` ganhou `unhex` (par de
+  `hex` já existente). Suíte: 87/87 lib (`full`, 3 ignored) + todos os
+  binários de integração; 80/80 lib (`lean`, 1 ignored). `cargo clippy -- -D
+  warnings` limpo nos dois builds.
 - 2026-09-29 Feature "cli-mcp-server" (Fase 6) especificada e desenhada.
   REQ-601..609. Decisão do usuário: integração com a skill
   `graph-spec-design` explicitamente fora do escopo deste repositório

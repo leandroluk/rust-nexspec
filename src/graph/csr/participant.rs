@@ -64,6 +64,14 @@ impl CsrParticipant {
         Arc::clone(&self.csr)
     }
 
+    /// Force compaction outside the automatic threshold (REQ-604 in
+    /// `.specs/features/cli-mcp-server/spec.md`, `nexspec compact`) — a
+    /// one-line wrapper since compaction isn't a mutation cycle (it doesn't
+    /// touch the WAL or `sync_version`, so it needs no `Coordinator`).
+    pub fn compact_now(&self) -> Result<(), SyncError> {
+        self.compact()
+    }
+
     fn staging_path(&self) -> PathBuf {
         let mut s = self.base_path.clone().into_os_string();
         s.push(".staging");
