@@ -41,7 +41,7 @@
   confirma delta zerado / base atualizada.
 - **Gate**: `cargo test engine::compact`
 
-## T-604: `git::blame::blame_symbol`
+## T-604: `git::blame::blame_symbol` [x]
 - **REQ**: REQ-607
 - **What**: `blame_symbol(git: &GitSource, path: &Path, line_start: u32,
   line_end: u32) -> Result<Vec<BlameHunk>, GitError>` via

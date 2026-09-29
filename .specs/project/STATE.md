@@ -37,7 +37,7 @@ coerente (frases parecidas rankeiam mais perto que não-relacionadas).
 - [x] T-601: Deps (`clap`/`tokio`/`rmcp`/`serde`/`serde_json`/`schemars`) + `Engine` scaffold
 - [x] T-602: `Engine::sync`/`Engine::resume`
 - [x] T-603: `CsrParticipant::compact_now` + `Engine::compact`
-- [ ] T-604: `git::blame::blame_symbol` [P]
+- [x] T-604: `git::blame::blame_symbol` [P]
 - [x] T-605: `Engine::search` [P]
 - [x] T-606: `Engine::trace` [P]
 - [x] T-607: `Engine::diff_staged`
@@ -73,6 +73,16 @@ fluxo pruner→budget→serializer fim-a-fim com `CharHeuristicTokenizer`
 warnings` limpos em `full` e `lean`; suíte completa verde nos dois builds.
 
 ## Recent Decisions (Last 15)
+- 2026-09-29 T-604 completo. `git::blame::blame_symbol` via
+  `gix::Repository::blame_file` (feature `blame` do `gix` já vem habilitada
+  por padrão via `extras`, confirmado lendo `gix-0.88.0/Cargo.toml`
+  localmente — nenhuma mudança necessária em `Cargo.toml`) +
+  `gix::blame::BlameRanges::from_one_based_inclusive_range` (conversão do
+  `line_start`/`line_end` 0-indexado do crate para o formato 1-indexado do
+  `gix_blame`). Retorna `BlameHunk{commit_oid, author_name, author_email,
+  author_unix_seconds, lines}` por hunk. `gix::blame`/`gix::bstr` reusados
+  via re-export do próprio `gix` (sem dependência direta em `gix-blame`).
+  Gate: `cargo test git::blame` → 2/2.
 - 2026-09-29 T-601/602/603/605/606/607 completos (`src/engine.rs` novo).
   `Engine::open` idempotente (cria metadata.redb/edges.bin/tantivy/ só se
   ausentes); `sync`/`resume`/`compact` reconstroem participantes por
