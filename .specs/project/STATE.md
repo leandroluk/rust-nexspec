@@ -11,23 +11,26 @@ e 3 (AST Parsing & Lexical Search) completas — 72/72 testes, `cargo doc`/
 para "NexSpec" (crate `nexspec`) — repo/pasta local seguem com o nome antigo
 até o usuário trocar por conta própria.
 
-Próximo: Specify da Fase 4 (Local Vector Engine & Hybrid Traversal — ONNX
-lazy-loaded, HNSW, RRF). Ainda não iniciado.
+Fase 4 (Local Vector Engine & Hybrid Traversal) especificada:
+`.specs/features/vector-engine/{spec,design,tasks}.md` (REQ-401..406, 9
+tasks T-401..T-409). **T-406 (baixar o modelo real de embedding, ~30MB)
+requer confirmação explícita do usuário antes de rodar** — todas as outras
+tasks usam vetores sintéticos e não dependem disso.
 
 ## Todos
-- [x] T-301: Dependências (tree-sitter + 4 gramáticas, rayon, tantivy)
-- [x] T-302: `Language` + parsing de símbolos de um arquivo
-- [x] T-303: Edges `DefinedIn`/`DependsOn` (mesmo arquivo)
-- [x] T-304: Edge `Satisfies` via `@spec`/`@adr`
-- [x] T-305: `code::batch::extract_all` (paralelo via rayon)
-- [x] T-306: `SyncOrchestrator` roteia arquivos de código
-- [x] T-307: `TantivySchema` + `TantivyParticipant`
-- [x] T-308: Fast-path de busca exata + BM25
-- [x] T-309: Integração fim-a-fim (3 participantes reais)
-- [x] T-310: Lint e superfície pública
+- [ ] T-401: Feature `lean` + deps opcionais (`ort`, `instant-distance`)
+- [ ] T-402: `HnswIndex` + `HnswParticipant` (vetores sintéticos) [P-A]
+- [ ] T-403: `hybrid::expand` (k-hop sobre o CSR) [P-A]
+- [ ] T-404: `hybrid::seed_discovery` (fusão RRF)
+- [ ] T-405: `Embedder` — scaffold lazy + caminho "modelo ausente"
+- [ ] T-406: Inferência real (**requer confirmação do usuário**)
+- [ ] T-407: Verificação da feature `lean`
+- [ ] T-408: Integração — 4 participantes reais via `Coordinator`
+- [ ] T-409: Lint e superfície pública
 
 ## Active Blockers
-- none
+- T-406 aguardando confirmação do usuário para baixar o modelo de embedding
+  real (~30MB) — não bloqueia as outras 8 tasks da fase.
 
 ## Degraded Mode
 - Grafo do próprio NexSpec NÃO construído — `.specs/graph/graph.json` não
