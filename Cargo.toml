@@ -9,7 +9,9 @@ blake3 = "1.8.7"
 comrak = { version = "0.55.0", default-features = false }
 crc32fast = "1.5.2"
 gix = "0.88.0"
+instant-distance = { version = "0.6.1", optional = true }
 memmap2 = "0.9.11"
+ort = { version = "2.0.0-rc.13", optional = true }
 rayon = "1.12.0"
 redb = "4.3.0"
 rkyv = "0.8.18"
@@ -25,3 +27,11 @@ zstd = "0.14.0"
 
 [dev-dependencies]
 tempfile = "3.27.0"
+
+[features]
+default = ["full"]
+# REQ-404: the vector engine (ort + HNSW) is the only optional part of the
+# crate. `full` (default) includes it; `lean` builds omit it entirely --
+# `cargo build --no-default-features --features lean`.
+full = ["dep:ort", "dep:instant-distance"]
+lean = []

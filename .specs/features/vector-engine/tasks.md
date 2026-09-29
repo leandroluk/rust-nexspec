@@ -7,7 +7,7 @@ modelo real e precisa de confirmação explícita do usuário antes de rodar**
 (REQ-402/Open Questions do spec.md) — as demais podem (e devem) ser
 executadas antes, sem bloqueio.
 
-## T-401: Feature `lean` + dependências opcionais (`ort`, `instant-distance`)
+## T-401: Feature `lean` + dependências opcionais (`ort`, `instant-distance`) [x]
 - **REQ**: REQ-401, REQ-404
 - **What**: `cargo add ort instant-distance --optional`; feature `lean` em
   `Cargo.toml` que desliga essas deps (via `default = [...]` sem elas +

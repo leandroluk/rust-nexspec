@@ -18,7 +18,7 @@ requer confirmação explícita do usuário antes de rodar** — todas as outras
 tasks usam vetores sintéticos e não dependem disso.
 
 ## Todos
-- [ ] T-401: Feature `lean` + deps opcionais (`ort`, `instant-distance`)
+- [x] T-401: Feature `lean` + deps opcionais (`ort`, `instant-distance`)
 - [ ] T-402: `HnswIndex` + `HnswParticipant` (vetores sintéticos) [P-A]
 - [ ] T-403: `hybrid::expand` (k-hop sobre o CSR) [P-A]
 - [ ] T-404: `hybrid::seed_discovery` (fusão RRF)
@@ -62,6 +62,15 @@ tasks usam vetores sintéticos e não dependem disso.
   de produto detalhado, etc.).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 T-401 completo. `cargo add ort instant-distance --optional`;
+  `[features]` reorganizado: `default = ["full"]`, `full = ["dep:ort",
+  "dep:instant-distance"]`, `lean = []` (build sem elas via
+  `--no-default-features --features lean`). Ambos os builds compilam;
+  suíte completa (default) continua 72/72 — nada em `src/` referencia
+  `ort`/`instant-distance` ainda, então `lean` exclui automaticamente sem
+  precisar de `#[cfg(...)]` nenhum por enquanto (virá em T-402/T-405).
+  Gate: `cargo build` + `cargo build --no-default-features --features
+  lean` → ambos sucesso.
 - 2026-09-29 T-310 completo, fecha a Fase 3. `lib.rs` exporta
   `code::{Language, extract as extract_code}`, `search::{TantivyParticipant,
   find_by_id, search_text}` (renomeado para `extract_code` para não colidir
