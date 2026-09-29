@@ -50,6 +50,10 @@ pub enum NodePayload {
     Symbol {
         name: String,
         source_hash: [u8; 32],
+        /// 0-indexed, inclusive line range in the source file (REQ-302 in
+        /// `.specs/features/ast-lexical-search/spec.md`).
+        line_start: u32,
+        line_end: u32,
     },
     File {
         path: String,
@@ -129,6 +133,8 @@ mod tests {
                 NodePayload::Symbol {
                     name: "fn foo".into(),
                     source_hash: [10u8; 32],
+                    line_start: 1,
+                    line_end: 3,
                 },
             ),
             Node::new(

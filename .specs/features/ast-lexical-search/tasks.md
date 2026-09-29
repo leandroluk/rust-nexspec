@@ -9,7 +9,7 @@
 - **Done when**: `cargo build` compila com as novas deps.
 - **Gate**: `cargo build`
 
-## T-302: `Language` + parsing de símbolos de um arquivo
+## T-302: `Language` + parsing de símbolos de um arquivo [x]
 - **REQ**: REQ-301, REQ-302
 - **What**: Enum `Language` (TypeScript, JavaScript, Python, Go, Rust) +
   `Language::from_extension(path) -> Option<Language>`. `code::extract(source:

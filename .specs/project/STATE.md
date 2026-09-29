@@ -16,7 +16,7 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
 
 ## Todos
 - [x] T-301: Dependências (tree-sitter + 4 gramáticas, rayon, tantivy)
-- [ ] T-302: `Language` + parsing de símbolos de um arquivo
+- [x] T-302: `Language` + parsing de símbolos de um arquivo
 - [ ] T-303: Edges `DefinedIn`/`DependsOn` (mesmo arquivo)
 - [ ] T-304: Edge `Satisfies` via `@spec`/`@adr`
 - [ ] T-305: `code::batch::extract_all` (paralelo via rayon)
@@ -59,6 +59,16 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
   de produto detalhado, etc.).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 T-302 completo. `code::parser::{Language, extract}` — uma
+  `tree_sitter::Query` por linguagem, captures `@name`/`@def`. Ajuste: as
+  queries iniciais tipavam o campo `name` com o node-kind exato
+  (`identifier`/`type_identifier`), mas `class_declaration` em JS/TS rejeitou
+  isso ("Impossible pattern") — trocado para `(_) @name` (wildcard) em todas
+  as queries, já que só o texto do nome importa, não seu node-kind exato.
+  `NodePayload::Symbol` (Fase 1) ganhou `line_start`/`line_end: u32`
+  (extensão aditiva, exigida pelo REQ-302; nenhum dado persistido a migrar
+  ainda). Gate: `cargo test code::` → 1/1 (5 linguagens no mesmo teste);
+  suíte completa → 54/54.
 - 2026-09-29 T-301 completo. `cargo add tree-sitter tree-sitter-{typescript,
   javascript,python,go,rust} rayon tantivy`. Gate: `cargo build` → sucesso
   (~39s, dependency tree bem maior que as fases anteriores — esperado dado

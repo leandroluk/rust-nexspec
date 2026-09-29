@@ -3,6 +3,7 @@
 //! See `.specs/project/PROJECT.md` for the product overview and
 //! `.specs/project/ROADMAP.md` for the phase-by-phase build plan.
 
+pub mod code;
 pub mod git;
 pub mod graph;
 pub mod sync;
