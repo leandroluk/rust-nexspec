@@ -17,7 +17,7 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
 ## Todos
 - [x] T-301: Dependências (tree-sitter + 4 gramáticas, rayon, tantivy)
 - [x] T-302: `Language` + parsing de símbolos de um arquivo
-- [ ] T-303: Edges `DefinedIn`/`DependsOn` (mesmo arquivo)
+- [x] T-303: Edges `DefinedIn`/`DependsOn` (mesmo arquivo)
 - [ ] T-304: Edge `Satisfies` via `@spec`/`@adr`
 - [ ] T-305: `code::batch::extract_all` (paralelo via rayon)
 - [ ] T-306: `SyncOrchestrator` roteia arquivos de código
@@ -59,6 +59,13 @@ Agora iniciando a Fase 3 (Multi-Language AST Parsing & Lexical Search):
   de produto detalhado, etc.).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 T-303 completo. `code::parser::extract` ganhou parâmetro `path`
+  (necessário para `file_node_id`); edge `DefinedIn` de cada símbolo para o
+  nó de arquivo; segunda `Query` por linguagem captura call expressions de
+  nome direto (`@callee`), resolvidas por contenção de byte-range contra os
+  símbolos já extraídos no mesmo arquivo → edge `DependsOn`. Chamada a
+  função não resolvida no arquivo não gera edge nem erro. Gate: `cargo test
+  code::` → 4/4 pass.
 - 2026-09-29 T-302 completo. `code::parser::{Language, extract}` — uma
   `tree_sitter::Query` por linguagem, captures `@name`/`@def`. Ajuste: as
   queries iniciais tipavam o campo `name` com o node-kind exato

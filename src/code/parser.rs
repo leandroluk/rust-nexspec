@@ -6,8 +6,9 @@ use std::path::Path;
 
 use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
 
-use crate::graph::node::NodePayload;
-use crate::sync::mutation::{MutationSet, NodeMutation, StableId};
+use crate::graph::edge::EdgeType;
+use crate::graph::node::{NodePayload, file_node_id};
+use crate::sync::mutation::{EdgeMutation, MutationSet, NodeMutation, StableId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Language {
@@ -74,6 +75,20 @@ impl Language {
             }
         }
     }
+
+    /// Captures `@callee` for direct-name-identifier call sites — matches
+    /// REQ-303's same-file-only scope (no method-call/selector resolution,
+    /// no import following).
+    fn call_query(self) -> &'static str {
+        match self {
+            Language::Rust => "(call_expression function: (identifier) @callee)",
+            Language::Python => "(call function: (identifier) @callee)",
+            Language::Go => "(call_expression function: (identifier) @callee)",
+            Language::JavaScript | Language::TypeScript => {
+                "(call_expression function: (identifier) @callee)"
+            }
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -96,58 +111,127 @@ fn rkyv_bytes(payload: &NodePayload) -> Vec<u8> {
         .to_vec()
 }
 
-/// Parse `source` and return one [`crate::graph::node::NodeType::Symbol`]
-/// node per function/method/type definition found. Does not yet attach
-/// `DefinedIn`/`DependsOn`/`Satisfies` edges — see T-303/T-304.
-pub fn extract(source: &str, language: Language) -> Result<MutationSet, CodeError> {
+struct SymbolInfo {
+    id: StableId,
+    name: String,
+    start_byte: usize,
+    end_byte: usize,
+}
+
+fn edge_id(kind: &str, from: &StableId, to: &StableId) -> StableId {
+    let mut bytes = Vec::with_capacity(kind.len() + 65);
+    bytes.extend_from_slice(kind.as_bytes());
+    bytes.push(b':');
+    bytes.extend_from_slice(from);
+    bytes.extend_from_slice(to);
+    stable_id(&bytes)
+}
+
+/// Parse `source` (the file at `path`) and return: one
+/// [`crate::graph::node::NodeType::Symbol`] node per function/method/type
+/// definition (REQ-302), a `DefinedIn` edge from each symbol to the file
+/// node (REQ-303), and a `DependsOn` edge for each call site whose callee
+/// resolves to another symbol *in the same file* (REQ-303's documented
+/// same-file-only scope).
+pub fn extract(source: &str, language: Language, path: &Path) -> Result<MutationSet, CodeError> {
     let ts_language = language.ts_language();
     let mut parser = Parser::new();
     parser
         .set_language(&ts_language)
         .map_err(|e| CodeError::Language(e.to_string()))?;
     let tree = parser.parse(source, None).ok_or(CodeError::Parse)?;
+    let source_bytes = source.as_bytes();
+    let file_id = file_node_id(&path.to_string_lossy());
 
-    let query = Query::new(&ts_language, language.symbol_query())
+    let symbol_query = Query::new(&ts_language, language.symbol_query())
         .map_err(|e| CodeError::Query(e.to_string()))?;
-    let name_ix = query
+    let name_ix = symbol_query
         .capture_index_for_name("name")
         .expect("every symbol_query defines a @name capture");
-    let def_ix = query
+    let def_ix = symbol_query
         .capture_index_for_name("def")
         .expect("every symbol_query defines a @def capture");
 
-    let source_bytes = source.as_bytes();
-    let mut cursor = QueryCursor::new();
-    let mut matches = cursor.matches(&query, tree.root_node(), source_bytes);
-
     let mut nodes = Vec::new();
-    while let Some(m) = matches.next() {
-        let name_text = m
-            .captures()
-            .iter()
-            .find(|c| c.index == name_ix)
-            .and_then(|c| c.node.utf8_text(source_bytes).ok());
-        let def_node = m.captures().iter().find(|c| c.index == def_ix).map(|c| c.node);
+    let mut edges = Vec::new();
+    let mut symbols: Vec<SymbolInfo> = Vec::new();
 
-        if let (Some(name), Some(def_node)) = (name_text, def_node) {
-            let line_start = def_node.start_position().row as u32;
-            let line_end = def_node.end_position().row as u32;
-            let id = stable_id(format!("{name}@{line_start}").as_bytes());
-            nodes.push(NodeMutation::Upsert {
-                id,
-                payload: rkyv_bytes(&NodePayload::Symbol {
+    {
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(&symbol_query, tree.root_node(), source_bytes);
+        while let Some(m) = matches.next() {
+            let name_text = m
+                .captures()
+                .iter()
+                .find(|c| c.index == name_ix)
+                .and_then(|c| c.node.utf8_text(source_bytes).ok());
+            let def_node = m.captures().iter().find(|c| c.index == def_ix).map(|c| c.node);
+
+            if let (Some(name), Some(def_node)) = (name_text, def_node) {
+                let line_start = def_node.start_position().row as u32;
+                let line_end = def_node.end_position().row as u32;
+                let id = stable_id(format!("{name}@{line_start}").as_bytes());
+                nodes.push(NodeMutation::Upsert {
+                    id,
+                    payload: rkyv_bytes(&NodePayload::Symbol {
+                        name: name.to_string(),
+                        source_hash: id,
+                        line_start,
+                        line_end,
+                    }),
+                });
+                edges.push(EdgeMutation::Upsert {
+                    id: edge_id("defined-in", &id, &file_id),
+                    from: id,
+                    to: file_id,
+                    edge_type: EdgeType::DefinedIn.to_code(),
+                    payload: Vec::new(),
+                });
+                symbols.push(SymbolInfo {
+                    id,
                     name: name.to_string(),
-                    source_hash: id,
-                    line_start,
-                    line_end,
-                }),
+                    start_byte: def_node.start_byte(),
+                    end_byte: def_node.end_byte(),
+                });
+            }
+        }
+    }
+
+    let call_query = Query::new(&ts_language, language.call_query())
+        .map_err(|e| CodeError::Query(e.to_string()))?;
+    let callee_ix = call_query
+        .capture_index_for_name("callee")
+        .expect("every call_query defines a @callee capture");
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(&call_query, tree.root_node(), source_bytes);
+    while let Some(m) = matches.next() {
+        let Some(callee_cap) = m.captures().iter().find(|c| c.index == callee_ix) else {
+            continue;
+        };
+        let Ok(callee_name) = callee_cap.node.utf8_text(source_bytes) else {
+            continue;
+        };
+        let call_byte = callee_cap.node.start_byte();
+        let caller = symbols
+            .iter()
+            .find(|s| s.start_byte <= call_byte && call_byte < s.end_byte);
+        let callee = symbols.iter().find(|s| s.name == callee_name);
+        if let (Some(caller), Some(callee)) = (caller, callee)
+            && caller.id != callee.id
+        {
+            edges.push(EdgeMutation::Upsert {
+                id: edge_id("depends-on", &caller.id, &callee.id),
+                from: caller.id,
+                to: callee.id,
+                edge_type: EdgeType::DependsOn.to_code(),
+                payload: Vec::new(),
             });
         }
     }
 
     Ok(MutationSet {
         nodes,
-        edges: Vec::new(),
+        edges,
         docs: Vec::new(),
     })
 }
@@ -175,6 +259,10 @@ mod tests {
             .collect()
     }
 
+    fn extract_at(source: &str, language: Language) -> MutationSet {
+        extract(source, language, Path::new("test_file")).unwrap()
+    }
+
     #[test]
     fn extracts_function_and_type_per_language() {
         let cases: &[(Language, &str)] = &[
@@ -186,7 +274,7 @@ mod tests {
         ];
 
         for (language, source) in cases {
-            let set = extract(source, *language).unwrap();
+            let set = extract_at(source, *language);
             let mut names = symbol_names(&set);
             names.sort();
             assert_eq!(
@@ -195,5 +283,67 @@ mod tests {
                 "language {language:?} produced unexpected symbols: {names:?}"
             );
         }
+    }
+
+    fn symbol_id(set: &MutationSet, name: &str) -> StableId {
+        set.nodes
+            .iter()
+            .find_map(|m| match m {
+                NodeMutation::Upsert { id, payload } => {
+                    let mut aligned = rkyv::util::AlignedVec::<16>::new();
+                    aligned.extend_from_slice(payload);
+                    let decoded =
+                        rkyv::from_bytes::<NodePayload, rkyv::rancor::Error>(&aligned).unwrap();
+                    match decoded {
+                        NodePayload::Symbol { name: n, .. } if n == name => Some(*id),
+                        _ => None,
+                    }
+                }
+                NodeMutation::Remove { .. } => None,
+            })
+            .unwrap_or_else(|| panic!("no symbol named {name:?}"))
+    }
+
+    fn has_edge(set: &MutationSet, from: StableId, to: StableId, edge_type: EdgeType) -> bool {
+        set.edges.iter().any(|e| match e {
+            EdgeMutation::Upsert {
+                from: f,
+                to: t,
+                edge_type: et,
+                ..
+            } => *f == from && *t == to && *et == edge_type.to_code(),
+            EdgeMutation::Remove { .. } => false,
+        })
+    }
+
+    #[test]
+    fn defined_in_edge_points_from_every_symbol_to_the_file() {
+        let set = extract(
+            "fn a() {}\nfn b() {}\n",
+            Language::Rust,
+            Path::new("src/lib.rs"),
+        )
+        .unwrap();
+        let file_id = file_node_id("src/lib.rs");
+        let a = symbol_id(&set, "a");
+        let b = symbol_id(&set, "b");
+        assert!(has_edge(&set, a, file_id, EdgeType::DefinedIn));
+        assert!(has_edge(&set, b, file_id, EdgeType::DefinedIn));
+    }
+
+    #[test]
+    fn depends_on_edge_links_caller_to_callee_in_same_file() {
+        let set = extract_at("fn a() { b(); }\nfn b() {}\n", Language::Rust);
+        let a = symbol_id(&set, "a");
+        let b = symbol_id(&set, "b");
+        assert!(has_edge(&set, a, b, EdgeType::DependsOn));
+    }
+
+    #[test]
+    fn call_to_unresolved_function_produces_no_edge_and_no_error() {
+        let set = extract_at("fn a() { unknown_function(); }\n", Language::Rust);
+        assert!(set.edges.iter().all(|e| !matches!(e,
+            EdgeMutation::Upsert { edge_type, .. } if *edge_type == EdgeType::DependsOn.to_code()
+        )));
     }
 }

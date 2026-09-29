@@ -24,7 +24,7 @@
   produz os nós esperados para as 5 linguagens.
 - **Gate**: `cargo test code::parser`
 
-## T-303: Edges `DefinedIn` e `DependsOn` (mesmo arquivo)
+## T-303: Edges `DefinedIn` e `DependsOn` (mesmo arquivo) [x]
 - **REQ**: REQ-303
 - **What**: Para cada símbolo extraído, edge `DefinedIn` símbolo→
   `file_node_id(path)`. Para cada call expression dentro de uma função cujo
