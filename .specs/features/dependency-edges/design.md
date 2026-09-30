@@ -99,3 +99,14 @@ Limite conhecido (D5): um import que não resolvia e passa a resolver porque *ou
 - **Explosão em God nodes** (um tipo importado por centenas de arquivos): teto por hop no `trace` (REQ-707) e contagem de omitidos.
 - **Custo do primeiro sync** (REQ-708, ≤ +20%): extração já roda em rayon; o resolver usa um `HashSet` de caminhos e cache por diretório.
 - **Identificadores em posições que não são referência** (propriedades `obj.name`, chaves de objeto): só se consideram identificadores cujo texto é um nome **importado** ou declarado no arquivo e que não são nome de propriedade/chave.
+
+## Resultados (T-708, 2026-09-30)
+
+Medido no clone local do condominium-management-system (1.267 arquivos), `--release`.
+
+- **Aceite do spec.** `trace CachePort` lista todos os usuários no código: `CacheRedisAdapter` (`Extends`), os 3 interceptors, `redis.adapter.ts` (nível de arquivo) e os 2 specs (`[spec]`); `git grep` dá exatamente esses 6 arquivos mais a definição (o "7" do spec contava a definição). `trace AccessUserPersonaReader` lista os 10 usuários + `TypeORMAccessUserPersonaReader`, igual ao `git grep` (12 arquivos − 1 definição − 1 menção em `STATE.md`).
+- **Amostra de arestas.** 40 arquivos sorteados, `Imports` do `trace` contra uma leitura independente dos imports relativos: 9 esperadas, 9 achadas, 0 faltando. As 11 arestas "a mais" eram imports de pacote que o leitor independente não cobria e foram conferidas à mão: `#/oidc.port` (`package.json#imports`) e `@pkgs/nest-core` (pacote do workspace). Nenhum falso positivo encontrado.
+- **Custo (REQ-708).** `sync` a frio, mediana de 5 execuções alternadas, antes (`0b23c99`) × depois: 1,30 s × 1,18 s (razão 0,91, dentro do teto de 1,20). `sync` sem mudanças 19 ms. Teste de orçamento no repo sintético: a frio 2,9 s, 1 arquivo 0,25 s.
+- **Benchmark (BM25), kind `structure`:** condominium recall@5 0,00 → **1,00**; corpus próprio (Rust, só arestas de arquivo) recall@5 0,00 → 0,25 e recall@10 0,00 → **1,00**. Nos demais `kind`s, sem mudança.
+- **Decisão de busca.** Expandir a busca pelas arestas de dependência *para frente* inflava todas as respostas (+35% de tokens no condominium) sem ganho de recall; a expansão ficou nos tipos semânticos de antes. Dependentes ("quem usa X") entram na busca **só quando a pergunta pede** (`what uses`, `callers of`, `quem usa`, …): mesma economia de tokens nas demais perguntas.
+- **Não feito (por escopo):** símbolo-level em Rust/Python/Go (só arquivo→arquivo, como o spec pede); religar importadores não alterados quando um arquivo novo passa a resolver (limite D5).

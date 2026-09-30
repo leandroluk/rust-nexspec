@@ -5,6 +5,7 @@
     "storage-primitives",
     "git-integration",
     "ast-lexical-search",
+    "dependency-edges",
     "vector-engine",
     "token-budgeting",
     "cli-mcp-server"

@@ -1,0 +1,41 @@
+---
+title: "Phase 7 · Dependency Edges"
+description: Who imports, extends, instantiates or calls what — across files.
+---
+
+Adds the relations that answer "what uses X?": imports and references **between** files, resolved to nodes that already exist in the index.
+
+Source: `.specs/features/dependency-edges/`
+
+## Edge vocabulary
+
+| Edge | From → to | Emitted for |
+| --- | --- | --- |
+| `Imports` | file → file | `import`, `require`, `import()`, Rust `use`/`mod`, Python `import`, Go `import` |
+| `ReExports` | file → file | `export … from`, `export * from` |
+| `Calls` | symbol → symbol | a call to a declared or imported name |
+| `Instantiates` | symbol → symbol | `new X()` |
+| `Extends` | symbol → symbol | `extends`, `implements` |
+| `References` | symbol → symbol | types (incl. constructor parameters), decorators, other uses |
+
+Every edge carries a **confidence** (`extracted` when the target was resolved without ambiguity, `inferred` when it fell back to file level) and a **context** (`runtime`, `type-only`, `test`, `spec`).
+
+## How a specifier becomes a file
+
+Relative paths (with extensions and `index.*`), `tsconfig` `paths`/`baseUrl` (following `extends`), `package.json#imports` (`#/*`), and workspace packages (`@scope/pkg`, through `exports`/`source`/`main`). Anything else is external and produces no edge. Barrels are followed: `import { X } from '../cache'` links to the file that *declares* `X`, through `export { X } from` and `export * from` chains.
+
+## Staying correct as code changes
+
+Edges and symbols are owned by the file they come from. When a file changes, is deleted or is renamed, what it no longer produces is removed, and a deleted file also loses the edges that pointed at it. Symbol ids depend on `(path, name, ordinal)`, not line numbers, so editing above a function does not orphan its edges.
+
+Known limit: an import that did not resolve and starts to resolve because *another* file appeared is linked when the importer is next reprocessed.
+
+## Using it
+
+```bash
+nexspec trace CachePort        # dependents (<-) and dependencies, with files, [type-only]/[test]/[inferred] flags
+nexspec search "what uses CachePort"   # also returns the dependents
+nexspec diff --staged          # blast radius of uncommitted edits
+```
+
+`trace` keeps at most 25 new nodes per hop (most trustworthy first) and prints `+N omitted` for the rest. Import cycles are available from the engine (`Engine::import_cycles`) for the report.
