@@ -42,7 +42,7 @@
 - **Done when**: teste de CLI roda um corpus de 3 perguntas num fixture e valida o JSON (campos, `recall@5 == 1.0`) e o Markdown (seção por `kind`, aviso de que tokens são proxy); o repositório-alvo fica sem `.specs/.index`.
 - **Gate**: `cargo test --test bench_cli`
 
-## T-806: Corpora (REQ-804) [ ]
+## T-806: Corpora (REQ-804) [x]
 - **REQ**: REQ-804
 - **What**: `bench/self.toml` (~20 perguntas sobre este repo, 4 kinds, origem em `notes`) e um corpus para `condominium-management-system` (~20 perguntas, incluindo o caso `outbox`) guardado **no repo-alvo** (`.specs/bench/queries.toml`, convenção D9), só lido daqui pelo runner. Verificar cada `expect` contra os arquivos reais antes de gravar.
 - **Where**: `bench/self.toml`, repo externo
@@ -50,7 +50,7 @@
 - **Done when**: `nexspec bench --corpus bench/self.toml` roda limpo; todo `expect` existe no alvo (teste que valida os caminhos de `self.toml` contra `git ls-files`).
 - **Gate**: `cargo test --test bench_corpora`
 
-## T-807: Baseline gravado e portão de regressão (REQ-805) [ ]
+## T-807: Baseline gravado e portão de regressão (REQ-805) [x]
 - **REQ**: REQ-805
 - **What**: `--update-baseline` grava `bench/baseline.json` (resultado + commit); `--check` falha se `recall@5` em `locate` < 0,8 **ou** cair > 5 pontos vs. o baseline. Job `bench` no CI (Linux) rodando `--check` no corpus próprio.
 - **Where**: `src/bench/report.rs`, `src/bin/nexspec.rs`, `bench/baseline.json`, `.github/workflows/ci.yml`

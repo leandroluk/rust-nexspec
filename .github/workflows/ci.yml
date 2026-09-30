@@ -83,3 +83,28 @@ jobs:
         run: cargo test --release --test perf_budget -- --ignored --nocapture
       - name: Complexity (T(2N)/T(N))
         run: cargo test --release --test complexity -- --nocapture
+
+  # REQ-805 (.specs/features/retrieval-benchmark/spec.md): retrieval quality on
+  # this repository's own corpus. BM25 only, so the result does not depend on
+  # a local ONNX model. Fails on locate recall@5 < 0.8 or a drop > 5 points
+  # against bench/baseline.json.
+  bench:
+    name: retrieval benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: bench
+      - name: ONNX Runtime binaries cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ort.pyke.io
+          key: ort-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      - name: Benchmark gate
+        run: |
+          cargo run --release -- bench --corpus bench/self.toml --no-vector --check --output bench-report.md
+          cat bench-report.md >> "$GITHUB_STEP_SUMMARY"
