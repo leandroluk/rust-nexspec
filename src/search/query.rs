@@ -105,4 +105,14 @@ mod tests {
         let no_hits = search_text(&p, "completely_unrelated_zzz", 10).unwrap();
         assert!(no_hits.is_empty());
     }
+
+    #[test]
+    fn identifier_parts_are_searchable_but_whole_identifiers_still_match() {
+        let (_dir, p) = participant_with([3u8; 32], "CsrDeltaCompactor");
+
+        for query in ["csr delta", "compactor", "CsrDeltaCompactor", "csrdeltacompactor"] {
+            assert_eq!(search_text(&p, query, 10).unwrap().len(), 1, "{query:?} must reach CsrDeltaCompactor");
+        }
+        assert!(search_text(&p, "unrelatedword", 10).unwrap().is_empty());
+    }
 }

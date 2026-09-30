@@ -3,6 +3,7 @@
 //! `sync`/`git` — an index/storage concern parallel to the CSR, not a
 //! graph-topology concept.
 
+pub mod ident;
 pub mod query;
 pub mod schema;
 pub mod tantivy_participant;

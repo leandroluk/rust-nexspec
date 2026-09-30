@@ -10,6 +10,7 @@
 //! is a no-op (does not re-`add_document`, which would otherwise duplicate
 //! entries — Tantivy has no upsert-by-id semantics on its own).
 
+use crate::search::ident::{IDENT_TOKENIZER, IdentTokenizer};
 use std::path::Path;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -97,6 +98,7 @@ impl TantivyParticipant {
         let schema = TantivySchema::new();
         let dir = MmapDirectory::open(index_path)?;
         let index = Index::open_or_create(dir, schema.schema.clone())?;
+        index.tokenizers().register(IDENT_TOKENIZER, IdentTokenizer);
         let writer = index.writer::<TantivyDocument>(50_000_000)?;
         let reader = index.reader()?;
         Ok(Self {

@@ -2,7 +2,9 @@
 //! `id` (exact-match fast-path), `kind`, `text` (BM25), `path`.
 
 use tantivy::TantivyDocument;
-use tantivy::schema::{Field, STORED, STRING, Schema, TEXT};
+use tantivy::schema::{Field, IndexRecordOption, STORED, STRING, Schema, TextFieldIndexing, TextOptions};
+
+use crate::search::ident::IDENT_TOKENIZER;
 
 use crate::graph::node::NodePayload;
 use crate::sync::mutation::StableId;
@@ -21,7 +23,15 @@ impl TantivySchema {
         let mut builder = Schema::builder();
         let id_field = builder.add_text_field("id", STRING | STORED);
         let kind_field = builder.add_text_field("kind", STRING | STORED);
-        let text_field = builder.add_text_field("text", TEXT | STORED);
+        // Identifier-aware tokenization: `CsrDelta` is found by "csr delta".
+        let text_options = TextOptions::default()
+            .set_indexing_options(
+                TextFieldIndexing::default()
+                    .set_tokenizer(IDENT_TOKENIZER)
+                    .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+            )
+            .set_stored();
+        let text_field = builder.add_text_field("text", text_options);
         let path_field = builder.add_text_field("path", STRING | STORED);
         Self {
             schema: builder.build(),

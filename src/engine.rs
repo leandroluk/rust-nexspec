@@ -144,8 +144,9 @@ pub struct BlameResult {
 
 /// Version of everything the index derives from the repository. Bump it
 /// whenever extraction or edge semantics change so stale indexes rebuild
-/// themselves instead of serving wrong answers. 2 = capped co-change edges.
-pub const INDEX_FORMAT: u64 = 2;
+/// themselves instead of serving wrong answers. 2 = capped co-change edges,
+/// 3 = identifier-aware tokenizer for the lexical index.
+pub const INDEX_FORMAT: u64 = 3;
 
 /// Knobs for [`Engine::open_with`].
 #[derive(Debug, Clone, Copy)]
