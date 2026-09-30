@@ -133,3 +133,28 @@ fn engine_artifacts_never_count_as_dirty() {
     assert_eq!(second.files_dirty, 0);
     assert!(second.target_version.is_none(), "no-op sync must not stage a new frame");
 }
+
+#[test]
+fn binary_and_lock_files_get_no_file_node_but_sources_do() {
+    let repo = FixtureRepo::init();
+    repo.write_file("src/app.ts", "export function app() {}\n");
+    repo.write_file("assets/logo.png", "not really a png");
+    repo.write_file("pnpm-lock.yaml", "lockfileVersion: 9\n");
+    repo.write_file("docs/notes.md", "# notes\n");
+    repo.commit("chore: seed");
+
+    let db_file = NamedTempFile::new().unwrap();
+    let db = Database::create(db_file.path()).unwrap();
+    let wal_file = NamedTempFile::new().unwrap();
+    let wal = nexspec::sync::Wal::open(wal_file.path()).unwrap();
+    let coordinator = Coordinator::new(wal, VersionPointer::new(&db), vec![Box::new(RedbParticipant::new(&db))]);
+    let mut orchestrator = SyncOrchestrator::new(GitSource::open(repo.path()).unwrap(), coordinator, VersionPointer::new(&db));
+    orchestrator.run_once().unwrap();
+
+    let redb = RedbParticipant::new(&db);
+    let has = |path: &str| redb.get_node(&nexspec::graph::node::file_node_id(path)).unwrap().is_some();
+    assert!(has("src/app.ts"));
+    assert!(has("docs/notes.md"));
+    assert!(!has("assets/logo.png"), "images are not source");
+    assert!(!has("pnpm-lock.yaml"), "lockfiles are noise");
+}

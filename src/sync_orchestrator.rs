@@ -106,7 +106,9 @@ impl<'a> SyncOrchestrator<'a> {
                 combined.edges.extend(extracted.edges);
                 combined.docs.extend(extracted.docs);
             }
-            combined.nodes.push(file_node_mutation(path));
+            if !is_noise_path(path) {
+                combined.nodes.push(file_node_mutation(path));
+            }
         }
         for path in &diff.deleted {
             combined
@@ -148,7 +150,9 @@ impl<'a> SyncOrchestrator<'a> {
                     combined.edges.extend(extracted.edges);
                     combined.docs.extend(extracted.docs);
                 }
-                combined.nodes.push(file_node_mutation(path));
+                if !is_noise_path(path) {
+                    combined.nodes.push(file_node_mutation(path));
+                }
             }
             files_dirty = dirty_paths.len();
         }
@@ -252,6 +256,26 @@ fn known_markers_from(nodes: &[NodeMutation]) -> HashMap<String, StableId> {
 /// downloaded `.models/`): touching them must not make the tree look dirty.
 fn is_engine_artifact(path: &Path) -> bool {
     path.starts_with(".specs/.index") || path.starts_with(".models")
+}
+
+/// Files that are not source material: images, fonts, archives, media and
+/// machine-generated lockfiles. They get no `File` node, so they cannot show
+/// up in search results (a slide PNG ranked in a benchmark run; lockfiles
+/// match every dependency name).
+fn is_noise_path(path: &Path) -> bool {
+    const NOISE_EXTENSIONS: &[&str] = &[
+        "png", "jpg", "jpeg", "gif", "webp", "ico", "bmp", "tiff", "svg", "pdf", "woff", "woff2", "ttf", "otf", "eot",
+        "zip", "gz", "tgz", "bz2", "xz", "7z", "rar", "jar", "exe", "dll", "so", "dylib", "bin", "wasm", "onnx", "mp3",
+        "mp4", "mov", "wav", "avi", "webm", "sqlite", "db", "lock",
+    ];
+    const NOISE_FILE_NAMES: &[&str] = &["package-lock.json", "pnpm-lock.yaml", "yarn.lock", "Cargo.lock", "composer.lock"];
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    if NOISE_FILE_NAMES.contains(&name) {
+        return true;
+    }
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| NOISE_EXTENSIONS.iter().any(|n| n.eq_ignore_ascii_case(ext)))
 }
 
 fn is_markdown(path: &Path) -> bool {
