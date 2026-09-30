@@ -36,6 +36,10 @@ Deterministic dependency trace from a `REQ-XXX` / `ADR-XXX` marker or a symbol n
 
 **AST-aware blame**: finds the symbol, resolves its line range, and runs native `gix` blame scoped to those lines. Prints, per hunk, the commit, author and line range, plus files that co-change with the symbol's file. `--full-history` replaces the default co-change window (500 commits / 6 months) with an unbounded walk.
 
+## `bench [--corpus FILE] [--k 5,10] [--no-vector] [--check [BASELINE]] [--update-baseline [FILE]]`
+
+Measures retrieval quality (`recall@k`, MRR) and token cost against a question corpus, without writing into the repository. See [Retrieval benchmark](/docs/benchmark) for the corpus format, the baselines and the CI gate.
+
 ## `diff --staged`
 
 Structural change analysis for CI and review: symbols touched by the dirty/staged tree, plus their direct dependants (one hop). Purely structural — it never loads Tantivy or embeddings.

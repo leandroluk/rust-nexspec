@@ -66,7 +66,7 @@
 - **Done when**: cada mudança aceita tem delta positivo ou neutro no `locate` sem piorar `structure`/`traceability` > 2 pontos; o caso `outbox` passa a ter `outbox.decorator.ts` no top-5; `bench/baseline.json` atualizado.
 - **Gate**: `cargo test && nexspec bench --corpus bench/self.toml --check`
 
-## T-809: Relatório honesto (REQ-807) [ ]
+## T-809: Relatório honesto (REQ-807) [x]
 - **REQ**: REQ-807, REQ-808
 - **What**: bloco de custo fixo por sessão (tokens de STATE.md + skill, medidos por arquivo, configuráveis por `--fixed-cost-file`), economia de localização separada da economia total, comparação `nexspec` vs. `graphify benchmark` nas mesmas perguntas (formato de razão de redução).
 - **Where**: `src/bench/report.rs`, `docs/content`

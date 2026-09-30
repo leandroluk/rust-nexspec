@@ -1,0 +1,65 @@
+---
+title: Retrieval benchmark
+description: Measure how well nexspec finds things and what it costs in tokens.
+---
+
+`nexspec bench` answers two questions with numbers instead of impressions:
+
+1. **Quality** — for a list of questions, does the expected file, symbol or requirement show up in the top *k*?
+2. **Cost** — how many tokens does the answer take compared with what you would spend without an index?
+
+It runs the same `search` an agent uses. The index is built in a **temporary directory**, so the repository being measured is only read, never written to.
+
+## Run it
+
+```bash
+nexspec bench --repo <PROJECT>                      # uses <PROJECT>/.specs/bench/queries.toml
+nexspec bench --corpus bench/self.toml              # this repository's own corpus
+nexspec bench --format json --output report.json    # machine-readable
+nexspec bench --no-vector                           # BM25 only: same result on every machine
+```
+
+## The corpus
+
+A TOML file of questions. Each one names what a good answer contains:
+
+```toml
+[[query]]
+id = "locate-outbox-decorator"
+kind = "locate"                 # locate | structure | behavior | traceability
+query = "outbox decorator repository dispatch"
+grep = "outbox"                 # key term for the grep baseline (default: first word)
+expect = ["pkgs/nest-sql/src/module/typeorm/decorator/outbox.decorator.ts"]
+notes = "why this question exists"
+```
+
+`expect` entries are files (a path suffix is enough), symbols (`OutboxDecorator`) or markers (`REQ-021b`). The default location for a project's corpus is `.specs/bench/queries.toml`; this repository keeps its own in `bench/self.toml`.
+
+## What is measured
+
+| Metric | Meaning |
+|---|---|
+| `recall@k` | Fraction of the expected items inside the first *k* results (files, symbols and markers each de-duplicated, first appearance wins). |
+| `MRR` | 1 / rank of the first relevant result. |
+| tokens | The answer nexspec produces within `--budget` tokens, against three baselines: `grep -rn <term>`, reading the expected files whole, and reading the whole corpus. |
+
+`behavior` questions also need the expected files read after the search, so that reading is **added** to nexspec's cost. Token counts use a local tokenizer (a proxy, not billing).
+
+## What the saving does not include
+
+The report separates *finding the place* from the whole cost of a session. Pass the files an agent loads every session and the report states the fixed cost and how many questions it takes to pay for itself:
+
+```bash
+nexspec bench --fixed-cost-file .specs/project/STATE.md --fixed-cost-file SKILL.md
+```
+
+It also prints a `graphify-style summary` line (naive corpus read, average nexspec answer, reduction ratio) so the same questions can be compared with `graphify benchmark`.
+
+## Gate for CI
+
+```bash
+nexspec bench --corpus bench/self.toml --no-vector --update-baseline   # record bench/baseline.json
+nexspec bench --corpus bench/self.toml --no-vector --check             # exit 1 on regression
+```
+
+`--check` fails when `locate` recall@5 is below `--min-locate-recall` (default 0.8) or any recall fell more than 5 points against the recorded baseline. Latency and token counts never fail a build.
