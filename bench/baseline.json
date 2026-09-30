@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "repo_commit": "cd560db30e5b6d7fead639ceacbf9b4e8a144aed",
+  "vector_search": false,
+  "ks": [
+    5,
+    10
+  ],
+  "by_kind": {
+    "behavior": {
+      "queries": 2,
+      "recall": {
+        "10": 0.75,
+        "5": 0.5
+      },
+      "mrr": 1.0
+    },
+    "locate": {
+      "queries": 15,
+      "recall": {
+        "10": 1.0,
+        "5": 0.8666666666666667
+      },
+      "mrr": 0.8037037037037037
+    },
+    "structure": {
+      "queries": 2,
+      "recall": {
+        "10": 0.0,
+        "5": 0.0
+      },
+      "mrr": 0.0
+    },
+    "traceability": {
+      "queries": 3,
+      "recall": {
+        "10": 1.0,
+        "5": 1.0
+      },
+      "mrr": 1.0
+    }
+  }
+}
