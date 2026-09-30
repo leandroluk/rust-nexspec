@@ -215,7 +215,7 @@ pub fn run(corpus: &Corpus, options: &BenchOptions) -> Result<BenchReport, Bench
 
     Ok(BenchReport {
         tool_version: env!("CARGO_PKG_VERSION").to_string(),
-        repo: repo.display().to_string(),
+        repo: display_path(&repo),
         repo_commit,
         corpus_commit: corpus.commit.clone(),
         tokenizer: options.tokenizer,
@@ -260,6 +260,12 @@ fn summarize(rows: &[&QueryResult], recall: Vec<(usize, f64)>, mrr: f64, corpus_
 
 fn savings(nexspec: u64, baseline: u64) -> f64 {
     if baseline == 0 { 0.0 } else { 1.0 - nexspec as f64 / baseline as f64 }
+}
+
+/// Path for humans: without Windows' `\\?\` verbatim prefix that `canonicalize` adds.
+fn display_path(path: &Path) -> String {
+    let text = path.display().to_string();
+    text.strip_prefix("\\\\?\\").map_or(text.clone(), str::to_string)
 }
 
 fn hex_oid(oid: &[u8; 20]) -> String {

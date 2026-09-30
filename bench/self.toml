@@ -1,0 +1,169 @@
+# Retrieval benchmark corpus for this repository (REQ-804). Expectations were
+# written by reading the code; `notes` records why each question exists.
+# Run:  nexspec bench --corpus bench/self.toml
+# Gate: `locate` recall@5 >= 0.8 (REQ-805); structure/traceability are tracked, not gated.
+
+# ---- locate: where is X? -------------------------------------------------
+
+[[query]]
+id = "locate-sync-orchestrator"
+kind = "locate"
+query = "sync orchestrator run once diff since last indexed commit"
+grep = "run_once"
+expect = ["src/sync_orchestrator.rs"]
+
+[[query]]
+id = "locate-wal"
+kind = "locate"
+query = "write ahead log frame crc commit marker"
+grep = "Wal"
+expect = ["src/sync/wal.rs"]
+
+[[query]]
+id = "locate-cochange"
+kind = "locate"
+query = "co-change edges files changed together in the same commit"
+grep = "co_change"
+expect = ["src/git/cochange.rs"]
+
+[[query]]
+id = "locate-rrf"
+kind = "locate"
+query = "reciprocal rank fusion seed discovery bm25 vector"
+grep = "seed_discovery"
+expect = ["src/hybrid.rs"]
+
+[[query]]
+id = "locate-hnsw"
+kind = "locate"
+query = "hnsw vector index participant persisted points"
+grep = "Hnsw"
+expect = ["src/vector/hnsw.rs"]
+
+[[query]]
+id = "locate-treesitter-symbols"
+kind = "locate"
+query = "tree-sitter symbol extraction queries per language"
+grep = "tree_sitter"
+expect = ["src/code/parser.rs"]
+
+[[query]]
+id = "locate-markdown-markers"
+kind = "locate"
+query = "markdown requirement task adr marker extraction"
+grep = "marker"
+expect = ["src/graph/markdown.rs"]
+
+[[query]]
+id = "locate-token-budget"
+kind = "locate"
+query = "token budget tiers fit items safety margin"
+grep = "Budget"
+expect = ["src/token/budget.rs"]
+
+[[query]]
+id = "locate-mcp-server"
+kind = "locate"
+query = "mcp server tools query_context trace_requirement"
+grep = "query_context"
+expect = ["src/mcp.rs"]
+
+[[query]]
+id = "locate-sync-lock"
+kind = "locate"
+query = "cross process lock waits timeout index directory"
+grep = "SyncLock"
+expect = ["src/sync/lock.rs"]
+
+[[query]]
+id = "locate-csr-compaction"
+kind = "locate"
+query = "csr delta compaction threshold fold into base"
+grep = "compaction"
+expect = ["src/graph/csr/participant.rs"]
+
+[[query]]
+id = "locate-dirty-cache"
+kind = "locate"
+query = "dirty cache working tree changes since last scan"
+grep = "DirtyCache"
+expect = ["src/git/dirty_cache.rs"]
+
+[[query]]
+id = "locate-embedder"
+kind = "locate"
+query = "onnx embedder model tokenizer mean pooling"
+grep = "Embedder"
+expect = ["src/vector/embedder.rs"]
+
+[[query]]
+id = "locate-tantivy-schema"
+kind = "locate"
+query = "tantivy schema id kind text path fields"
+grep = "TantivySchema"
+expect = ["src/search/schema.rs"]
+
+[[query]]
+id = "locate-blame"
+kind = "locate"
+query = "blame symbol line range hunks"
+grep = "blame"
+expect = ["src/git/blame.rs"]
+
+# ---- structure: who depends on / uses X? (needs cross-file edges: Fase 7) ---
+
+[[query]]
+id = "structure-seed-discovery-callers"
+kind = "structure"
+query = "who calls seed_discovery"
+grep = "seed_discovery"
+expect = ["src/engine.rs"]
+notes = "cross-file call; expected to MISS until dependency edges (Fase 7) land"
+
+[[query]]
+id = "structure-csrdelta-users"
+kind = "structure"
+query = "what uses CsrDelta"
+grep = "CsrDelta"
+expect = ["src/graph/csr/facade.rs", "src/graph/csr/participant.rs"]
+notes = "cross-file references; expected to MISS until Fase 7"
+
+# ---- behavior: how does X work? (needs reading afterwards) -----------------
+
+[[query]]
+id = "behavior-crash-recovery"
+kind = "behavior"
+query = "how does crash recovery replay pending wal frames"
+grep = "resume"
+expect = ["src/sync/coordinator.rs", "src/sync/wal.rs"]
+
+[[query]]
+id = "behavior-hybrid-search"
+kind = "behavior"
+query = "how does search combine bm25 and vector results"
+grep = "seed_discovery"
+expect = ["src/hybrid.rs", "src/engine.rs"]
+
+# ---- traceability: which requirement / where is it specified? ---------------
+
+[[query]]
+id = "trace-cochange-cap"
+kind = "traceability"
+query = "REQ-903 cap co-change edges per commit"
+grep = "REQ-903"
+expect = ["REQ-903"]
+notes = "spec lives in .specs/features/performance-guard/spec.md"
+
+[[query]]
+id = "trace-lock-wait"
+kind = "traceability"
+query = "REQ-907 second sync waits instead of database already open"
+grep = "REQ-907"
+expect = ["REQ-907"]
+
+[[query]]
+id = "trace-orchestrator"
+kind = "traceability"
+query = "REQ-205 sync orchestrator single stage call"
+grep = "REQ-205"
+expect = ["REQ-205"]
