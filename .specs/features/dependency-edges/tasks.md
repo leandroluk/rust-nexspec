@@ -16,7 +16,7 @@
 - **Done when**: editar linhas acima de uma função mantém o mesmo id; remover uma função do arquivo remove o nó e as arestas; apagar o arquivo remove todos os símbolos dele.
 - **Gate**: `cargo test --test sync_orchestrator --test regressions && cargo test code::`
 
-## T-703: Fatos de arquivo TS/JS (REQ-701, REQ-711) [ ]
+## T-703: Fatos de arquivo TS/JS (REQ-701, REQ-711) [x]
 - **REQ**: REQ-701, REQ-711
 - **What**: `FileFacts { imports[{specifier, names[{imported, local, type_only}], namespace, kind}], reexports[...], usages[{local name, byte, role}] }` via Tree-sitter: `import … from`, `import type`, `export … from`, `export * [as ns] from`, `import("x")`, `require("x")`; usos de identificadores com o papel sintático (heritage, `new`, chamada, decorator, tipo, outro), ignorando nomes de propriedade/chave.
 - **Where**: `src/code/facts.rs`

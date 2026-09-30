@@ -16,6 +16,8 @@ use crate::sync::mutation::{EdgeMutation, MutationSet, NodeMutation, StableId};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Language {
     TypeScript,
+    /// `.tsx`: the TSX grammar, so JSX does not turn the file into error nodes.
+    Tsx,
     JavaScript,
     Python,
     Go,
@@ -25,7 +27,8 @@ pub enum Language {
 impl Language {
     pub fn from_extension(path: &Path) -> Option<Self> {
         match path.extension().and_then(|e| e.to_str())? {
-            "ts" | "tsx" => Some(Language::TypeScript),
+            "ts" | "mts" | "cts" => Some(Language::TypeScript),
+            "tsx" => Some(Language::Tsx),
             "js" | "jsx" | "mjs" | "cjs" => Some(Language::JavaScript),
             "py" => Some(Language::Python),
             "go" => Some(Language::Go),
@@ -34,9 +37,15 @@ impl Language {
         }
     }
 
+    /// Whether files in this language have `import`/`export` module facts.
+    pub fn has_module_facts(self) -> bool {
+        matches!(self, Language::TypeScript | Language::Tsx | Language::JavaScript)
+    }
+
     pub(crate) fn ts_language(self) -> tree_sitter::Language {
         match self {
             Language::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            Language::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
             Language::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
             Language::Python => tree_sitter_python::LANGUAGE.into(),
             Language::Go => tree_sitter_go::LANGUAGE.into(),
@@ -70,7 +79,7 @@ impl Language {
                  (class_declaration name: (_) @name) @def
                  (method_definition name: (_) @name) @def"
             }
-            Language::TypeScript => {
+            Language::TypeScript | Language::Tsx => {
                 "(function_declaration name: (_) @name) @def
                  (class_declaration name: (_) @name) @def
                  (abstract_class_declaration name: (_) @name) @def
@@ -90,7 +99,7 @@ impl Language {
             Language::Rust => "(call_expression function: (identifier) @callee)",
             Language::Python => "(call function: (identifier) @callee)",
             Language::Go => "(call_expression function: (identifier) @callee)",
-            Language::JavaScript | Language::TypeScript => {
+            Language::JavaScript | Language::TypeScript | Language::Tsx => {
                 "(call_expression function: (identifier) @callee)"
             }
         }
@@ -119,14 +128,15 @@ struct CompiledQueries {
 }
 
 fn compiled_queries(language: Language) -> Result<&'static CompiledQueries, CodeError> {
-    static CELLS: [OnceLock<Result<CompiledQueries, String>>; 5] =
-        [const { OnceLock::new() }; 5];
+    static CELLS: [OnceLock<Result<CompiledQueries, String>>; 6] =
+        [const { OnceLock::new() }; 6];
     let slot = match language {
         Language::TypeScript => 0,
         Language::JavaScript => 1,
         Language::Python => 2,
         Language::Go => 3,
         Language::Rust => 4,
+        Language::Tsx => 5,
     };
     CELLS[slot]
         .get_or_init(|| {
@@ -387,6 +397,7 @@ mod tests {
     fn compiled_queries_are_built_once_per_language() {
         for language in [
             Language::TypeScript,
+            Language::Tsx,
             Language::JavaScript,
             Language::Python,
             Language::Go,

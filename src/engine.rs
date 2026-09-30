@@ -92,6 +92,7 @@ fn language_label(language: Language) -> &'static str {
         Language::Go => "go",
         Language::JavaScript => "javascript",
         Language::TypeScript => "typescript",
+        Language::Tsx => "tsx",
     }
 }
 

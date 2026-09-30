@@ -2,6 +2,7 @@
 //! `.specs/features/ast-lexical-search/design.md`.
 
 pub mod batch;
+pub mod facts;
 pub mod parser;
 
 pub use batch::{extract_all, extract_each};
