@@ -1,0 +1,85 @@
+name: CI
+
+# REQ-906 (.specs/features/performance-guard/spec.md): tests, lint and the
+# time budget on both platforms the tool supports.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 3 * * *' # nightly: full-size budget run
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, ${{ matrix.build }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        build: [full, lean]
+    env:
+      CARGO_FLAGS: ${{ matrix.build == 'lean' && '--no-default-features --features lean' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.build }}
+      # `ort` downloads its ONNX Runtime binaries at build time; keep them.
+      - name: Cache ONNX Runtime binaries
+        if: matrix.build == 'full'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ort.pyke.io
+            ~/AppData/Local/ort.pyke.io
+          key: ort-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      - name: Clippy
+        run: cargo clippy --all-targets ${{ env.CARGO_FLAGS }} -- -D warnings
+      - name: Test
+        run: cargo test ${{ env.CARGO_FLAGS }}
+
+  perf-budget:
+    name: perf budget (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      # Pull requests use a quarter-size synthetic repo; the nightly run uses
+      # the full reference shape (design.md D4).
+      NEXSPEC_SYNTH_SCALE: ${{ github.event_name == 'schedule' && '1.0' || '0.25' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: perf
+      - name: ONNX Runtime binaries cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ort.pyke.io
+            ~/AppData/Local/ort.pyke.io
+          key: ort-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      - name: Time budgets (sync, queries)
+        run: cargo test --release --test perf_budget -- --ignored --nocapture
+      - name: Complexity (T(2N)/T(N))
+        run: cargo test --release --test complexity -- --nocapture
