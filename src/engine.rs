@@ -174,6 +174,23 @@ pub struct BlameResult {
 /// 5 = `Edge.meta` and the dependency edge types.
 pub const INDEX_FORMAT: u64 = 5;
 
+/// Dependents appended to a search result after the seeds and their own
+/// neighbours (REQ-707: bounded, so a widely used type cannot flood an answer).
+const MAX_DEPENDENTS_IN_SEARCH: usize = 15;
+
+/// Whether a query asks who depends on something ("what uses X", "callers of
+/// Y", "quem usa Z"). Dependents make answers bigger, so they are only added
+/// when asked for: a locate question does not pay for them.
+pub fn asks_for_dependents(query: &str) -> bool {
+    const TRIGGERS: &[&str] = &[
+        "uses", "used by", "users of", "who calls", "callers", "caller of", "depends on", "dependents", "depend on",
+        "impact", "references", "referenced", "imports", "importers", "imported by", "who uses", "what uses",
+        "quem usa", "quem chama", "quem depende", "usado por", "depende de", "dependentes", "impacto",
+    ];
+    let lowered = query.to_lowercase();
+    TRIGGERS.iter().any(|t| lowered.contains(t))
+}
+
 /// Knobs for [`Engine::open_with`].
 #[derive(Debug, Clone, Copy)]
 pub struct EngineOptions {
@@ -397,12 +414,33 @@ impl Engine {
 
         let fused = seed_discovery_weighted(&bm25_ranked, &hnsw_ranked, FusionWeights::from_env());
         let seed_ids: Vec<StableId> = fused.iter().map(|(id, _)| *id).collect();
-        let expanded = expand(
-            &seed_ids,
-            &self.csr,
-            &[EdgeType::DependsOn, EdgeType::Satisfies, EdgeType::DefinedIn, EdgeType::Implements],
-            1,
-        );
+        // One hop out along the semantic edges (forward dependency edges are
+        // deliberately not followed: they fill answers with neighbours nobody
+        // asked about; `trace` is the tool for walking them).
+        let expansion_edges = [EdgeType::DependsOn, EdgeType::Satisfies, EdgeType::DefinedIn, EdgeType::Implements];
+        let mut expanded = expand(&seed_ids, &self.csr, &expansion_edges, 1);
+        // Who depends on the seeds is added only when the question asks for it.
+        let known: std::collections::HashSet<StableId> = expanded.iter().copied().collect();
+        if asks_for_dependents(query) {
+            // The seeds' files count as targets too: an importer of the file
+            // depends on what it declares even when no symbol-level edge exists.
+            let mut file_targets = Vec::new();
+            for id in &seed_ids {
+                if let Some(path) = self.file_path_of(id)? {
+                    file_targets.push(file_node_id(&path));
+                }
+            }
+            // Symbol-level dependents first, file-level importers after them.
+            let mut dependents = self.dependents_of(&seed_ids, MAX_DEPENDENTS_IN_SEARCH);
+            dependents.extend(self.dependents_of(&file_targets, MAX_DEPENDENTS_IN_SEARCH));
+            let mut added = std::collections::HashSet::new();
+            expanded.extend(
+                dependents
+                    .into_iter()
+                    .filter(|id| !known.contains(id) && added.insert(*id))
+                    .take(MAX_DEPENDENTS_IN_SEARCH),
+            );
+        }
 
         let redb = RedbParticipant::new(&self.db);
         let mut hits = Vec::new();
@@ -683,6 +721,23 @@ impl Engine {
     pub fn repo_root(&self) -> &Path {
         &self.repo_root
     }
+    /// Nodes with a dependency edge pointing at any of `targets` (who uses
+    /// them), most trustworthy first (extracted before inferred, runtime
+    /// before test/spec), at most `limit`.
+    fn dependents_of(&self, targets: &[StableId], limit: usize) -> Vec<StableId> {
+        let wanted: std::collections::HashSet<&StableId> = targets.iter().collect();
+        let mut found: Vec<(u8, u8, StableId)> = self
+            .csr
+            .all_edges()
+            .into_iter()
+            .filter(|e| e.edge_type.is_dependency() && wanted.contains(&e.to) && !wanted.contains(&e.from))
+            .map(|e| (e.meta & 1, (e.meta >> 1) & 0b11, e.from))
+            .collect();
+        found.sort();
+        found.dedup_by_key(|(_, _, id)| *id);
+        found.into_iter().take(limit).map(|(_, _, id)| id).collect()
+    }
+
     /// Whether the vector half of hybrid search can run (the ONNX model and
     /// tokenizer exist under `<repo>/.models/` in a `full` build).
     pub fn vector_search_available(&self) -> bool {

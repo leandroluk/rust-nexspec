@@ -143,3 +143,38 @@ fn diff_staged_reports_dependents_through_the_new_edges() {
         helper.dependants
     );
 }
+
+fn hit_names(result: &nexspec::SearchResult) -> Vec<String> {
+    result
+        .hits
+        .iter()
+        .filter_map(|h| match &h.payload {
+            NodePayload::Symbol { name, .. } => Some(name.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_question_about_users_gets_the_dependents_and_a_plain_lookup_does_not() {
+    let repo = fixtures::ts_workspace::build();
+    let (_index, engine) = engine_over(&repo);
+
+    let asked = hit_names(&engine.search("what uses CachePort", None).unwrap());
+    assert!(asked.iter().any(|n| n == "Service"), "dependents are added for 'what uses': {asked:?}");
+    assert!(asked.iter().any(|n| n == "RedisAdapter"), "{asked:?}");
+
+    let plain = hit_names(&engine.search("CachePort", None).unwrap());
+    assert!(plain.iter().any(|n| n == "CachePort"));
+    assert!(!plain.iter().any(|n| n == "Service"), "a locate question does not pay for dependents: {plain:?}");
+}
+
+#[test]
+fn dependent_intent_detection_covers_english_and_portuguese() {
+    for yes in ["what uses X", "callers of handle", "who calls seed_discovery", "impact of changing Y", "quem usa o CachePort", "depende de Z"] {
+        assert!(nexspec::engine::asks_for_dependents(yes), "{yes}");
+    }
+    for no in ["outbox decorator repository dispatch", "how does the wal recover", "CachePort"] {
+        assert!(!nexspec::engine::asks_for_dependents(no), "{no}");
+    }
+}
