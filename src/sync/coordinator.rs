@@ -59,6 +59,10 @@ impl<'a> Coordinator<'a> {
         self.commit_all(target_version)?;
         self.version.bump(target_version)?;
         self.wal.mark_done(target_version)?;
+        // Hygiene only: the cycle is already fully applied and durable, so a
+        // failure here must not turn a successful sync into an error. The
+        // next cycle simply tries again.
+        let _ = self.wal.truncate_if_idle();
         Ok(target_version)
     }
 
@@ -104,6 +108,7 @@ impl<'a> Coordinator<'a> {
             }
             self.wal.mark_done(target_version)?;
         }
+        let _ = self.wal.truncate_if_idle(); // hygiene, see `stage`
         Ok(())
     }
 }
@@ -144,6 +149,44 @@ mod tests {
             wal_check.pending_frames().unwrap().is_empty(),
             "wal frame must be marked done after a successful cycle"
         );
+    }
+
+    #[test]
+    fn completed_cycles_do_not_accumulate_in_the_wal() {
+        let (_db_file, db, wal_file) = setup();
+        let wal = Wal::open(wal_file.path()).unwrap();
+        let coordinator = Coordinator::new(
+            wal,
+            VersionPointer::new(&db),
+            vec![Box::new(TestParticipant::default())],
+        );
+        for _ in 0..3 {
+            coordinator.stage(MutationSet::default()).unwrap();
+            assert_eq!(std::fs::metadata(wal_file.path()).unwrap().len(), 0, "idle WAL is truncated");
+        }
+        assert_eq!(VersionPointer::new(&db).current().unwrap(), 3);
+    }
+
+    #[test]
+    fn failed_cycle_keeps_its_frame_and_resume_then_empties_the_wal() {
+        let (_db_file, db, wal_file) = setup();
+        let wal = Wal::open(wal_file.path()).unwrap();
+        let failing = Coordinator::new(
+            wal,
+            VersionPointer::new(&db),
+            vec![Box::new(TestParticipant::failing())],
+        );
+        assert!(failing.stage(MutationSet::default()).is_err());
+        assert!(std::fs::metadata(wal_file.path()).unwrap().len() > 0, "in-flight frame must survive");
+
+        let healthy = Coordinator::new(
+            Wal::open(wal_file.path()).unwrap(),
+            VersionPointer::new(&db),
+            vec![Box::new(TestParticipant::default())],
+        );
+        healthy.resume().unwrap();
+        assert_eq!(VersionPointer::new(&db).current().unwrap(), 1);
+        assert_eq!(std::fs::metadata(wal_file.path()).unwrap().len(), 0, "resume leaves an idle WAL empty");
     }
 
     #[test]

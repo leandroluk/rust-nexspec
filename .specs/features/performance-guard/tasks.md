@@ -109,7 +109,7 @@ Primeiro corte = T-901…T-906 incluindo T-903b, T-904b, T-904c (aprovado em 202
 - **Done when**: teste sobe dois `sync` em paralelo (processos) → ambos terminam sem "Database already open"; com timeout de 1 s e um processo segurando o lock → erro legível.
 - **Gate**: `cargo test --test sync_lock`
 
-## T-910: Higiene do WAL (REQ-908) [ ]
+## T-910: Higiene do WAL (REQ-908) [x]
 - **REQ**: REQ-908
 - **What**: `Wal::truncate_if_idle()` chamado após `mark_done`; testes de crash recovery existentes seguem verdes; `sync.wal` do sintético < 10 MB após dois syncs.
 - **Where**: `src/sync/wal.rs`, `src/sync/coordinator.rs`

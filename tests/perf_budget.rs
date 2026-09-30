@@ -67,6 +67,8 @@ fn sync_and_query_stay_within_budget() {
     let report = engine.sync().expect("cold sync");
     check("cold init+sync", started.elapsed(), "NEXSPEC_BUDGET_COLD_S", 30.0);
     assert!(report.timings.nodes > 0);
+    let wal_size = std::fs::metadata(&wal_path).expect("wal exists").len();
+    assert!(wal_size < 10 * 1024 * 1024, "sync.wal must not accumulate finished cycles, is {wal_size} bytes");
 
     // No changes: fast, and no new WAL frame.
     let wal_before = std::fs::metadata(&wal_path).expect("wal exists").len();

@@ -17,13 +17,15 @@
 
 use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use crate::sync::mutation::MutationSet;
 
 const FRAME_TYPE_MUTATION: u8 = 0;
 const FRAME_TYPE_COMMIT_MARKER: u8 = 1;
+/// `[u8 frame_type][u32 body_len][u64 target_version]`.
+const FRAME_HEADER_LEN: u64 = 13;
 
 #[derive(Debug, thiserror::Error)]
 pub enum WalError {
@@ -78,6 +80,55 @@ impl Wal {
         file.write_all(&buf)?;
         file.sync_data()?;
         Ok(())
+    }
+
+    /// Empties the log when every mutation frame in it has a commit-marker
+    /// (REQ-908 in `.specs/features/performance-guard/spec.md`): finished
+    /// cycles are only history, and without this the file grew by the size of
+    /// every sync forever (113 MB on a mid-sized repository). Returns whether
+    /// it truncated. Call it only after the marker is durable.
+    pub fn truncate_if_idle(&self) -> Result<bool, WalError> {
+        if !self.is_idle()? {
+            return Ok(false);
+        }
+        let file = OpenOptions::new().write(true).open(&self.path)?;
+        file.set_len(0)?;
+        file.sync_data()?;
+        Ok(true)
+    }
+
+    /// Header-only scan (bodies are skipped, not decoded): `true` when no
+    /// mutation frame lacks its commit-marker. A frame cut short at the tail
+    /// is what [`Self::pending_frames`] discards too, so it does not count.
+    fn is_idle(&self) -> Result<bool, WalError> {
+        let file = File::open(&self.path)?;
+        let len = file.metadata()?.len();
+        let mut reader = BufReader::new(file);
+        let mut open_versions: std::collections::BTreeSet<u64> = std::collections::BTreeSet::new();
+        let mut position = 0u64;
+        while len - position >= FRAME_HEADER_LEN {
+            let mut header = [0u8; FRAME_HEADER_LEN as usize];
+            reader.read_exact(&mut header)?;
+            let frame_type = header[0];
+            let body_len = u32::from_le_bytes(header[1..5].try_into().unwrap()) as u64;
+            let target_version = u64::from_le_bytes(header[5..13].try_into().unwrap());
+            let frame_end = position + FRAME_HEADER_LEN + body_len + 4;
+            if frame_end > len {
+                break; // truncated tail
+            }
+            match frame_type {
+                FRAME_TYPE_MUTATION => {
+                    open_versions.insert(target_version);
+                }
+                FRAME_TYPE_COMMIT_MARKER => {
+                    open_versions.remove(&target_version);
+                }
+                _ => return Ok(false), // unknown content: never destroy it
+            }
+            reader.seek(SeekFrom::Start(frame_end))?;
+            position = frame_end;
+        }
+        Ok(open_versions.is_empty())
     }
 
     /// Versions that have a mutation frame with no matching commit-marker,
@@ -175,6 +226,56 @@ mod tests {
         let file = NamedTempFile::new().unwrap();
         let wal = Wal::open(file.path()).unwrap();
         (file, wal)
+    }
+
+    fn set_with_node(byte: u8) -> MutationSet {
+        let mut set = MutationSet::default();
+        set.nodes.push(crate::sync::mutation::NodeMutation::Remove { id: [byte; 32] });
+        set
+    }
+
+    #[test]
+    fn truncate_if_idle_empties_a_fully_committed_log() {
+        let (file, wal) = temp_wal();
+        wal.append_frame(1, &set_with_node(1)).unwrap();
+        wal.mark_done(1).unwrap();
+        assert!(std::fs::metadata(file.path()).unwrap().len() > 0);
+
+        assert!(wal.truncate_if_idle().unwrap());
+        assert_eq!(std::fs::metadata(file.path()).unwrap().len(), 0);
+        assert!(wal.pending_frames().unwrap().is_empty());
+
+        // The log is still usable afterwards.
+        wal.append_frame(2, &set_with_node(2)).unwrap();
+        assert_eq!(wal.pending_frames().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn truncate_if_idle_keeps_a_pending_frame() {
+        let (file, wal) = temp_wal();
+        wal.append_frame(1, &set_with_node(1)).unwrap();
+        wal.mark_done(1).unwrap();
+        wal.append_frame(2, &set_with_node(2)).unwrap(); // no marker: still in flight
+        let before = std::fs::metadata(file.path()).unwrap().len();
+
+        assert!(!wal.truncate_if_idle().unwrap());
+        assert_eq!(std::fs::metadata(file.path()).unwrap().len(), before);
+        assert_eq!(wal.pending_frames().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn truncate_if_idle_on_an_empty_or_torn_log_is_safe() {
+        let (file, wal) = temp_wal();
+        assert!(wal.truncate_if_idle().unwrap(), "empty log counts as idle");
+
+        wal.append_frame(1, &set_with_node(1)).unwrap();
+        wal.mark_done(1).unwrap();
+        // A torn frame at the tail (crash mid-append) is discarded by
+        // pending_frames, so it must not block truncation either.
+        let mut raw = OpenOptions::new().append(true).open(file.path()).unwrap();
+        raw.write_all(&[FRAME_TYPE_MUTATION, 200, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3]).unwrap();
+        assert!(wal.truncate_if_idle().unwrap());
+        assert_eq!(std::fs::metadata(file.path()).unwrap().len(), 0);
     }
 
     #[test]
