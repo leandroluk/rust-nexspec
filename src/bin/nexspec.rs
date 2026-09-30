@@ -60,6 +60,31 @@ enum Command {
     },
     /// Run the embedded MCP server over stdio.
     Mcp,
+    /// Measure retrieval quality and token cost against a question corpus
+    /// (never writes into the repository: the index is built in a temp dir).
+    Bench {
+        /// Corpus TOML. Default: `<repo>/.specs/bench/queries.toml`.
+        #[arg(long)]
+        corpus: Option<PathBuf>,
+        /// Ranks to report recall for, comma separated.
+        #[arg(long = "k", value_delimiter = ',', default_values_t = [5usize, 10])]
+        ks: Vec<usize>,
+        /// Build the index here instead of a temporary directory.
+        #[arg(long)]
+        index_dir: Option<PathBuf>,
+        /// `md` (default) or `json`.
+        #[arg(long, default_value = "md")]
+        format: String,
+        /// `heuristic` (default, offline) or `tiktoken`.
+        #[arg(long, default_value = "heuristic")]
+        tokenizer: String,
+        /// `max_tokens` requested from `search` for each answer.
+        #[arg(long, default_value_t = 2000)]
+        budget: u32,
+        /// Write the report to this file instead of stdout.
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
 }
 
 fn index_dir(repo: &Path) -> PathBuf {
@@ -169,6 +194,30 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Command::Mcp => {
             let engine = Engine::open(&index_dir, &repo)?;
             run_mcp(engine)?;
+        }
+        Command::Bench { corpus, ks, index_dir, format, tokenizer, budget, output } => {
+            use nexspec::bench::{report, runner};
+            let corpus_path = corpus.unwrap_or_else(|| runner::default_corpus_path(&repo));
+            let corpus = nexspec::bench::Corpus::load(&corpus_path)?;
+            let tokenizer = match tokenizer.as_str() {
+                "heuristic" => runner::TokenizerKind::Heuristic,
+                "tiktoken" => runner::TokenizerKind::Tiktoken,
+                other => return Err(format!("unknown tokenizer {other:?} (expected heuristic or tiktoken)").into()),
+            };
+            if !matches!(format.as_str(), "md" | "json") {
+                return Err(format!("unknown format {format:?} (expected md or json)").into());
+            }
+            let mut options = runner::BenchOptions::new(&repo);
+            options.index_dir = index_dir;
+            options.ks = ks;
+            options.budget_tokens = budget;
+            options.tokenizer = tokenizer;
+            let result = runner::run(&corpus, &options)?;
+            let text = if format == "json" { report::to_json(&result) } else { report::to_markdown(&result) };
+            match output {
+                Some(path) => std::fs::write(path, text)?,
+                None => println!("{text}"),
+            }
         }
     }
     Ok(())

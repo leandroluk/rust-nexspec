@@ -25,7 +25,7 @@
 - **Done when**: testes com casos à mão (acerto parcial, nenhum acerto → MRR 0, sufixo de caminho, `expect` com 2 itens e 1 no top-k = 0,5).
 - **Gate**: `cargo test bench::metrics`
 
-## T-804: Baselines de custo (REQ-803, REQ-808) [ ]
+## T-804: Baselines de custo (REQ-803, REQ-808) [x]
 - **REQ**: REQ-803, REQ-808
 - **What**: `grep_tokens(repo, term)` (em processo, mesmos arquivos que o git rastreia, saída `arquivo:linha:texto`), `read_tokens(repo, expect)` (conteúdo integral dos arquivos esperados), `corpus_tokens(repo)` (todos os arquivos indexáveis). Usa `Tokenizer` da Fase 5 (`--tokenizer`).
 - **Where**: `src/bench/baselines.rs`
@@ -34,7 +34,7 @@
 - **Done when**: fixture com 3 arquivos: contagem de grep confere com linhas esperadas; arquivo inexistente em `expect` é erro explícito (não zero silencioso); corpus inteiro = soma dos blobs do HEAD.
 - **Gate**: `cargo test bench::baselines`
 
-## T-805: Runner, relatório e `nexspec bench` [ ]
+## T-805: Runner, relatório e `nexspec bench` [x]
 - **REQ**: REQ-802, REQ-803, REQ-807, REQ-808
 - **What**: `bench::runner::run(&Corpus, &Options) -> BenchReport` (índice temporário + `sync`, latência por consulta, tokens da resposta via `search(query, Some(budget))`). `report`: JSON e Markdown com `recall@k/MRR/tokens/latência` por consulta e por `kind`, economia `1 − nexspec/baseline`, `behavior` com custo somado, bloco "custo fixo do fluxo" separado, razão de redução no formato do `graphify benchmark`. CLI: `nexspec bench --corpus --repo --k --index-dir --format --tokenizer`.
 - **Where**: `src/bench/runner.rs`, `src/bench/report.rs`, `src/bin/nexspec.rs`

@@ -599,6 +599,20 @@ impl Engine {
     pub fn repo_root(&self) -> &Path {
         &self.repo_root
     }
+    /// Whether the vector half of hybrid search can run (the ONNX model and
+    /// tokenizer exist under `<repo>/.models/` in a `full` build).
+    pub fn vector_search_available(&self) -> bool {
+        #[cfg(feature = "full")]
+        {
+            let models = self.repo_root.join(".models");
+            models.join("model_quantized.onnx").exists() && models.join("tokenizer.json").exists()
+        }
+        #[cfg(not(feature = "full"))]
+        {
+            false
+        }
+    }
+
     /// Where a search hit lives, in terms a benchmark corpus can name
     /// (`.specs/features/retrieval-benchmark/design.md`, T-802). The hit's
     /// own location comes first; a requirement/ADR/task hit is followed by
