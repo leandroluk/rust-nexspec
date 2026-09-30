@@ -72,8 +72,11 @@ impl Language {
             Language::TypeScript => {
                 "(function_declaration name: (_) @name) @def
                  (class_declaration name: (_) @name) @def
+                 (abstract_class_declaration name: (_) @name) @def
                  (method_definition name: (_) @name) @def
-                 (interface_declaration name: (_) @name) @def"
+                 (interface_declaration name: (_) @name) @def
+                 (enum_declaration name: (_) @name) @def
+                 (type_alias_declaration name: (_) @name) @def"
             }
         }
     }
@@ -317,6 +320,20 @@ mod tests {
                 "language {language:?} produced unexpected symbols: {names:?}"
             );
         }
+    }
+
+    #[test]
+    fn typescript_extracts_abstract_class_enum_and_type_alias() {
+        let set = extract_at(
+            "export abstract class Reader {}
+export enum Kind { A }
+export type Id = string;
+",
+            Language::TypeScript,
+        );
+        let mut names = symbol_names(&set);
+        names.sort();
+        assert_eq!(names, vec!["Id", "Kind", "Reader"]);
     }
 
     fn symbol_id(set: &MutationSet, name: &str) -> StableId {
