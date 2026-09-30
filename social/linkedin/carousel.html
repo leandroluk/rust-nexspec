@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NexSpec — LinkedIn carousel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Oxanium:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  @page { size: 1080px 1350px; margin: 0; }
+  :root { --bg:#0a0b0e; --panel:#13151a; --line:#262a33; --fg:#f4f5f7; --mute:#9aa0ab; --g:#16dc9f; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { background: #000; }
+  body { font-family: Inter, system-ui, sans-serif; color: var(--fg); }
+  .slide { width:1080px; height:1350px; background:var(--bg); position:relative; overflow:hidden;
+           padding:96px 88px; display:flex; flex-direction:column; page-break-after:always; break-after:page; }
+  .slide::before { content:""; position:absolute; right:-260px; top:-260px; width:640px; height:640px; border-radius:50%;
+           background:radial-gradient(circle, rgba(22,220,159,.16), transparent 68%); }
+  .brand { display:flex; align-items:center; gap:14px; font-family:Oxanium; font-weight:600; font-size:34px; letter-spacing:.5px; }
+  .brand svg { width:40px; height:40px; }
+  .brand b { color:var(--g); font-weight:600; }
+  .tag { font-family:"JetBrains Mono"; font-size:24px; color:var(--g); letter-spacing:2px; text-transform:uppercase; margin-top:110px; }
+  h1 { font-family:Oxanium; font-weight:700; font-size:104px; line-height:1.02; margin-top:26px; letter-spacing:-1px; }
+  h2 { font-family:Oxanium; font-weight:700; font-size:78px; line-height:1.06; margin-top:22px; letter-spacing:-.5px; }
+  h1 em, h2 em { color:var(--g); font-style:normal; }
+  p.lead { font-size:36px; line-height:1.4; color:var(--mute); margin-top:40px; }
+  p.lead strong { color:var(--fg); font-weight:600; }
+  .spacer { flex:1; }
+  .foot { display:flex; justify-content:space-between; align-items:center; font-family:"JetBrains Mono"; font-size:22px; color:var(--mute); }
+  .dots { display:flex; gap:10px; }
+  .dots i { width:12px; height:12px; border-radius:50%; background:var(--line); }
+  .dots i.on { background:var(--g); }
+  ul.list { list-style:none; padding:0; margin-top:48px; display:flex; flex-direction:column; gap:26px; }
+  ul.list li { font-size:34px; line-height:1.35; padding-left:44px; position:relative; }
+  ul.list li::before { content:""; position:absolute; left:0; top:15px; width:20px; height:20px; border-radius:6px; background:var(--g); }
+  ul.list li span { color:var(--mute); }
+  .box { background:var(--panel); border:2px solid var(--line); border-radius:22px; padding:26px 30px; }
+  .box .t { font-family:Oxanium; font-weight:600; font-size:34px; }
+  .box .d { font-family:"JetBrains Mono"; font-size:22px; color:var(--mute); margin-top:8px; }
+  .box.hot { border-color:var(--g); }
+  .box.hot .t { color:var(--g); }
+  .flow { display:flex; flex-direction:column; gap:0; margin-top:30px; align-items:stretch; }
+  .arrow { text-align:center; color:var(--g); font-size:40px; line-height:52px; font-family:"JetBrains Mono"; }
+  .row { display:grid; gap:18px; }
+  .row.c2 { grid-template-columns:1fr 1fr; }
+  .row.c4 { grid-template-columns:repeat(4,1fr); }
+  .row.c4 .box { padding:22px 18px; text-align:center; }
+  .row.c4 .t { font-size:28px; }
+  .row.c4 .d { font-size:18px; }
+  pre { background:var(--panel); border:2px solid var(--line); border-radius:22px; padding:28px 38px; margin-top:36px;
+        font-family:"JetBrains Mono"; font-size:27px; line-height:1.75; color:#dfe3ea; white-space:pre-wrap; }
+  pre .c { color:#6d7480; } pre .g { color:var(--g); }
+  .pipe { display:flex; flex-direction:column; gap:14px; margin-top:48px; }
+  .step { display:flex; align-items:center; gap:24px; background:var(--panel); border:2px solid var(--line); border-radius:20px; padding:20px 28px; }
+  .step .n { font-family:Oxanium; font-weight:700; font-size:34px; color:#04120d; background:var(--g); width:56px; height:56px; border-radius:14px; display:grid; place-items:center; flex:none; }
+  .step .x { font-size:30px; font-weight:600; }
+  .step .y { font-size:23px; color:var(--mute); margin-top:2px; }
+  .center { align-items:flex-start; }
+  .cta-link { font-family:"JetBrains Mono"; font-size:32px; color:var(--g); margin-top:14px; }
+  .pill { display:inline-block; border:2px solid var(--line); border-radius:999px; padding:12px 26px; font-size:26px; color:var(--mute); margin:22px 14px 0 0; }
+  body.single .slide { display:none; } body.single .slide.show { display:flex; }
+</style>
+</head>
+<body>
+
+<!-- 1 · cover -->
+<section class="slide">
+  <div class="brand"><svg viewBox="346 333 199 199" fill="none"><path d="M349 337 C400 358 442 386 475 413 V469 C430 437 392 408 349 376 Z" fill="#16dc9f"/><path d="M349 395 L394 427 V520 Q394 528 386 528 H357 Q349 528 349 520 Z" fill="#fff"/><path d="M497 340 H533 Q541 340 541 348 V521 Q541 529 533 529 Q526 529 521 523 L497 494 Z" fill="#fff"/></svg><span>Nex<b>Spec</b></span></div>
+  <div class="tag">Open source · Rust</div>
+  <h1>Context for AI coding agents,<br><em>in one binary.</em></h1>
+  <p class="lead">Code and specs indexed into a single graph. Searched, traced and served <strong>within a token budget</strong>.</p>
+  <div class="spacer"></div>
+  <div class="foot"><span>swipe →</span><div class="dots"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+</section>
+
+<!-- 2 · problem -->
+<section class="slide">
+  <div class="brand"><svg viewBox="346 333 199 199" fill="none"><path d="M349 337 C400 358 442 386 475 413 V469 C430 437 392 408 349 376 Z" fill="#16dc9f"/><path d="M349 395 L394 427 V520 Q394 528 386 528 H357 Q349 528 349 520 Z" fill="#fff"/><path d="M497 340 H533 Q541 340 541 348 V521 Q541 529 533 529 Q526 529 521 523 L497 494 Z" fill="#fff"/></svg><span>Nex<b>Spec</b></span></div>
+  <div class="tag">The problem</div>
+  <h2>Agents read <em>files</em>.<br>Projects are made of <em>relationships</em>.</h2>
+  <ul class="list">
+    <li>Whole files get dumped into the prompt <span>— tokens burn on code the task never needed.</span></li>
+    <li>Specs and code live apart <span>— which function satisfies REQ-105?</span></li>
+    <li>Impact is guesswork <span>— what breaks if I change this symbol?</span></li>
+    <li>External indexers mean daemons, interpreters and setup.</li>
+  </ul>
+  <div class="spacer"></div>
+  <div class="foot"><span>02 / 08</span><div class="dots"><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+</section>
+
+<!-- 3 · idea -->
+<section class="slide">
+  <div class="brand"><svg viewBox="346 333 199 199" fill="none"><path d="M349 337 C400 358 442 386 475 413 V469 C430 437 392 408 349 376 Z" fill="#16dc9f"/><path d="M349 395 L394 427 V520 Q394 528 386 528 H357 Q349 528 349 520 Z" fill="#fff"/><path d="M497 340 H533 Q541 340 541 348 V521 Q541 529 533 529 Q526 529 521 523 L497 494 Z" fill="#fff"/></svg><span>Nex<b>Spec</b></span></div>
+  <div class="tag">The idea</div>
+  <h2>One graph for <em>specs + code</em>.</h2>
+  <div class="row c2" style="margin-top:56px">
+    <div class="box"><div class="t">Nodes</div><div class="d">Requirement · Task · ADR · DocSection · Symbol · File</div></div>
+    <div class="box"><div class="t">Edges</div><div class="d">Satisfies · DependsOn · Implements · DefinedIn</div></div>
+  </div>
+  <pre><span class="c">// @spec REQ-105</span>
+<span class="g">fn</span> compact_delta(base, delta) { … }
+
+<span class="c">$ nexspec trace REQ-105</span>
+depth=0 Requirement  Two-layer CSR
+depth=1 <span class="g">Satisfies</span>  compact_delta
+depth=2 <span class="g">DefinedIn</span>  src/graph/csr.rs</pre>
+  <div class="spacer"></div>
+  <div class="foot"><span>03 / 08</span><div class="dots"><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div></div>
+</section>
+
+<!-- 4 · architecture -->
+<section class="slide">
+  <div class="brand"><svg viewBox="346 333 199 199" fill="none"><path d="M349 337 C400 358 442 386 475 413 V469 C430 437 392 408 349 376 Z" fill="#16dc9f"/><path d="M349 395 L394 427 V520 Q394 528 386 528 H357 Q349 528 349 520 Z" fill="#fff"/><path d="M497 340 H533 Q541 340 541 348 V521 Q541 529 533 529 Q526 529 521 523 L497 494 Z" fill="#fff"/></svg><span>Nex<b>Spec</b></span></div>
+  <div class="tag">How it works · indexing</div>
+  <h2>Git in, <em>consistent</em> indexes out.</h2>
+  <div class="flow">
+    <div class="box"><div class="t">Git diff</div><div class="d">gix · native tree diff, no subprocess</div></div>
+    <div class="arrow">↓</div>
+    <div class="row c2">
+      <div class="box"><div class="t">Tree-sitter</div><div class="d">TS/JS · Python · Go · Rust</div></div>
+      <div class="box"><div class="t">Comrak</div><div class="d">.specs/*.md → REQ / TASK / ADR</div></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="box hot"><div class="t">Sync Coordinator</div><div class="d">WAL · staging · atomic sync_version</div></div>
+    <div class="arrow">↓</div>
+    <div class="row c4">
+      <div class="box"><div class="t">redb</div><div class="d">metadata</div></div>
+      <div class="box"><div class="t">CSR</div><div class="d">topology</div></div>
+      <div class="box"><div class="t">Tantivy</div><div class="d">BM25</div></div>
+      <div class="box"><div class="t">HNSW</div><div class="d">vectors</div></div>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <div class="foot"><span>04 / 08</span><div class="dots"><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div></div>
+</section>
+
+<!-- 5 · retrieval -->
+<section class="slide">
+  <div class="brand"><svg viewBox="346 333 199 199" fill="none"><path d="M349 337 C400 358 442 386 475 413 V469 C430 437 392 408 349 376 Z" fill="#16dc9f"/><path d="M349 395 L394 427 V520 Q394 528 386 528 H357 Q349 528 349 520 Z" fill="#fff"/><path d="M497 340 H533 Q541 340 541 348 V521 Q541 529 533 529 Q526 529 521 523 L497 494 Z" fill="#fff"/></svg><span>Nex<b>Spec</b></span></div>
+  <div class="tag">How it works · retrieval</div>
+  <h2>From a query to a <em>token budget</em>.</h2>
+  <div class="pipe">
+    <div class="step"><div class="n">1</div><div><div class="x">Hybrid search</div><div class="y">BM25 (Tantivy) + vectors (HNSW, optional)</div></div></div>
+    <div class="step"><div class="n">2</div><div><div class="x">RRF fusion</div><div class="y">Reciprocal Rank Fusion picks the seeds</div></div></div>
+    <div class="step"><div class="n">3</div><div><div class="x">k-hop expansion</div><div class="y">Walk the graph for related specs and symbols</div></div></div>
+    <div class="step"><div class="n">4</div><div><div class="x">AST pruning</div><div class="y">Bodies become { … }, signatures stay</div></div></div>
+    <div class="step"><div class="n">5</div><div><div class="x">Budget + serialize</div><div class="y">Deterministic cut, 90% margin, dense Markdown</div></div></div>
+  </div>
+  <div class="spacer"></div>
+  <div class="foot"><span>05 / 08</span><div class="dots"><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div></div>
+</section>
+
+<!-- 6 · guarantees -->
+<section class="slide">
+  <div class="brand"><svg viewBox="346 333 199 199" fill="none"><path d="M349 337 C400 358 442 386 475 413 V469 C430 437 392 408 349 376 Z" fill="#16dc9f"/><path d="M349 395 L394 427 V520 Q394 528 386 528 H357 Q349 528 349 520 Z" fill="#fff"/><path d="M497 340 H533 Q541 340 541 348 V521 Q541 529 533 529 Q526 529 521 523 L497 494 Z" fill="#fff"/></svg><span>Nex<b>Spec</b></span></div>
+  <div class="tag">Design choices</div>
+  <h2>Built to <em>never</em> serve a half-written index.</h2>
+  <ul class="list">
+    <li><strong>Crash-safe.</strong> <span>Every write goes through one coordinator: WAL first, atomic rename after. <code>--resume</code> recovers deterministically.</span></li>
+    <li><strong>Lock-free reads.</strong> <span>Immutable mmap base + copy-on-write delta. Readers never block on a sync.</span></li>
+    <li><strong>Lean when you need it.</strong> <span>The vector engine is optional and lazy. CI builds skip it entirely.</span></li>
+    <li><strong>Incremental.</strong> <span>Only what changed in Git gets reprocessed.</span></li>
+  </ul>
+  <div class="spacer"></div>
+  <div class="foot"><span>06 / 08</span><div class="dots"><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div></div>
+</section>
+
+<!-- 7 · usage -->
+<section class="slide">
+  <div class="brand"><svg viewBox="346 333 199 199" fill="none"><path d="M349 337 C400 358 442 386 475 413 V469 C430 437 392 408 349 376 Z" fill="#16dc9f"/><path d="M349 395 L394 427 V520 Q394 528 386 528 H357 Q349 528 349 520 Z" fill="#fff"/><path d="M497 340 H533 Q541 340 541 348 V521 Q541 529 533 529 Q526 529 521 523 L497 494 Z" fill="#fff"/></svg><span>Nex<b>Spec</b></span></div>
+  <div class="tag">Using it</div>
+  <h2>A CLI for you. An <em>MCP server</em> for your agent.</h2>
+  <pre><span class="g">nexspec</span> init
+<span class="g">nexspec</span> sync
+<span class="g">nexspec</span> search "auth" --max-tokens 4000
+<span class="g">nexspec</span> trace REQ-105
+<span class="g">nexspec</span> blame compact_delta
+<span class="g">nexspec</span> diff --staged
+<span class="g">nexspec</span> mcp   <span class="c"># stdio, for Claude Code, Cursor…</span></pre>
+  <div>
+    <span class="pill">query_context</span><span class="pill">trace_requirement</span><span class="pill">find_impacted_code</span><span class="pill">get_symbol_history</span>
+  </div>
+  <div class="spacer"></div>
+  <div class="foot"><span>07 / 08</span><div class="dots"><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i></div></div>
+</section>
+
+<!-- 8 · CTA -->
+<section class="slide">
+  <div class="brand"><svg viewBox="346 333 199 199" fill="none"><path d="M349 337 C400 358 442 386 475 413 V469 C430 437 392 408 349 376 Z" fill="#16dc9f"/><path d="M349 395 L394 427 V520 Q394 528 386 528 H357 Q349 528 349 520 Z" fill="#fff"/><path d="M497 340 H533 Q541 340 541 348 V521 Q541 529 533 529 Q526 529 521 523 L497 494 Z" fill="#fff"/></svg><span>Nex<b>Spec</b></span></div>
+  <div class="tag">Open source · Apache-2.0</div>
+  <h1>Try it. <em>Break it.</em><br>Tell me what's missing.</h1>
+  <p class="lead">Written in Rust. Built spec-first, with the specs as the source of truth.</p>
+  <div style="margin-top:48px">
+    <div class="cta-link">github.com/leandroluk/rust-nexspec</div>
+    <div class="cta-link">leandroluk.github.io/rust-nexspec</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="foot"><span>08 / 08</span><div class="dots"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i></div></div>
+</section>
+
+</body>
+</html>
