@@ -68,7 +68,7 @@ Primeiro corte = T-901…T-906 incluindo T-903b, T-904b, T-904c (aprovado em 202
 - **Done when**: 7 testes verdes; para cada um, `git stash`/revert manual da correção → teste vermelho (registrar no SUMMARY).
 - **Gate**: `cargo test --test regressions`
 
-## T-906: Fechamento do primeiro corte [ ]
+## T-906: Fechamento do primeiro corte [x]
 - **REQ**: (todos do corte)
 - **What**: `cargo test` full e lean, `cargo clippy --all-targets -- -D warnings`; atualizar STATE.md/ROADMAP.md; commit + push. `cargo install --path . --force` só com nenhum nexspec rodando; reindexar `condominium-management-system` e medir de novo (comparar com 27 s / 0,9–1,6 s).
 - **Where**: `.specs/project/STATE.md`, `.specs/project/ROADMAP.md`
