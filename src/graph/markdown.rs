@@ -35,20 +35,48 @@ fn collect_text<'a>(node: &'a AstNode<'a>) -> String {
     out
 }
 
-/// If `text` (trimmed) starts with `marker` followed by digits and a `:`,
+/// Byte length of the id tail after a marker prefix: zero or more upper-case
+/// feature segments (`TCK-`, `CTR2-`), then digits, then an optional single
+/// lower-case letter (`021b`). `"TCK-001: x"` -> `Some(7)`; `"001"` -> `Some(3)`;
+/// no digits -> `None`. Lets namespaced ids (`REQ-TCK-001`) resolve like `REQ-001`.
+pub(crate) fn id_tail_len(after: &str) -> Option<usize> {
+    let bytes = after.as_bytes();
+    let mut i = 0usize;
+    loop {
+        if i < bytes.len() && bytes[i].is_ascii_uppercase() {
+            let mut j = i + 1;
+            while j < bytes.len() && (bytes[j].is_ascii_uppercase() || bytes[j].is_ascii_digit()) {
+                j += 1;
+            }
+            if j < bytes.len() && bytes[j] == b'-' {
+                i = j + 1;
+                continue;
+            }
+        }
+        break;
+    }
+    let digits = bytes[i..].iter().take_while(|b| b.is_ascii_digit()).count();
+    if digits == 0 {
+        return None;
+    }
+    i += digits;
+    if i < bytes.len() && bytes[i].is_ascii_lowercase() {
+        i += 1;
+    }
+    Some(i)
+}
+
+/// If `text` (trimmed) starts with `marker` followed by an id tail and a `:`,
 /// returns `(marker+digits, rest-of-text-trimmed)`. E.g. `parse_marker("REQ-001: must do X", "REQ-")`
 /// -> `Some(("REQ-001".into(), "must do X".into()))`.
 fn parse_marker(text: &str, marker: &str) -> Option<(String, String)> {
     let text = text.trim();
     let rest = text.strip_prefix(marker)?;
-    let digit_len = rest.chars().take_while(|c| c.is_ascii_digit()).count();
-    if digit_len == 0 {
-        return None;
-    }
-    let after_digits = &rest[digit_len..];
-    let after_colon = after_digits.strip_prefix(':')?;
+    let tail_len = id_tail_len(rest)?;
+    let after_tail = &rest[tail_len..];
+    let after_colon = after_tail.strip_prefix(':')?;
     Some((
-        format!("{marker}{}", &rest[..digit_len]),
+        format!("{marker}{}", &rest[..tail_len]),
         after_colon.trim().to_string(),
     ))
 }
@@ -63,10 +91,9 @@ pub(crate) fn find_markers(text: &str, marker: &str) -> Vec<String> {
     while let Some(pos) = text[offset..].find(marker) {
         let start = offset + pos;
         let after = &text[start + marker.len()..];
-        let digit_len = after.chars().take_while(|c| c.is_ascii_digit()).count();
-        if digit_len > 0 {
-            found.push(format!("{marker}{}", &after[..digit_len]));
-            offset = start + marker.len() + digit_len;
+        if let Some(tail_len) = id_tail_len(after) {
+            found.push(format!("{marker}{}", &after[..tail_len]));
+            offset = start + marker.len() + tail_len;
         } else {
             offset = start + marker.len();
         }
@@ -220,5 +247,24 @@ We chose Y for this project.
         let set = extract("## Requirements\n- REQ-042: standalone requirement\n");
         assert_eq!(set.nodes.len(), 1);
         assert!(set.edges.is_empty());
+    }
+
+    #[test]
+    fn namespaced_and_suffixed_ids_are_recognized() {
+        assert_eq!(id_tail_len("001: x"), Some(3));
+        assert_eq!(id_tail_len("TCK-001: x"), Some(7));
+        assert_eq!(id_tail_len("021b)"), Some(4));
+        assert_eq!(id_tail_len("TCK-: x"), None);
+        assert_eq!(id_tail_len("abc"), None);
+
+        assert_eq!(
+            find_markers("see REQ-TCK-001, REQ-002 and REQ-PAG-021b.", "REQ-"),
+            vec!["REQ-TCK-001", "REQ-002", "REQ-PAG-021b"]
+        );
+
+        let set = extract("## Requirements
+- REQ-CTR-001: cadastrar contrato
+");
+        assert_eq!(set.nodes.len(), 1, "namespaced REQ list item becomes a node");
     }
 }
