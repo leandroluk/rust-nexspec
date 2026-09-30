@@ -14,6 +14,19 @@ use rayon::prelude::*;
 use crate::code::parser::{CodeError, Language, extract};
 use crate::sync::mutation::{MutationSet, StableId};
 
+/// Parse every file in parallel and return each file's own [`MutationSet`],
+/// in input order (the incremental sync needs to know which file produced
+/// which symbols and edges).
+pub fn extract_each(
+    files: &[(PathBuf, String, Language)],
+    known_markers: &HashMap<String, StableId>,
+) -> Result<Vec<(PathBuf, MutationSet)>, CodeError> {
+    files
+        .par_iter()
+        .map(|(path, source, language)| Ok((path.clone(), extract(source, *language, path, known_markers)?)))
+        .collect()
+}
+
 /// Parse every `(path, source, language)` tuple in parallel and merge the
 /// results into one [`MutationSet`] — identical output to calling
 /// [`extract`] on each file individually and concatenating, just faster.
@@ -23,13 +36,10 @@ pub fn extract_all(
     files: &[(PathBuf, String, Language)],
     known_markers: &HashMap<String, StableId>,
 ) -> Result<MutationSet, CodeError> {
-    let results: Vec<MutationSet> = files
-        .par_iter()
-        .map(|(path, source, language)| extract(source, *language, path, known_markers))
-        .collect::<Result<Vec<_>, _>>()?;
+    let results = extract_each(files, known_markers)?;
 
     let mut combined = MutationSet::default();
-    for set in results {
+    for (_, set) in results {
         combined.nodes.extend(set.nodes);
         combined.edges.extend(set.edges);
         combined.docs.extend(set.docs);

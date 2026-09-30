@@ -4,5 +4,5 @@
 pub mod batch;
 pub mod parser;
 
-pub use batch::extract_all;
+pub use batch::{extract_all, extract_each};
 pub use parser::{CodeError, Language, extract};

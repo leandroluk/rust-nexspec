@@ -59,8 +59,8 @@ fn markdown_and_code_nodes_both_appear_and_satisfies_resolves() {
     let redb = RedbParticipant::new(&db);
     assert!(redb.get_node(&req_id).unwrap().is_some(), "REQ-801 node committed");
 
-    // The Symbol node's id depends only on name+line, computable directly.
-    let symbol_id = *blake3::hash(b"greet_widget@1").as_bytes();
+    // The Symbol node's id depends only on file path + name (+ ordinal).
+    let symbol_id = nexspec::graph::node::symbol_node_id("widget.rs", "greet_widget", 0);
     assert!(
         redb.get_node(&symbol_id).unwrap().is_some(),
         "greet_widget symbol node committed"

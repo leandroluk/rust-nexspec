@@ -8,7 +8,7 @@
 - **Done when**: roundtrip de `Edge` com `meta` (rkyv e CSR base/delta); `from_code`/`to_code` dos novos tipos; `meta` sobrevive a compactação.
 - **Gate**: `cargo test graph::`
 
-## T-702: Ids de símbolo estáveis e sem símbolos órfãos (REQ-706 parcial) [ ]
+## T-702: Ids de símbolo estáveis e sem símbolos órfãos (REQ-706 parcial) [x]
 - **REQ**: REQ-706
 - **What**: `symbol_node_id(path, name, ordinal)`; `code::extract` usa. Orquestrador remove símbolos (e suas arestas `DefinedIn`/`Satisfies`) que sumiram de um arquivo modificado ou apagado.
 - **Where**: `src/graph/node.rs`, `src/code/parser.rs`, `src/sync_orchestrator.rs`

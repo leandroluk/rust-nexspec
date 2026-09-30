@@ -312,7 +312,8 @@ impl Engine {
         let git = GitSource::open(&self.repo_root)?;
         let wal = Wal::open(self.wal_path())?;
         let coordinator = Coordinator::new(wal, VersionPointer::new(&self.db), self.participants()?);
-        let mut orchestrator = SyncOrchestrator::new(git, coordinator, VersionPointer::new(&self.db));
+        let mut orchestrator =
+            SyncOrchestrator::new(git, coordinator, VersionPointer::new(&self.db)).with_csr(Arc::clone(&self.csr));
         Ok(orchestrator.run_once()?)
     }
 

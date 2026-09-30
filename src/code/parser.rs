@@ -10,7 +10,7 @@ use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
 
 use crate::graph::edge::EdgeType;
 use crate::graph::markdown::{find_markers, marker_node_id};
-use crate::graph::node::{NodePayload, file_node_id};
+use crate::graph::node::{NodePayload, file_node_id, symbol_node_id};
 use crate::sync::mutation::{EdgeMutation, MutationSet, NodeMutation, StableId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -249,6 +249,8 @@ pub fn extract(
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
     let mut symbols: Vec<SymbolInfo> = Vec::new();
+    let mut ordinals: HashMap<String, usize> = HashMap::new();
+    let file_path = path.to_string_lossy().to_string();
 
     {
         let mut cursor = QueryCursor::new();
@@ -264,7 +266,9 @@ pub fn extract(
             if let (Some(name), Some(def_node)) = (name_text, def_node) {
                 let line_start = def_node.start_position().row as u32;
                 let line_end = def_node.end_position().row as u32;
-                let id = stable_id(format!("{name}@{line_start}").as_bytes());
+                let ordinal = ordinals.entry(name.to_string()).or_insert(0);
+                let id = symbol_node_id(&file_path, name, *ordinal);
+                *ordinal += 1;
                 nodes.push(NodeMutation::Upsert {
                     id,
                     payload: rkyv_bytes(&NodePayload::Symbol {

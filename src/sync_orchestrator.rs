@@ -5,18 +5,21 @@
 //! a composition-root role those modules deliberately don't take on
 //! themselves. See `.specs/features/git-integration/design.md`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::code::{self, CodeError};
 use crate::git::cochange::CoChangeWindow;
 use crate::git::dirty_cache::DirtyCache;
 use crate::git::source::{GitError, GitSource};
+use crate::graph::csr::Csr;
+use crate::graph::edge::EdgeType;
 use crate::graph::markdown;
 use crate::graph::node::{NodePayload, file_node_id};
 use crate::sync::coordinator::Coordinator;
-use crate::sync::mutation::{MutationSet, NodeMutation, StableId};
+use crate::sync::mutation::{EdgeMutation, MutationSet, NodeMutation, StableId};
 use crate::sync::participant::SyncError;
 use crate::sync::version::{VersionError, VersionPointer};
 
@@ -66,6 +69,10 @@ pub struct SyncOrchestrator<'a> {
     coordinator: Coordinator<'a>,
     version: VersionPointer<'a>,
     dirty_cache: DirtyCache,
+    /// Read access to the committed graph, used to find what a file used to
+    /// contribute so stale symbols and edges can be removed (REQ-706). Without
+    /// it the orchestrator only ever adds.
+    csr: Option<Arc<Csr>>,
 }
 
 impl<'a> SyncOrchestrator<'a> {
@@ -75,7 +82,14 @@ impl<'a> SyncOrchestrator<'a> {
             coordinator,
             version,
             dirty_cache: DirtyCache::new(),
+            csr: None,
         }
+    }
+
+    /// Lets the orchestrator reconcile changed files against the graph.
+    pub fn with_csr(mut self, csr: Arc<Csr>) -> Self {
+        self.csr = Some(csr);
+        self
     }
 
     /// Run one full incremental sync cycle: diff since `last_indexed_commit`,
@@ -181,10 +195,33 @@ impl<'a> SyncOrchestrator<'a> {
                 code_files.push((path.clone(), text, language));
             }
         }
-        let extracted = code::extract_all(&code_files, &known_markers)?;
-        combined.nodes.extend(extracted.nodes);
-        combined.edges.extend(extracted.edges);
-        combined.docs.extend(extracted.docs);
+        // A path can be both committed and dirty: the working-tree version
+        // (pushed last) is the current one.
+        let mut latest: HashMap<PathBuf, usize> = HashMap::new();
+        for (i, (path, _, _)) in code_files.iter().enumerate() {
+            latest.insert(path.clone(), i);
+        }
+        let code_files: Vec<(PathBuf, String, code::Language)> = code_files
+            .into_iter()
+            .enumerate()
+            .filter(|(i, (path, _, _))| latest[path] == *i)
+            .map(|(_, f)| f)
+            .collect();
+        let per_file = code::extract_each(&code_files, &known_markers)?;
+        let deleted_code: Vec<PathBuf> = diff
+            .deleted
+            .iter()
+            .filter(|p| code::Language::from_extension(p).is_some())
+            .cloned()
+            .collect();
+        if let Some(csr) = &self.csr {
+            reconcile_code_files(csr, &per_file, &deleted_code, &mut combined);
+        }
+        for (_, set) in per_file {
+            combined.nodes.extend(set.nodes);
+            combined.edges.extend(set.edges);
+            combined.docs.extend(set.docs);
+        }
         timings.code = code_started.elapsed();
 
         // Co-change edges depend only on commit history: recompute them when
@@ -223,6 +260,99 @@ impl<'a> SyncOrchestrator<'a> {
             files_dirty,
             timings,
         })
+    }
+}
+
+/// Edge types a code file's extraction owns: when the file changes, the ones
+/// it no longer produces must go (REQ-706).
+fn is_code_owned_edge(edge_type: EdgeType) -> bool {
+    matches!(edge_type, EdgeType::DefinedIn | EdgeType::Satisfies) || edge_type.is_dependency()
+}
+
+/// Removes what changed or deleted code files used to contribute and no longer
+/// do: their old symbols, and the edges leaving those symbols and the file.
+/// A deleted file also loses the dependency edges that pointed *at* it.
+/// (Importers that did not change are not re-resolved: see design.md D5.)
+fn reconcile_code_files(
+    csr: &Csr,
+    per_file: &[(PathBuf, MutationSet)],
+    deleted: &[PathBuf],
+    out: &mut MutationSet,
+) {
+    if per_file.is_empty() && deleted.is_empty() {
+        return;
+    }
+    let edges = csr.all_edges();
+    let mut symbols_of_file: HashMap<StableId, Vec<StableId>> = HashMap::new();
+    let mut outgoing: HashMap<StableId, Vec<usize>> = HashMap::new();
+    let mut incoming: HashMap<StableId, Vec<usize>> = HashMap::new();
+    for (i, edge) in edges.iter().enumerate() {
+        if edge.edge_type == EdgeType::DefinedIn {
+            symbols_of_file.entry(edge.to).or_default().push(edge.from);
+        }
+        if is_code_owned_edge(edge.edge_type) {
+            outgoing.entry(edge.from).or_default().push(i);
+            if edge.edge_type.is_dependency() {
+                incoming.entry(edge.to).or_default().push(i);
+            }
+        }
+    }
+
+    let mut removed_edges: HashSet<StableId> = HashSet::new();
+    let mut remove_edge = |id: StableId, out: &mut MutationSet| {
+        if removed_edges.insert(id) {
+            out.edges.push(EdgeMutation::Remove { id });
+        }
+    };
+
+    for (path, set) in per_file {
+        let file_id = file_node_id(&path.to_string_lossy());
+        let new_symbols: HashSet<StableId> = set
+            .nodes
+            .iter()
+            .filter_map(|n| match n {
+                NodeMutation::Upsert { id, .. } => Some(*id),
+                NodeMutation::Remove { .. } => None,
+            })
+            .collect();
+        let new_edges: HashSet<StableId> = set
+            .edges
+            .iter()
+            .filter_map(|e| match e {
+                EdgeMutation::Upsert { id, .. } => Some(*id),
+                EdgeMutation::Remove { .. } => None,
+            })
+            .collect();
+        let old_symbols = symbols_of_file.get(&file_id).cloned().unwrap_or_default();
+        for source in old_symbols.iter().chain(std::iter::once(&file_id)) {
+            for &i in outgoing.get(source).into_iter().flatten() {
+                if !new_edges.contains(&edges[i].id) {
+                    remove_edge(edges[i].id, out);
+                }
+            }
+        }
+        for symbol in old_symbols {
+            if !new_symbols.contains(&symbol) {
+                out.nodes.push(NodeMutation::Remove { id: symbol });
+            }
+        }
+    }
+
+    for path in deleted {
+        let file_id = file_node_id(&path.to_string_lossy());
+        let old_symbols = symbols_of_file.get(&file_id).cloned().unwrap_or_default();
+        let gone: Vec<StableId> = old_symbols.iter().copied().chain(std::iter::once(file_id)).collect();
+        for id in &gone {
+            for &i in outgoing.get(id).into_iter().flatten() {
+                remove_edge(edges[i].id, out);
+            }
+            for &i in incoming.get(id).into_iter().flatten() {
+                remove_edge(edges[i].id, out);
+            }
+        }
+        for symbol in old_symbols {
+            out.nodes.push(NodeMutation::Remove { id: symbol });
+        }
     }
 }
 

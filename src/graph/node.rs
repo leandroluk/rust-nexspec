@@ -14,6 +14,15 @@ pub fn file_node_id(path: &str) -> StableId {
     *blake3::hash(format!("file:{path}").as_bytes()).as_bytes()
 }
 
+/// Deterministic id for the `ordinal`-th symbol called `name` in `path`
+/// (`.specs/features/dependency-edges/design.md` D1). Unlike the old
+/// `name@line` scheme it does not change when lines above the symbol move,
+/// and it can be computed for another file without reading that file: the
+/// importing side only needs the resolved path and the imported name.
+pub fn symbol_node_id(path: &str, name: &str, ordinal: usize) -> StableId {
+    *blake3::hash(format!("symbol:{path}:{name}:{ordinal}").as_bytes()).as_bytes()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub enum NodeType {
     Requirement,
