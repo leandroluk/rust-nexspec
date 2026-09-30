@@ -25,7 +25,7 @@
 - **Where**: `src/workflow/install.rs`
 - **Gate**: `cargo test --test workflow_install`
 
-## T-1606: `doctor` (REQ-1605) [ ]
+## T-1606: `doctor` (REQ-1605) [x]
 - **What**: versão, build, modelo, índice (formato, WAL pendente), hooks, MCP por plataforma, `.gitignore`; sugestão de correção; código 5 em falha.
 - **Where**: `src/workflow/doctor.rs`
 - **Depends on**: T-1603, T-1605
@@ -36,11 +36,11 @@
 - **Depends on**: T-1601
 - **Gate**: `cargo test --test workflow_watch`
 
-## T-1608: Contrato de saída e docs (REQ-1606) [ ]
+## T-1608: Contrato de saída e docs (REQ-1606) [x]
 - **What**: tabela de códigos e mensagens no README e em `docs/`; teste que fixa os códigos.
 - **Depends on**: T-1602..T-1607
 - **Gate**: `cargo test --test workflow_contract`
 
-## T-1609: Fechamento [ ]
+## T-1609: Fechamento [x]
 - **What**: ROADMAP/STATE/docs; CI verde.
 - **Gate**: `cargo test && cargo test --no-default-features --features lean && cargo clippy --all-targets -- -D warnings`

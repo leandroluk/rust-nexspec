@@ -173,6 +173,7 @@ warnings` limpos em `full` e `lean`; suíte completa 85/85 (`full`) + 2
 testes de inferência real, 78/78 (`lean`).
 
 ## Recent Progress (Last 10)
+- 2026-09-30 Fase 16 (workflow-integration) completa: `watch` (notify + filtro .gitignore + debounce, `watch.lock`), `mcp --watch`, `hook install|uninstall|status`, `check-update` (0/3/4, nao escreve), `install|uninstall --platform` (claude/gemini/cursor/vscode/codex, backup, dry-run), `doctor` (exit 5), tabela de codigos de saida no README. Achado: `.specs/.index` versionado faz o sync falhar no gix (tarefa separada aberta). Proxima: Fase 14.
 - 2026-09-29 Correcoes de dogfooding (commits `862ca8e`, `b49cab7`, `6fbd4a7`, `a09cbf3`, `81fbf65`, `67344c5`): `CsrDelta` O(n^2) -> indice por id (sync do repo real de >8 min sem terminar para ~25 s); `abstract class`/`enum`/`type` indexados; `dirty` usa `gix status` (nao mais todos os arquivos) e inclui nao rastreados; ids com prefixo (`REQ-TCK-001`) e sufixo (`REQ-021b`); ids de REQ/TASK/ADR so pelo marcador (links entre arquivos e `@spec` sem tabela); listas dentro de TASK contam como corpo; `trace` segue arestas de entrada (`<-`); co-change so recalculado quando o historico muda (sync sem novidades 5,8 s -> 0,9 s). Evolucoes derivadas registradas como Fases 7-10 no ROADMAP.
 - 2026-09-29 T-406 completo. Baixado `all-MiniLM-L6-v2` quantizado INT8
   (~23MB, `Xenova/all-MiniLM-L6-v2` no Hugging Face) + `tokenizer.json` +

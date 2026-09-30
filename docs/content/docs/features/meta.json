@@ -8,6 +8,7 @@
     "dependency-edges",
     "report-command",
     "graph-query-surface",
+    "workflow-integration",
     "vector-engine",
     "token-budgeting",
     "cli-mcp-server"

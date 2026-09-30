@@ -252,6 +252,8 @@ enum Command {
     Install(PlatformArgs),
     /// Remove the nexspec MCP server entry from a coding agent's configuration.
     Uninstall(PlatformArgs),
+    /// Check the installation (build, model, index, WAL, hooks, agents, .gitignore); exit 5 on any failure.
+    Doctor,
     /// Say whether the index is in step with HEAD and the working tree. First stdout line:
     /// `up-to-date` (exit 0), `stale: <reason>` (exit 3) or `no-index` (exit 4). Never writes.
     CheckUpdate,
@@ -387,6 +389,11 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
         Command::Install(args) => run_platforms(&repo, &args, true)?,
         Command::Uninstall(args) => run_platforms(&repo, &args, false)?,
+        Command::Doctor => {
+            let checks = nexspec::workflow::doctor::run(&repo, &index_dir, home_dir().as_deref());
+            print!("{}", nexspec::workflow::doctor::render(&checks));
+            std::process::exit(nexspec::workflow::doctor::exit_code(&checks));
+        }
         Command::CheckUpdate => {
             let freshness = nexspec::workflow::check::check(&repo, &index_dir)?;
             println!("{}", freshness.line());

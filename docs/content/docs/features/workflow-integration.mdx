@@ -1,0 +1,45 @@
+---
+title: "Phase 16 · Workflow Integration"
+description: Keep the index fresh without thinking about it, and register the MCP server with your coding agent.
+---
+
+Five small commands take `sync` out of your head and wire `nexspec mcp` into agents. All of them are idempotent, announce what they write, keep a backup of what they change and use stable exit codes.
+
+Source: `.specs/features/workflow-integration/`
+
+## Keeping the index fresh
+
+| Command | What it does |
+| --- | --- |
+| `nexspec watch [--debounce MS]` | Watches the working tree, waits for a quiet period (500 ms by default) and syncs once per burst. `.gitignore`, `.git/`, `.specs/.index/`, `.models/`, `target/` and `node_modules/` are ignored. One watcher per repository (`watch.lock`); a second one refuses to start. The index is opened only while a sync runs, so hooks and manual syncs are never blocked. |
+| `nexspec mcp --watch` | The MCP server runs the same loop with its own engine. |
+| `nexspec hook install` | Appends a marked block to `post-commit`, `post-merge` and `post-checkout` that runs `nexspec sync` in the background, only when `nexspec` is on the `PATH`. Existing hook content is kept; `hook uninstall` removes only the block. |
+| `nexspec check-update` | First stdout line is `up-to-date`, `stale: <reason>` or `no-index` (exit 0, 3, 4). Never creates or changes the index. |
+
+## Registering with agents
+
+```bash
+nexspec install --platform claude            # .mcp.json
+nexspec install --platform gemini            # .gemini/settings.json
+nexspec install --platform cursor            # .cursor/mcp.json
+nexspec install --platform vscode            # .vscode/mcp.json
+nexspec install --platform codex --scope user  # ~/.codex/config.toml
+nexspec install --platform all --dry-run     # show the plan, write nothing
+```
+
+Other servers in the file are untouched, an existing file is copied to `<file>.bak-<timestamp>` first, and a file that cannot be parsed (for example JSON with comments) is left alone with the snippet to add by hand. `uninstall` removes only the `nexspec` entry. Rewriting TOML drops comments; the backup keeps them.
+
+## Doctor
+
+`nexspec doctor` checks the build, the embedding model, the index format, pending WAL frames, the hooks, the agents and `.gitignore`. Every problem comes with the command that fixes it. Index problems are failures (exit 5); missing hooks, agents, model or `.gitignore` entry are warnings.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Success |
+| 1 | Error (message on stderr) |
+| 2 | Import cycle (`report --fail-on-cycle`) |
+| 3 | Index stale (`check-update`) |
+| 4 | No index (`check-update`) |
+| 5 | Doctor found a failure |
