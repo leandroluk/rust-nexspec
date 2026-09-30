@@ -50,7 +50,7 @@
 - **Done when**: remover um `import` remove a aresta; renomear/apagar arquivo não deixa aresta órfã; segundo sync sem mudanças não emite nada.
 - **Gate**: `cargo test --test dependency_edges_incremental`
 
-## T-707: Consulta (REQ-707, REQ-712) [ ]
+## T-707: Consulta (REQ-707, REQ-712) [x]
 - **REQ**: REQ-707, REQ-712
 - **What**: `trace`, `search` (expansão) e `diff --staged` usam `is_dependency()`; teto de nós por hop com "+N omitidos"; detecção de ciclos no grafo `Imports` (função pública para a Fase 10).
 - **Where**: `src/engine.rs`, `src/bin/nexspec.rs`, `src/graph/cycles.rs`

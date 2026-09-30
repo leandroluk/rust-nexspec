@@ -120,11 +120,34 @@ pub struct TraceHop {
     /// node points *at* the one being traced, e.g. the code or task that
     /// `Satisfies` a requirement).
     pub incoming: bool,
+    /// Confidence/context of the edge that led here, see
+    /// [`crate::graph::edge::encode_meta`].
+    pub meta: u8,
+    /// File the node lives in (a symbol's file, or the file itself).
+    pub path: Option<String>,
 }
 
 #[derive(Default)]
 pub struct TraceResult {
     pub hops: Vec<TraceHop>,
+    /// Nodes left out because a hop exceeded [`TraceOptions::max_per_hop`]
+    /// (REQ-707): the "+N omitted" in the output.
+    pub omitted: usize,
+}
+
+/// Bounds for [`Engine::trace_with`]: a widely used type can have hundreds of
+/// dependents, which would drown the answer.
+#[derive(Debug, Clone, Copy)]
+pub struct TraceOptions {
+    pub max_depth: u8,
+    /// Most new nodes kept per depth level.
+    pub max_per_hop: usize,
+}
+
+impl Default for TraceOptions {
+    fn default() -> Self {
+        Self { max_depth: 3, max_per_hop: 25 }
+    }
 }
 
 pub struct ImpactedSymbol {
@@ -470,55 +493,85 @@ impl Engine {
     /// resolution is a possible refinement, not needed for this fase's
     /// scope) across `{Satisfies, DependsOn, DefinedIn, Implements}`.
     pub fn trace(&self, target: &str) -> Result<TraceResult, EngineError> {
+        self.trace_with(target, TraceOptions::default())
+    }
+
+    /// [`Engine::trace`] with explicit depth and per-hop limits. Follows the
+    /// semantic and dependency edges both ways (dependents are marked
+    /// `incoming`); each level keeps its most trustworthy nodes first
+    /// (extracted before inferred, runtime before test/spec) and reports how
+    /// many it dropped.
+    pub fn trace_with(&self, target: &str, options: TraceOptions) -> Result<TraceResult, EngineError> {
         let root_id = self.resolve_target(target)?;
 
         let redb = RedbParticipant::new(&self.db);
         let mut hops = Vec::new();
+        let mut omitted = 0usize;
         let mut visited: std::collections::HashSet<StableId> = [root_id].into_iter().collect();
         let mut frontier = vec![root_id];
-        let edge_types = [EdgeType::Satisfies, EdgeType::DependsOn, EdgeType::DefinedIn, EdgeType::Implements];
-        // Reverse index (target -> sources) for the semantic edge types only:
-        // "what satisfies / depends on / implements this". `DefinedIn` is not
-        // reversed (a file would fan out to every symbol it contains).
-        let mut incoming: std::collections::HashMap<StableId, Vec<(StableId, EdgeType)>> =
+        let mut forward_types = vec![EdgeType::Satisfies, EdgeType::DefinedIn, EdgeType::Implements];
+        forward_types.extend(EdgeType::DEPENDENCY_TYPES);
+        // Reverse index (target -> sources) for the semantic and dependency
+        // edge types: "what satisfies / depends on / implements this".
+        // `DefinedIn` is not reversed (a file would fan out to every symbol
+        // it contains).
+        let mut incoming: std::collections::HashMap<StableId, Vec<(StableId, EdgeType, u8)>> =
             std::collections::HashMap::new();
         for edge in self.csr.all_edges() {
-            if matches!(edge.edge_type, EdgeType::Satisfies | EdgeType::DependsOn | EdgeType::Implements) {
-                incoming.entry(edge.to).or_default().push((edge.from, edge.edge_type));
+            if matches!(edge.edge_type, EdgeType::Satisfies | EdgeType::Implements) || edge.edge_type.is_dependency() {
+                incoming.entry(edge.to).or_default().push((edge.from, edge.edge_type, edge.meta));
             }
         }
 
-        for depth in 1..=8u8 {
+        for depth in 1..=options.max_depth {
             if frontier.is_empty() {
                 break;
             }
-            let mut next_frontier = Vec::new();
+            // (node, edge type, incoming?, meta), first sighting wins.
+            let mut candidates: Vec<(StableId, EdgeType, bool, u8)> = Vec::new();
+            let mut seen_this_level: std::collections::HashSet<StableId> = std::collections::HashSet::new();
             for node in &frontier {
-                for edge_type in edge_types {
-                    for edge in self.csr.edges_from(node, edge_type) {
-                        if visited.insert(edge.to) {
-                            if let Some(bytes) = redb.get_node(&edge.to)? {
-                                let payload = decode_node_payload(&bytes)?;
-                                hops.push(TraceHop { id: edge.to, payload, depth, edge_type, incoming: false });
-                            }
-                            next_frontier.push(edge.to);
+                for edge_type in &forward_types {
+                    for edge in self.csr.edges_from(node, *edge_type) {
+                        if !visited.contains(&edge.to) && seen_this_level.insert(edge.to) {
+                            candidates.push((edge.to, *edge_type, false, edge.meta));
                         }
                     }
                 }
-                for (from, edge_type) in incoming.get(node).into_iter().flatten() {
-                    if visited.insert(*from) {
-                        if let Some(bytes) = redb.get_node(from)? {
-                            let payload = decode_node_payload(&bytes)?;
-                            hops.push(TraceHop { id: *from, payload, depth, edge_type: *edge_type, incoming: true });
-                        }
-                        next_frontier.push(*from);
+                for (from, edge_type, meta) in incoming.get(node).into_iter().flatten() {
+                    if !visited.contains(from) && seen_this_level.insert(*from) {
+                        candidates.push((*from, *edge_type, true, *meta));
                     }
+                }
+            }
+            // Most useful first: real dependency/semantic links before the
+            // `DefinedIn` bookkeeping edge, then extracted before inferred and
+            // runtime before test/spec; ids break ties so the output is stable.
+            candidates.sort_by_key(|(id, edge_type, _, meta)| {
+                (*edge_type == EdgeType::DefinedIn, meta & 1, (meta >> 1) & 0b11, *id)
+            });
+            let mut next_frontier = Vec::new();
+            for (index, (id, edge_type, is_incoming, meta)) in candidates.into_iter().enumerate() {
+                if index >= options.max_per_hop {
+                    omitted += 1;
+                    continue;
+                }
+                visited.insert(id);
+                next_frontier.push(id);
+                if let Some(bytes) = redb.get_node(&id)? {
+                    let payload = decode_node_payload(&bytes)?;
+                    let path = match &payload {
+                        NodePayload::File { path, .. } => Some(path.clone()),
+                        NodePayload::Symbol { .. } => self.file_path_of(&id)?,
+                        _ => None,
+                    };
+                    hops.push(TraceHop { id, payload, depth, edge_type, incoming: is_incoming, meta, path });
                 }
             }
             frontier = next_frontier;
         }
 
-        Ok(TraceResult { hops })
+        Ok(TraceResult { hops, omitted })
     }
 
     /// Resolves a CLI/MCP-supplied target string to a `StableId`: tries
@@ -614,7 +667,7 @@ impl Engine {
             .map(|(id, name)| {
                 let dependants: Vec<StableId> = all_edges
                     .iter()
-                    .filter(|e| e.to == id && e.edge_type == EdgeType::DependsOn)
+                    .filter(|e| e.to == id && e.edge_type.is_dependency())
                     .map(|e| e.from)
                     .collect();
                 ImpactedSymbol { id, name, dependants }
@@ -643,6 +696,24 @@ impl Engine {
             let _ = self.vector_enabled; // vectors do not exist in a lean build
             false
         }
+    }
+
+    /// Groups of files that import each other (REQ-712), as repo-relative
+    /// paths, largest group first.
+    pub fn import_cycles(&self) -> Result<Vec<Vec<String>>, EngineError> {
+        let groups = crate::graph::cycles::import_cycles(&self.csr.all_edges());
+        let mut out = Vec::with_capacity(groups.len());
+        for group in groups {
+            let mut paths = Vec::with_capacity(group.len());
+            for id in group {
+                if let Some(NodePayload::File { path, .. }) = self.node_payload(&id)? {
+                    paths.push(path);
+                }
+            }
+            paths.sort();
+            out.push(paths);
+        }
+        Ok(out)
     }
 
     /// Where a search hit lives, in terms a benchmark corpus can name

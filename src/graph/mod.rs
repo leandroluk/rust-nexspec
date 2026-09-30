@@ -2,6 +2,7 @@
 //! `.specs/features/storage-primitives/design.md`.
 
 pub mod csr;
+pub mod cycles;
 pub mod edge;
 pub mod markdown;
 pub mod node;

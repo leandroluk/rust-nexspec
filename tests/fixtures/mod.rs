@@ -9,6 +9,7 @@
 #![allow(dead_code)]
 
 pub mod synthetic;
+pub mod ts_workspace;
 
 use std::path::Path;
 use std::process::Command;

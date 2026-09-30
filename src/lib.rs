@@ -18,7 +18,7 @@ pub mod token;
 pub mod vector;
 
 pub use code::{Language, extract as extract_code};
-pub use engine::{BlameResult, DiffResult, Engine, EngineError, ImpactedSymbol, SearchHit, SearchResult, TraceHop, TraceResult};
+pub use engine::{BlameResult, DiffResult, Engine, EngineError, ImpactedSymbol, SearchHit, SearchResult, TraceHop, TraceOptions, TraceResult};
 pub use git::GitSource;
 pub use graph::{Csr, CsrParticipant, Edge, EdgeType, Node, NodePayload, NodeType};
 pub use hybrid::{expand, seed_discovery};

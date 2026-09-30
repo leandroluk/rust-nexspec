@@ -65,11 +65,19 @@ struct TraceHopDto {
     depth: u8,
     edge_type: String,
     incoming: bool,
+    /// `extracted` or `inferred`.
+    confidence: &'static str,
+    /// `runtime`, `type-only`, `test` or `spec`.
+    context: &'static str,
+    /// File the node lives in, when known.
+    path: Option<String>,
 }
 
 #[derive(Serialize)]
 struct TraceResponse {
     hops: Vec<TraceHopDto>,
+    /// Nodes left out because a hop exceeded the per-hop limit.
+    omitted: usize,
 }
 
 fn trace_response(result: TraceResult) -> TraceResponse {
@@ -82,8 +90,20 @@ fn trace_response(result: TraceResult) -> TraceResponse {
                 depth: hop.depth,
                 edge_type: format!("{:?}", hop.edge_type),
                 incoming: hop.incoming,
+                confidence: match crate::graph::edge::decode_meta(hop.meta).0 {
+                    crate::graph::edge::Confidence::Extracted => "extracted",
+                    crate::graph::edge::Confidence::Inferred => "inferred",
+                },
+                context: match crate::graph::edge::decode_meta(hop.meta).1 {
+                    crate::graph::edge::EdgeContext::Runtime => "runtime",
+                    crate::graph::edge::EdgeContext::TypeOnly => "type-only",
+                    crate::graph::edge::EdgeContext::Test => "test",
+                    crate::graph::edge::EdgeContext::Spec => "spec",
+                },
+                path: hop.path.clone(),
             })
             .collect(),
+        omitted: result.omitted,
     }
 }
 

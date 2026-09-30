@@ -175,14 +175,34 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let engine = Engine::open(&index_dir, &repo)?;
             let result = engine.trace(&target)?;
             for hop in &result.hops {
+                let (confidence, context) = nexspec::graph::edge::decode_meta(hop.meta);
+                let mut flags = String::new();
+                if confidence == nexspec::graph::edge::Confidence::Inferred {
+                    flags.push_str(" [inferred]");
+                }
+                match context {
+                    nexspec::graph::edge::EdgeContext::Runtime => {}
+                    nexspec::graph::edge::EdgeContext::TypeOnly => flags.push_str(" [type-only]"),
+                    nexspec::graph::edge::EdgeContext::Test => flags.push_str(" [test]"),
+                    nexspec::graph::edge::EdgeContext::Spec => flags.push_str(" [spec]"),
+                }
+                let location = match (&hop.path, &hop.payload) {
+                    (Some(path), nexspec::NodePayload::Symbol { .. }) => format!(" ({path})"),
+                    _ => String::new(),
+                };
                 println!(
-                    "depth={} {}{:?} {} {}",
+                    "depth={} {}{:?} {} {}{}{}",
                     hop.depth,
                     if hop.incoming { "<-" } else { "" },
                     hop.edge_type,
                     nexspec::engine::id_hex(&hop.id),
-                    describe_payload(&hop.payload)
+                    describe_payload(&hop.payload),
+                    location,
+                    flags
                 );
+            }
+            if result.omitted > 0 {
+                println!("(+{} omitted: raise the limit or trace a narrower target)", result.omitted);
             }
         }
         Command::Blame { symbol, full_history } => {
