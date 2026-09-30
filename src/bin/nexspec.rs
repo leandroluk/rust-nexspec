@@ -20,6 +20,48 @@ struct Cli {
     command: Command,
 }
 
+/// Edge filters shared by the graph queries (REQ-1105).
+#[derive(clap::Args, Default)]
+struct FilterArgs {
+    /// Follow only these relations (repeatable): imports, reexports, calls,
+    /// instantiates, extends, references, satisfies, implements, defined_in,
+    /// depends_on, cochanges, or `dependencies` for all dependency kinds.
+    #[arg(long = "relation")]
+    relations: Vec<String>,
+    /// Keep only edges from these contexts (repeatable): runtime, type-only, test, spec.
+    #[arg(long = "context")]
+    contexts: Vec<String>,
+    /// `extracted` drops edges that were only inferred; `inferred` (default) keeps both.
+    #[arg(long = "min-confidence")]
+    min_confidence: Option<String>,
+}
+
+impl FilterArgs {
+    fn build(&self) -> Result<nexspec::query::EdgeFilter, nexspec::query::FilterError> {
+        nexspec::query::EdgeFilter::from_strings(&self.relations, self.min_confidence.as_deref(), &self.contexts)
+    }
+}
+
+/// Output options shared by the graph queries (REQ-1106).
+#[derive(clap::Args, Default)]
+struct OutputArgs {
+    /// Fit the answer into this many tokens (90% safety margin).
+    #[arg(long = "max-tokens", alias = "budget")]
+    max_tokens: Option<u32>,
+    /// `md` (default) or `json`.
+    #[arg(long, default_value = "md")]
+    format: String,
+}
+
+impl OutputArgs {
+    fn common(&self, pick: Option<usize>) -> Result<nexspec::query::api::Common, Box<dyn std::error::Error>> {
+        if !matches!(self.format.as_str(), "md" | "json") {
+            return Err(format!("unknown format {:?} (expected md or json)", self.format).into());
+        }
+        Ok(nexspec::query::api::Common { max_tokens: self.max_tokens, json: self.format == "json", pick })
+    }
+}
+
 #[derive(clap::Args)]
 struct BenchArgs {
     /// Corpus TOML. Default: `<repo>/.specs/bench/queries.toml`.
@@ -86,7 +128,70 @@ enum Command {
         max_tokens: Option<u32>,
     },
     /// Deterministic topological dependency trace.
-    Trace { target: String },
+    Trace {
+        target: String,
+        /// Levels to walk (default 3).
+        #[arg(long)]
+        depth: Option<u8>,
+        /// Fit the trace into this many tokens.
+        #[arg(long = "max-tokens", alias = "budget")]
+        max_tokens: Option<u32>,
+    },
+    /// Answer a question from the graph: hybrid-search seeds expanded through their relations.
+    Query {
+        question: String,
+        /// Depth-first instead of breadth-first.
+        #[arg(long)]
+        dfs: bool,
+        /// How far to expand from the seeds.
+        #[arg(long, default_value_t = 3)]
+        depth: u8,
+        /// Token budget for the answer (default 2000).
+        #[arg(long = "max-tokens", alias = "budget")]
+        max_tokens: Option<u32>,
+        #[command(flatten)]
+        filter: FilterArgs,
+        /// `md` (default) or `json`.
+        #[arg(long, default_value = "md")]
+        format: String,
+    },
+    /// Shortest chain of relations between two nodes (symbol, file or REQ-…).
+    Path {
+        from: String,
+        to: String,
+        #[command(flatten)]
+        filter: FilterArgs,
+        #[command(flatten)]
+        output: OutputArgs,
+    },
+    /// Describe one node: where it is, what it depends on, what depends on it, requirements, community, authors.
+    Explain {
+        target: String,
+        /// Choose among ambiguous matches (1-based, as listed by the error).
+        #[arg(long)]
+        pick: Option<usize>,
+        #[command(flatten)]
+        filter: FilterArgs,
+        #[command(flatten)]
+        output: OutputArgs,
+    },
+    /// Who depends on a node, transitively, grouped by file.
+    Affected {
+        target: String,
+        /// Levels to walk (default 2).
+        #[arg(long, default_value_t = 2)]
+        depth: u8,
+        /// Most nodes listed per level (default 25).
+        #[arg(long, default_value_t = 25)]
+        limit: usize,
+        /// Choose among ambiguous matches (1-based, as listed by the error).
+        #[arg(long)]
+        pick: Option<usize>,
+        #[command(flatten)]
+        filter: FilterArgs,
+        #[command(flatten)]
+        output: OutputArgs,
+    },
     /// AST-aware git blame for a symbol, scoped to its line range.
     Blame {
         symbol: String,
@@ -191,9 +296,14 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        Command::Trace { target } => {
+        Command::Trace { target, depth, max_tokens } => {
             let engine = Engine::open(&index_dir, &repo)?;
-            let result = engine.trace(&target)?;
+            let mut trace_options = nexspec::engine::TraceOptions::default();
+            if let Some(depth) = depth {
+                trace_options.max_depth = depth;
+            }
+            let result = engine.trace_with(&target, trace_options)?;
+            let mut printed: Vec<String> = Vec::new();
             for hop in &result.hops {
                 let (confidence, context) = nexspec::graph::edge::decode_meta(hop.meta);
                 let mut flags = String::new();
@@ -210,7 +320,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     (Some(path), nexspec::NodePayload::Symbol { .. }) => format!(" ({path})"),
                     _ => String::new(),
                 };
-                println!(
+                printed.push(format!(
                     "depth={} {}{:?} {} {}{}{}",
                     hop.depth,
                     if hop.incoming { "<-" } else { "" },
@@ -219,11 +329,37 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     describe_payload(&hop.payload),
                     location,
                     flags
-                );
+                ));
             }
             if result.omitted > 0 {
-                println!("(+{} omitted: raise the limit or trace a narrower target)", result.omitted);
+                printed.push(format!("(+{} omitted: raise the limit or trace a narrower target)", result.omitted));
             }
+            if max_tokens.is_some() {
+                // A title line is what the budget keeps no matter what.
+                printed.insert(0, format!("# Trace of {target}"));
+            }
+            for line in nexspec::query::budget::fit_lines(printed, max_tokens) {
+                println!("{line}");
+            }
+        }
+        Command::Query { question, dfs, depth, max_tokens, filter, format } => {
+            let output = OutputArgs { max_tokens: Some(max_tokens.unwrap_or(2000)), format };
+            let engine = Engine::open(&index_dir, &repo)?;
+            let options = nexspec::query::expand::ExpandOptions { dfs, max_depth: depth, filter: filter.build()?, ..Default::default() };
+            print!("{}", nexspec::query::api::query_graph(&engine, &question, options, &output.common(None)?)?);
+        }
+        Command::Path { from, to, filter, output } => {
+            let engine = Engine::open(&index_dir, &repo)?;
+            print!("{}", nexspec::query::api::find_path(&engine, &from, &to, &filter.build()?, &output.common(None)?)?);
+        }
+        Command::Explain { target, pick, filter, output } => {
+            let engine = Engine::open(&index_dir, &repo)?;
+            print!("{}", nexspec::query::api::explain(&engine, &target, &filter.build()?, &output.common(pick)?)?);
+        }
+        Command::Affected { target, depth, limit, pick, filter, output } => {
+            let engine = Engine::open(&index_dir, &repo)?;
+            let options = nexspec::query::affected::AffectedOptions { depth, max_per_hop: limit.max(1), filter: filter.build()? };
+            print!("{}", nexspec::query::api::affected(&engine, &target, options, &output.common(pick)?)?);
         }
         Command::Blame { symbol, full_history } => {
             let engine = Engine::open(&index_dir, &repo)?;

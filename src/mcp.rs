@@ -223,6 +223,88 @@ pub struct GetSymbolHistoryArgs {
     pub full_history: bool,
 }
 
+/// Edge filters shared by the graph-query tools (same names as the CLI flags).
+#[derive(Deserialize, JsonSchema, Default)]
+pub struct QueryFilterArgs {
+    /// Follow only these relations: imports, reexports, calls, instantiates, extends,
+    /// references, satisfies, implements, defined_in, depends_on, cochanges, dependencies.
+    #[serde(default)]
+    pub relation: Vec<String>,
+    /// Keep only these edge contexts: runtime, type-only, test, spec.
+    #[serde(default)]
+    pub context: Vec<String>,
+    /// `extracted` drops inferred edges; `inferred` (default) keeps both.
+    pub min_confidence: Option<String>,
+}
+
+impl QueryFilterArgs {
+    fn build(&self) -> Result<crate::query::EdgeFilter, String> {
+        crate::query::EdgeFilter::from_strings(&self.relation, self.min_confidence.as_deref(), &self.context)
+            .map_err(|e| e.to_string())
+    }
+}
+
+fn query_common(max_tokens: Option<u32>, format: &Option<String>, pick: Option<usize>) -> Result<crate::query::api::Common, String> {
+    match format.as_deref() {
+        None | Some("md") => Ok(crate::query::api::Common { max_tokens, json: false, pick }),
+        Some("json") => Ok(crate::query::api::Common { max_tokens, json: true, pick }),
+        Some(other) => Err(format!("unknown format {other:?} (expected md or json)")),
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct QueryGraphArgs {
+    /// The question, in natural language.
+    pub question: String,
+    /// Depth-first instead of breadth-first.
+    #[serde(default)]
+    pub dfs: bool,
+    /// How far to expand from the starting points (default 3).
+    pub depth: Option<u8>,
+    /// Token budget for the answer (default 2000).
+    pub max_tokens: Option<u32>,
+    #[serde(flatten)]
+    pub filter: QueryFilterArgs,
+    /// `md` (default) or `json`.
+    pub format: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct FindPathArgs {
+    /// Start node: a name, `path:Symbol`, `REQ-…` or a hex id.
+    pub from: String,
+    pub to: String,
+    pub max_tokens: Option<u32>,
+    #[serde(flatten)]
+    pub filter: QueryFilterArgs,
+    pub format: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ExplainNodeArgs {
+    pub target: String,
+    /// Choose among ambiguous matches (1-based).
+    pub pick: Option<usize>,
+    pub max_tokens: Option<u32>,
+    #[serde(flatten)]
+    pub filter: QueryFilterArgs,
+    pub format: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct FindAffectedArgs {
+    pub target: String,
+    /// Levels to walk (default 2).
+    pub depth: Option<u8>,
+    /// Most nodes per level (default 25).
+    pub limit: Option<usize>,
+    pub pick: Option<usize>,
+    pub max_tokens: Option<u32>,
+    #[serde(flatten)]
+    pub filter: QueryFilterArgs,
+    pub format: Option<String>,
+}
+
 #[derive(Deserialize, JsonSchema)]
 pub struct GraphReportArgs {
     /// `md` (default) or `json`.
@@ -302,6 +384,41 @@ impl NexSpecMcp {
         }
     }
 
+    #[tool(description = "Answer a question from the graph: hybrid-search starting points expanded through their relations, within a token budget")]
+    async fn query_graph(&self, Parameters(args): Parameters<QueryGraphArgs>) -> Result<String, String> {
+        let common = query_common(Some(args.max_tokens.unwrap_or(2000)), &args.format, None)?;
+        let options = crate::query::expand::ExpandOptions {
+            dfs: args.dfs,
+            max_depth: args.depth.unwrap_or(3),
+            filter: args.filter.build()?,
+            ..Default::default()
+        };
+        crate::query::api::query_graph(&self.engine, &args.question, options, &common).map_err(|e| e.to_string())
+    }
+
+    #[tool(description = "Shortest chain of relations between two nodes (symbol, file or requirement); 'no path' is a valid answer")]
+    async fn find_path(&self, Parameters(args): Parameters<FindPathArgs>) -> Result<String, String> {
+        let common = query_common(args.max_tokens, &args.format, None)?;
+        crate::query::api::find_path(&self.engine, &args.from, &args.to, &args.filter.build()?, &common).map_err(|e| e.to_string())
+    }
+
+    #[tool(description = "Describe one node: location, pruned signature, dependencies, dependents, requirements, community and recent authors")]
+    async fn explain_node(&self, Parameters(args): Parameters<ExplainNodeArgs>) -> Result<String, String> {
+        let common = query_common(args.max_tokens, &args.format, args.pick)?;
+        crate::query::api::explain(&self.engine, &args.target, &args.filter.build()?, &common).map_err(|e| e.to_string())
+    }
+
+    #[tool(description = "Who depends on a node, transitively, filtered by relation/confidence/context and grouped by file")]
+    async fn find_affected(&self, Parameters(args): Parameters<FindAffectedArgs>) -> Result<String, String> {
+        let common = query_common(args.max_tokens, &args.format, args.pick)?;
+        let options = crate::query::affected::AffectedOptions {
+            depth: args.depth.unwrap_or(2),
+            max_per_hop: args.limit.unwrap_or(25).max(1),
+            filter: args.filter.build()?,
+        };
+        crate::query::api::affected(&self.engine, &args.target, options, &common).map_err(|e| e.to_string())
+    }
+
     #[tool(description = "Run one incremental sync cycle against the repository's Git history")]
     async fn sync_workspace(&self, Parameters(args): Parameters<SyncWorkspaceArgs>) -> Result<String, String> {
         if args.resume {
@@ -351,6 +468,63 @@ mod tests {
         let engine = Engine::open(index_dir.path(), repo_dir.path()).unwrap();
         engine.sync().unwrap();
         (repo_dir, index_dir, engine)
+    }
+
+    #[tokio::test]
+    async fn query_tools_answer_and_report_readable_errors() {
+        let (_repo, _index, engine) = fixture_engine();
+        let mcp = NexSpecMcp::new(Arc::new(engine));
+
+        let explained = mcp
+            .explain_node(Parameters(ExplainNodeArgs {
+                target: "REQ-1".into(),
+                pick: None,
+                max_tokens: None,
+                filter: QueryFilterArgs::default(),
+                format: None,
+            }))
+            .await
+            .unwrap();
+        assert!(explained.starts_with("# REQ-1 (requirement)"), "{explained}");
+
+        let affected = mcp
+            .find_affected(Parameters(FindAffectedArgs {
+                target: "REQ-1".into(),
+                depth: None,
+                limit: None,
+                pick: None,
+                max_tokens: None,
+                filter: QueryFilterArgs::default(),
+                format: Some("json".into()),
+            }))
+            .await
+            .unwrap();
+        assert!(serde_json::from_str::<serde_json::Value>(&affected).unwrap()["nodes"].is_array());
+
+        let missing = mcp
+            .find_path(Parameters(FindPathArgs {
+                from: "REQ-1".into(),
+                to: "NoSuchNode".into(),
+                max_tokens: None,
+                filter: QueryFilterArgs::default(),
+                format: None,
+            }))
+            .await
+            .unwrap_err();
+        assert!(missing.contains("no node matches"), "{missing}");
+
+        let bad_relation = mcp
+            .query_graph(Parameters(QueryGraphArgs {
+                question: "anything".into(),
+                dfs: false,
+                depth: None,
+                max_tokens: None,
+                filter: QueryFilterArgs { relation: vec!["nope".into()], ..Default::default() },
+                format: None,
+            }))
+            .await
+            .unwrap_err();
+        assert!(bad_relation.contains("unknown relation"), "{bad_relation}");
     }
 
     #[tokio::test]
