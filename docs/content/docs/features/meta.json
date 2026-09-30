@@ -13,6 +13,7 @@
     "domain-extractors",
     "graph-export",
     "multi-repo-graph",
+    "work-memory",
     "vector-engine",
     "token-budgeting",
     "cli-mcp-server"

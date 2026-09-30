@@ -5,6 +5,8 @@ use std::path::Path;
 
 pub const INDEX_ENTRY: &str = ".specs/.index/";
 pub const CACHE_ENTRY: &str = ".specs/.cache/";
+/// Raw notes of the work memory stay local; `LESSONS.md` next to them is what gets shared.
+pub const NOTES_ENTRY: &str = ".specs/.memory/notes/";
 
 /// Whether `.gitignore` already covers `entry` (with or without the trailing slash or a leading `/`).
 pub fn covers(repo: &Path, entry: &str) -> bool {

@@ -1,0 +1,46 @@
+---
+title: "Phase 15 · Work Memory"
+description: Remember how answers went, turn it into lessons, and let those lessons nudge the ranking.
+---
+
+An agent keeps asking the same questions and walking into the same dead ends. The work memory records how an answer went and which nodes it cited, turns that into short lessons, and lets search lean towards what worked. It is deterministic: no model, no network, no telemetry.
+
+Source: `.specs/features/work-memory/`
+
+```bash
+nexspec save-result --question "where are invoices charged?" --nodes ChargeUsecase --outcome useful
+nexspec save-result --question "which file bills residents?" --nodes unrelatedHelper \
+  --outcome corrected --correction "it is src/invoice/charge.usecase.ts"
+nexspec reflect                       # writes .specs/.memory/LESSONS.md and the ranking cache
+nexspec reflect --max-tokens 400      # only prints the short summary a skill loads at session start
+nexspec search "charge invoice" --no-memory
+nexspec bench --compare-memory        # with vs without the nudge; fails if a kind loses > 2 points
+```
+
+## Notes
+
+`save-result` writes one Markdown file per answer to `.specs/.memory/notes/<id>.md`: a frontmatter (id, time, type, outcome, the nodes it cited by id and label) and the question, answer and correction. The id is a hash of question, outcome and cited nodes, so saving the same thing again replaces the note and renews its time. Nodes are resolved like any query target; an ambiguous or unknown name is an error with the usual suggestions. `corrected` needs a `--correction`. Text that looks like a key, token or password is refused, and the message names the kind of secret, never the value.
+
+`nexspec init` keeps the raw notes out of Git and leaves `LESSONS.md` versionable: the notes are prose and noise; the lessons are what is worth sharing.
+
+## Lessons
+
+Each signal weighs `0.5^(age / half-life)` (30 days, `--half-life-days`); below 0.25 it no longer counts. Per node:
+
+| Class | When |
+| --- | --- |
+| Preferred | at least 2 `useful` answers (`--min-useful`) and no negative one |
+| Tentative | one `useful` answer, no negative one |
+| Contested | `useful` and negative signals together; the most recent one decides which way it leans |
+| Dead ends | only negative signals (`dead_end`, or cited by a `corrected` answer) |
+| Corrections | question → correction of the live `corrected` answers |
+
+Nodes the graph no longer has are dropped. `LESSONS.md` has a fixed section order, stable item order and no dates, so it only changes when a classification does. `reflect --max-tokens N` prints corrections first, then what to avoid, then what to prefer, cut to the budget, and writes nothing.
+
+## Ranking
+
+`reflect` leaves `.specs/.cache/memory.json` (derived, git-ignored). `search` and `query` multiply the fused score of preferred nodes by 1.25 and of dead ends by 0.5 (`NEXSPEC_MEMORY_BOOST`, `NEXSPEC_MEMORY_PENALTY`), so a clearly better hit still wins. `--no-memory` gives the ranking as it was. The benchmark ignores the memory unless you ask with `--compare-memory`.
+
+## MCP
+
+`save_result` and `reflect` are MCP tools, so a skill records and loads lessons through the server it already uses.

@@ -97,6 +97,71 @@ fn pct(value: Option<f64>) -> String {
     value.map_or("-".to_string(), |v| format!("{:.0}%", v * 100.0))
 }
 
+// ---------------------------------------------------------------------------
+// Work memory (Fase 15, REQ-1503): the same corpus without and with the ranking nudge.
+// ---------------------------------------------------------------------------
+
+/// No kind may lose more than this many points of `recall@5` to the memory.
+pub const MAX_MEMORY_RECALL_DROP: f64 = 2.0;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MemoryComparison {
+    pub without: BenchReport,
+    pub with: BenchReport,
+    /// `kind -> (recall@5 without, recall@5 with)`.
+    pub recall5: std::collections::BTreeMap<String, (f64, f64)>,
+    /// Kinds that lost more than [`MAX_MEMORY_RECALL_DROP`] points.
+    pub regressions: Vec<String>,
+    pub accepted: bool,
+}
+
+pub fn judge_memory(without: &BenchReport, with: &BenchReport) -> MemoryComparison {
+    let mut recall5 = std::collections::BTreeMap::new();
+    let mut regressions = Vec::new();
+    for kind in Kind::ALL {
+        if let (Some(a), Some(b)) = (recall5_of(without, kind), recall5_of(with, kind)) {
+            recall5.insert(kind.as_str().to_string(), (a, b));
+            if (a - b) * 100.0 > MAX_MEMORY_RECALL_DROP + 1e-9 {
+                regressions.push(format!("{} recall@5 fell from {:.0}% to {:.0}%", kind.as_str(), a * 100.0, b * 100.0));
+            }
+        }
+    }
+    MemoryComparison { without: without.clone(), with: with.clone(), recall5, accepted: regressions.is_empty(), regressions }
+}
+
+pub fn compare_memory(corpus: &Corpus, options: &BenchOptions) -> Result<MemoryComparison, BenchError> {
+    let mut off = options.clone();
+    off.memory = false;
+    off.index_dir = None;
+    let without = run(corpus, &off)?;
+    let mut on = options.clone();
+    on.memory = true;
+    on.index_dir = None;
+    let with = run(corpus, &on)?;
+    Ok(judge_memory(&without, &with))
+}
+
+fn recall5_of(report: &BenchReport, kind: Kind) -> Option<f64> {
+    recall5(report, kind)
+}
+
+pub fn memory_to_markdown(c: &MemoryComparison) -> String {
+    let mut md = String::from("# nexspec work-memory comparison\n\nSame corpus, same commit, without and with the ranking nudge of `reflect`.\n\n");
+    let _ = writeln!(md, "| kind | recall@5 without | recall@5 with |\n| --- | ---: | ---: |");
+    for (kind, (a, b)) in &c.recall5 {
+        let _ = writeln!(md, "| {kind} | {:.0}% | {:.0}% |", a * 100.0, b * 100.0);
+    }
+    if c.accepted {
+        let _ = writeln!(md, "\n**Accepted**: no kind lost more than {MAX_MEMORY_RECALL_DROP:.0} points of `recall@5`.");
+    } else {
+        let _ = writeln!(md, "\n**Not accepted** (limit: {MAX_MEMORY_RECALL_DROP:.0} points per kind):");
+        for line in &c.regressions {
+            let _ = writeln!(md, "- {line}");
+        }
+    }
+    md
+}
+
 pub fn to_markdown(c: &Comparison) -> String {
     let mut md = String::new();
     let _ = writeln!(md, "# nexspec enrichment comparison\n");
@@ -222,6 +287,18 @@ mod tests {
             fixed_cost: None,
             break_even: None,
         }
+    }
+
+    #[test]
+    fn the_memory_comparison_rejects_a_kind_that_loses_more_than_two_points() {
+        let same = judge_memory(&report(0.50, 0.87, 10.0, 0), &report(0.50, 0.87, 10.0, 0));
+        assert!(same.accepted && same.regressions.is_empty());
+        let better = judge_memory(&report(0.50, 0.87, 10.0, 0), &report(0.75, 0.87, 10.0, 0));
+        assert!(better.accepted, "a gain is fine");
+        let worse = judge_memory(&report(0.75, 0.87, 10.0, 0), &report(0.50, 0.87, 10.0, 0));
+        assert!(!worse.accepted);
+        assert!(worse.regressions[0].contains("behavior recall@5 fell from 75% to 50%"), "{:?}", worse.regressions);
+        assert!(memory_to_markdown(&worse).contains("**Not accepted**") && memory_to_markdown(&same).contains("**Accepted**"));
     }
 
     #[test]

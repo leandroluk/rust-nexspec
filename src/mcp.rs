@@ -307,6 +307,31 @@ pub struct FindAffectedArgs {
 }
 
 #[derive(Deserialize, JsonSchema)]
+pub struct SaveResultArgs {
+    /// The question that was asked.
+    pub question: String,
+    /// The answer that was given (short; no secrets).
+    #[serde(default)]
+    pub answer: String,
+    /// Kind of query: query, path, explain, affected, search…
+    #[serde(default, rename = "type")]
+    pub kind: Option<String>,
+    /// The nodes the answer cited, as accepted by `explain_node`.
+    #[serde(default)]
+    pub nodes: Vec<String>,
+    /// `useful`, `dead_end` or `corrected`.
+    pub outcome: String,
+    /// What the right answer was (required with `corrected`).
+    pub correction: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ReflectArgs {
+    /// Cut the summary to this many tokens (default 600).
+    pub max_tokens: Option<u32>,
+}
+
+#[derive(Deserialize, JsonSchema)]
 pub struct GraphReportArgs {
     /// `md` (default) or `json`.
     #[serde(default)]
@@ -418,6 +443,29 @@ impl NexSpecMcp {
             filter: args.filter.build()?,
         };
         crate::query::api::affected(&self.engine, &args.target, options, &common).map_err(|e| e.to_string())
+    }
+
+    #[tool(description = "Remember how an answer went (useful, dead_end or corrected) and the nodes it cited, so later sessions can prefer what worked and avoid dead ends")]
+    async fn save_result(&self, Parameters(args): Parameters<SaveResultArgs>) -> Result<String, String> {
+        let save = crate::memory::api::SaveArgs {
+            question: args.question,
+            answer: args.answer,
+            kind: args.kind.unwrap_or_else(|| "query".to_string()),
+            nodes: args.nodes,
+            outcome: args.outcome,
+            correction: args.correction,
+        };
+        let (note, _) = crate::memory::api::save_result(&self.engine, self.engine.repo_root(), &save).map_err(|e| e.to_string())?;
+        Ok(format!("saved {} ({}, {} node(s))", note.id, note.outcome.as_str(), note.nodes.len()))
+    }
+
+    #[tool(description = "The short work-memory summary to load at the start of a session: corrections, dead ends to avoid and sources to prefer (also refreshes LESSONS.md)")]
+    async fn reflect(&self, Parameters(args): Parameters<ReflectArgs>) -> Result<String, String> {
+        let repo = self.engine.repo_root();
+        let options = crate::memory::reflect::ReflectOptions::new(crate::memory::note::now());
+        let (reflection, _) = crate::memory::api::reflect_repo(&self.engine, repo, &options).map_err(|e| e.to_string())?;
+        crate::memory::api::write_lessons(repo, &reflection).map_err(|e| e.to_string())?;
+        Ok(crate::memory::api::session_summary(&reflection, Some(args.max_tokens.unwrap_or(600))))
     }
 
     #[tool(description = "Run one incremental sync cycle against the repository's Git history")]

@@ -209,11 +209,14 @@ pub struct EngineOptions {
     /// Weight of the file summaries in lexical search (Fase 19). `None` reads
     /// `NEXSPEC_ENRICH_WEIGHT` (default 0.5); `Some(0.0)` is `--no-enrich`.
     pub summary_weight: Option<f32>,
+    /// Apply the work memory's nudge (Fase 15) to `search`: nodes `reflect` marked preferred rise, dead ends sink.
+    /// Needs `.specs/.cache/memory.json`; without it nothing changes. `false` is `--no-memory`.
+    pub memory: bool,
 }
 
 impl Default for EngineOptions {
     fn default() -> Self {
-        Self { vector_search: true, revision: None, summary_weight: None }
+        Self { vector_search: true, revision: None, summary_weight: None, memory: true }
     }
 }
 
@@ -231,6 +234,7 @@ pub struct Engine {
     vector_enabled: bool,
     revision: Option<String>,
     summary_weight: Option<f32>,
+    memory: Option<crate::memory::overlay::Overlay>,
     /// Declared last so it is released after everything above is dropped
     /// (the database file must be closed before another process may open it).
     _lock: Option<SyncLock>,
@@ -286,6 +290,7 @@ impl Engine {
             vector_enabled: options.vector_search,
             revision: options.revision.clone(),
             summary_weight: options.summary_weight,
+            memory: if options.memory && options.revision.is_none() { crate::memory::overlay::Overlay::load(repo_root) } else { None },
             _lock: Some(lock),
         })
     }
@@ -508,7 +513,10 @@ impl Engine {
         #[cfg(not(feature = "full"))]
         let hnsw_ranked: Vec<StableId> = Vec::new();
 
-        let fused = seed_discovery_weighted(&bm25_ranked, &hnsw_ranked, FusionWeights::from_env());
+        let mut fused = seed_discovery_weighted(&bm25_ranked, &hnsw_ranked, FusionWeights::from_env());
+        if let Some(memory) = &self.memory {
+            memory.apply(&mut fused);
+        }
         let seed_ids: Vec<StableId> = fused.iter().map(|(id, _)| *id).collect();
         // One hop out along the semantic edges (forward dependency edges are
         // deliberately not followed: they fill answers with neighbours nobody
@@ -1248,6 +1256,7 @@ mod tests {
             vector_enabled: true,
             revision: None,
             summary_weight: None,
+            memory: None,
             _lock: None,
         };
         let result = engine.trace(&id_hex(&symbol_id)).unwrap();

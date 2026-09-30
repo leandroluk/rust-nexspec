@@ -14,6 +14,7 @@ pub mod global;
 pub mod graph;
 pub mod hybrid;
 pub mod mcp;
+pub mod memory;
 pub mod query;
 pub mod report;
 pub mod search;

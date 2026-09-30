@@ -74,6 +74,8 @@ Use `--repo <path>` to operate on another repository.
 | `global add\|list\|remove\|path` | The graph of several repositories in one (`~/.nexspec/global`); `--global` on `query`/`path`/`explain`/`affected` asks it, `--repo TAG` picks the target's repository. |
 | `merge-graphs A.json B.json --out FILE` | Unite exports of several repositories (ids tagged, package and HTTP links across them). |
 | `merge-driver BASE OURS THEIRS` | Git merge driver for `*.graph.json` (registered by `hook install`). |
+| `save-result --question Q --nodes N… --outcome useful\|dead_end\|corrected [--correction C]` | Remember how an answer went and which nodes it cited (`.specs/.memory/notes/`). |
+| `reflect [--max-tokens N]` | Lessons from the saved results (`.specs/.memory/LESSONS.md`) and a light nudge for ranking; with `--max-tokens`, only the short session summary. |
 | `watch [--debounce MS]`                                                                | Sync after each burst of file changes (one watcher per repository; Ctrl+C stops it).            |
 | `hook install\|uninstall\|status`                                                      | Git hooks (`post-commit`, `post-merge`, `post-checkout`) that run `sync` in the background.     |
 | `check-update`                                                                         | `up-to-date`, `stale: <reason>` or `no-index` on the first line; never writes.                  |
@@ -116,6 +118,10 @@ Files that look like they hold a secret, `.env*`, keys and generated code are ne
 ## Several repositories
 
 `nexspec global add <repo>` puts a synced repository into a global graph; `merge-graphs` does the same into a file. Package dependencies and HTTP calls that cross repositories become inferred edges, so `nexspec affected @acme/shared --global` or `nexspec affected "GET /contracts/{}" --global` answers across repository boundaries. See [the docs page](docs/content/docs/features/multi-repo-graph.mdx).
+
+## Work memory
+
+`nexspec save-result` records how an answer went (`useful`, `dead_end`, `corrected`) and the nodes it cited; `nexspec reflect` turns the notes into lessons (preferred sources, dead ends, corrections, with a 30-day half-life) in `.specs/.memory/LESSONS.md`, and `search`/`query` lean towards preferred nodes and away from dead ends unless `--no-memory`. `nexspec reflect --max-tokens 400` prints the short summary a skill loads at session start. Raw notes stay out of Git, lessons can be versioned. See [the docs page](docs/content/docs/features/work-memory.mdx).
 
 ## MCP
 

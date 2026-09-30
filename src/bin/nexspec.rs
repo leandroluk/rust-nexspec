@@ -109,6 +109,9 @@ struct BenchArgs {
     /// Run the corpus without and with the `enrich` summaries and judge the difference (REQ-1911).
     #[arg(long)]
     compare_enrich: bool,
+    /// Run the corpus without and with the work memory's ranking nudge; fails if any kind loses more than 2 points.
+    #[arg(long)]
+    compare_memory: bool,
 }
 
 #[derive(clap::Args)]
@@ -205,6 +208,44 @@ struct ExportArgs {
     check: bool,
 }
 
+#[derive(clap::Args)]
+struct SaveResultArgs {
+    /// The question that was asked.
+    #[arg(long)]
+    question: String,
+    /// The answer that was given (short; no secrets).
+    #[arg(long, default_value = "")]
+    answer: String,
+    /// Kind of query: query, path, explain, affected, search…
+    #[arg(long = "type", default_value = "query")]
+    kind: String,
+    /// The nodes the answer cited, as accepted by `explain` (names, `path:Name`, markers, ids).
+    #[arg(long, num_args = 1..)]
+    nodes: Vec<String>,
+    /// How it went: `useful`, `dead_end` or `corrected`.
+    #[arg(long)]
+    outcome: String,
+    /// What the right answer was (required with `corrected`).
+    #[arg(long)]
+    correction: Option<String>,
+}
+
+#[derive(clap::Args)]
+struct ReflectArgs {
+    /// Only print the short summary a skill loads at the start of a session, cut to this budget; writes nothing.
+    #[arg(long = "max-tokens")]
+    max_tokens: Option<u32>,
+    /// Half-life of a signal, in days.
+    #[arg(long, default_value_t = nexspec::memory::reflect::DEFAULT_HALF_LIFE_DAYS)]
+    half_life_days: f64,
+    /// Useful answers that make a node preferred.
+    #[arg(long, default_value_t = nexspec::memory::reflect::DEFAULT_MIN_USEFUL)]
+    min_useful: usize,
+    /// Treat this unix time as "now" (for reproducible output).
+    #[arg(long)]
+    now: Option<u64>,
+}
+
 #[derive(Subcommand)]
 enum GlobalAction {
     /// Add a repository (its synced local index) or an export file to the global graph; the same `--as` replaces it.
@@ -271,6 +312,9 @@ enum Command {
         /// Ignore the file summaries written by `enrich`; rank on code text only.
         #[arg(long)]
         no_enrich: bool,
+        /// Ignore the work memory (`reflect`): no nudge for preferred nodes or dead ends.
+        #[arg(long)]
+        no_memory: bool,
     },
     /// Deterministic topological dependency trace.
     Trace {
@@ -297,6 +341,9 @@ enum Command {
         /// Ignore the file summaries written by `enrich`; rank on code text only.
         #[arg(long)]
         no_enrich: bool,
+        /// Ignore the work memory (`reflect`): no nudge for preferred nodes or dead ends.
+        #[arg(long)]
+        no_memory: bool,
         /// Ask the global graph (see `global add`); `--repo TAG` narrows seeds and targets to one repository.
         #[arg(long)]
         global: bool,
@@ -382,6 +429,10 @@ enum Command {
     /// Compare the changesets with a live PostgreSQL database (read-only, opt-in) and add the objects that
     /// exist only there to the graph. Prints `drift: none` or `drift: N difference(s)` first.
     Extract(ExtractArgs),
+    /// Remember how an answer went (`useful`, `dead_end`, `corrected`) and which nodes it cited, in `.specs/.memory/`.
+    SaveResult(SaveResultArgs),
+    /// Turn the saved results into lessons (`.specs/.memory/LESSONS.md`) and a light nudge for ranking.
+    Reflect(ReflectArgs),
     /// The graph of several repositories in one: add, list, remove, or find the folder (`--global` queries use it).
     Global {
         #[command(subcommand)]
@@ -434,8 +485,8 @@ enum Command {
     Bench(Box<BenchArgs>),
 }
 
-fn engine_options(no_enrich: bool) -> nexspec::engine::EngineOptions {
-    nexspec::engine::EngineOptions { summary_weight: no_enrich.then_some(0.0), ..Default::default() }
+fn engine_options(no_enrich: bool, no_memory: bool) -> nexspec::engine::EngineOptions {
+    nexspec::engine::EngineOptions { summary_weight: no_enrich.then_some(0.0), memory: !no_memory, ..Default::default() }
 }
 
 /// Exit code of `enrich` when some files could not be summarised (REQ-1909).
@@ -778,6 +829,27 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+        Command::SaveResult(args) => {
+            let engine = Engine::open(&index_dir, &repo)?;
+            let (note, path) = nexspec::memory::api::save_result(
+                &engine,
+                &repo,
+                &nexspec::memory::api::SaveArgs { question: args.question, answer: args.answer, kind: args.kind, nodes: args.nodes, outcome: args.outcome, correction: args.correction },
+            )?;
+            println!("saved {} ({}, {} node(s)) -> {}", note.id, note.outcome.as_str(), note.nodes.len(), path.display());
+        }
+        Command::Reflect(args) => {
+            use nexspec::memory::{api, reflect::ReflectOptions};
+            let engine = Engine::open(&index_dir, &repo)?;
+            let options = ReflectOptions { half_life_days: args.half_life_days, min_useful: args.min_useful, ..ReflectOptions::new(args.now.unwrap_or_else(nexspec::memory::note::now)) };
+            let (reflection, skipped) = api::reflect_repo(&engine, &repo, &options)?;
+            if let Some(budget) = args.max_tokens {
+                print!("{}", api::session_summary(&reflection, Some(budget)));
+            } else {
+                println!("{}", api::headline(&reflection, skipped));
+                println!("wrote {}", api::write_lessons(&repo, &reflection)?.display());
+            }
+        }
         Command::Global { action } => {
             use nexspec::export::ExportGraph;
             use nexspec::global::store;
@@ -877,8 +949,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Command::Init => {
             Engine::open(&index_dir, &repo)?;
             println!("initialized {}", index_dir.display());
-            use nexspec::workflow::gitignore::{CACHE_ENTRY, INDEX_ENTRY, ensure};
-            for added in ensure(&repo, &[INDEX_ENTRY, CACHE_ENTRY])? {
+            use nexspec::workflow::gitignore::{CACHE_ENTRY, INDEX_ENTRY, NOTES_ENTRY, ensure};
+            for added in ensure(&repo, &[INDEX_ENTRY, CACHE_ENTRY, NOTES_ENTRY])? {
                 println!("added {added} to .gitignore");
             }
         }
@@ -919,8 +991,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             engine.compact()?;
             println!("compacted");
         }
-        Command::Search { query, max_tokens, no_enrich } => {
-            let engine = Engine::open_with(&index_dir, &repo, engine_options(no_enrich))?;
+        Command::Search { query, max_tokens, no_enrich, no_memory } => {
+            let engine = Engine::open_with(&index_dir, &repo, engine_options(no_enrich, no_memory))?;
             let result = engine.search(&query, max_tokens)?;
             if let Some(markdown) = result.markdown {
                 println!("{markdown}");
@@ -976,9 +1048,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 println!("{line}");
             }
         }
-        Command::Query { question, dfs, depth, max_tokens, no_enrich, global, filter, format } => {
+        Command::Query { question, dfs, depth, max_tokens, no_enrich, no_memory, global, filter, format } => {
             let output = OutputArgs { max_tokens: Some(max_tokens.unwrap_or(2000)), format, global };
-            let engine = query_engine(&repo, &index_dir, global, engine_options(no_enrich))?;
+            let engine = query_engine(&repo, &index_dir, global, engine_options(no_enrich, no_memory))?;
             let options = nexspec::query::expand::ExpandOptions { dfs, max_depth: depth, filter: filter.build()?, ..Default::default() };
             let mut common = output.common(None)?;
             common.repo = global_repo(&repo_arg, global);
@@ -1134,7 +1206,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Command::Bench(args) => {
-            let BenchArgs { corpus, ks, index_dir, format, tokenizer, budget, output, no_vector, check, update_baseline, min_locate_recall, fixed_cost_files, compare_enrich } = *args;
+            let BenchArgs { corpus, ks, index_dir, format, tokenizer, budget, output, no_vector, check, update_baseline, min_locate_recall, fixed_cost_files, compare_enrich, compare_memory } = *args;
             use nexspec::bench::{report, runner};
             let corpus_path = corpus.unwrap_or_else(|| runner::default_corpus_path(&repo));
             let corpus = nexspec::bench::Corpus::load(&corpus_path)?;
@@ -1153,6 +1225,18 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             options.tokenizer = tokenizer;
             options.vector_search = !no_vector;
             options.fixed_cost_files = fixed_cost_files;
+            if compare_memory {
+                let comparison = nexspec::bench::compare::compare_memory(&corpus, &options)?;
+                let text = if format == "json" { serde_json::to_string_pretty(&comparison)? } else { nexspec::bench::compare::memory_to_markdown(&comparison) };
+                match output {
+                    Some(path) => std::fs::write(path, text)?,
+                    None => println!("{text}"),
+                }
+                if !comparison.accepted {
+                    return Err(format!("the work memory lowered recall: {}", comparison.regressions.join("; ")).into());
+                }
+                return Ok(());
+            }
             if compare_enrich {
                 let state = nexspec::enrich::run::State::load(&repo);
                 let spent = (state.runs > 0).then_some(state.input_tokens + state.output_tokens);

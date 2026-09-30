@@ -70,6 +70,9 @@ pub struct BenchOptions {
     pub fixed_cost_files: Vec<PathBuf>,
     /// Weight of the `enrich` summaries in lexical search: `None` = default, `Some(0.0)` = off.
     pub summary_weight: Option<f32>,
+    /// Apply the work memory's ranking nudge (Fase 15). Off by default: a benchmark must not depend on
+    /// what one person happened to save.
+    pub memory: bool,
 }
 
 impl BenchOptions {
@@ -83,6 +86,7 @@ impl BenchOptions {
             vector_search: true,
             fixed_cost_files: Vec::new(),
             summary_weight: None,
+            memory: false,
         }
     }
 }
@@ -188,7 +192,7 @@ pub fn run(corpus: &Corpus, options: &BenchOptions) -> Result<BenchReport, Bench
         .unwrap_or_else(|| temp.as_ref().expect("temp dir exists when no index dir is given").path().to_path_buf());
 
     let started = Instant::now();
-    let engine = Engine::open_with(&index_dir, &repo, EngineOptions { vector_search: options.vector_search, summary_weight: options.summary_weight, ..EngineOptions::default() })?;
+    let engine = Engine::open_with(&index_dir, &repo, EngineOptions { vector_search: options.vector_search, summary_weight: options.summary_weight, memory: options.memory, ..EngineOptions::default() })?;
     engine.sync()?;
     let index_seconds = started.elapsed().as_secs_f64();
 
