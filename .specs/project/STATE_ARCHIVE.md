@@ -393,3 +393,13 @@ contra specs do mesmo ciclo.
 - [x] Fase 10 (report-command): COMPLETA em 2026-09-30 (T-1001..T-1011). `nexspec report` (secoes estaveis Summary/God Nodes/Communities/Requirement Coverage/Surprising Connections/Import Cycles/Suggested Questions; JSON equivalente), `--max-tokens`, `--fail-on-cycle` (saida 2), `--diff REV` (revisao lida sem git externo via `GitSource::at_revision`, indexada em dir temporario), MCP `graph_report`. Comunidades: modularidade local (Louvain fase 1) — a propagacao de rotulos fundia dois grupos densos ligados por uma aresta. Proximo: Fase 11 (graph-query-surface); ver `.specs/features/graphify-parity/spec.md` para a ordem dos P0 restantes.
 
 ---
+
+## Archive — 2026-09-30 (compaction 7)
+
+### Lesson
+- (2026-09-30) Testes de razao T(2N)/T(N) com tabelas hash grandes medem cache miss em runner compartilhado (2,8x), nao algoritmo: manter N pequeno, serializar os testes de tempo e permitir novas tentativas.
+
+### Todo (completed)
+- [x] Fase 11 (graph-query-surface): COMPLETA em 2026-09-30 (T-1101..T-1110). `query`/`path`/`explain`/`affected` + `trace --depth/--max-tokens`; resolvedor unico (hex, marcador, `path:Simbolo`, arquivo, nome; ambiguidade lista candidatos e `--pick N`); filtros `--relation/--context/--min-confidence`; orcamento uniforme (`fit_lines`); MCP com 4 tools novas. Sementes do `query`: palavras que nomeiam exatamente um no + 1 hit fuzzy (sem isso, 5 hits). Corrigido de passagem: `LockBusy` raro do Tantivy no CI (espera curta ao abrir o writer). Proximo: Fase 16 (workflow-integration), depois 14 e 12.
+
+---

@@ -272,11 +272,11 @@ testes de inferência real, 78/78 (`lean`).
   limpos de primeira; `cargo test` → 72/72 pass.
 
 ## Lessons Learned (Last 5)
+- (2026-09-30) `query` com a pergunta inteira trazia nos aleatorios (palavras como 'what'/'uses' casam identificadores por sub-token): remover palavras-de-pergunta e dar preferencia a identificadores exatos mudou a qualidade das sementes mais que qualquer ajuste de expansao.
 - (2026-09-30) Rodar o relatorio no repo real mudou as regras: barrels `index.ts` dominavam os God nodes, conexoes `apps -> pkgs` dominavam as 'inesperadas' e listas inteiras de REQs sem link afogavam o Markdown. Metricas de estrutura precisam de um filtro para o fluxo normal da arquitetura antes de valerem algo.
 - (2026-09-30) Expandir a busca por arestas de dependencia *para frente* encheu toda resposta de vizinhos (+35% de tokens) sem ganho de recall; o ganho veio de incluir *dependentes* so quando a pergunta pede. Medir tokens junto com recall a cada mudanca de busca.
 - (2026-09-30) O benchmark no repo real achou o que os testes unitarios nao achavam: `traceability` = 0 porque requisitos no formato `- **REQ-X (Rotulo)**:` e `### REQ-X:` nao eram indexados; `PNG` aparecendo em resultados de busca; vetor com peso igual piorando a ordem. Medir antes de ajustar ranking.
 - (2026-09-30) `HnswParticipant::new` reconstruia o grafo HNSW (~1,1 s / 5 mil pontos) em todo `sync`, mesmo sem mudancas; agora e sob demanda. O teste de orcamento (T-907) so revelou isso porque mede o sync sem mudancas separadamente.
-- (2026-09-30) Testes de razao T(2N)/T(N) com tabelas hash grandes medem cache miss em runner compartilhado (2,8x), nao algoritmo: manter N pequeno, serializar os testes de tempo e permitir novas tentativas.
 
 ## Deferred Ideas
 - Trim de features do `gix` (`default-features = false`) — footprint atual

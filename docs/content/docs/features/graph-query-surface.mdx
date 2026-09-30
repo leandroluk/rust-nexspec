@@ -1,0 +1,51 @@
+---
+title: "Phase 11 · Graph Queries"
+description: query, path, explain and affected — four ways to ask the graph, all within a token budget.
+---
+
+Four commands answer structural questions from the graph. Each returns facts (nodes, relations, where they are), never generated prose, and every one accepts a token budget.
+
+Source: `.specs/features/graph-query-surface/`
+
+| Command | Question it answers |
+| --- | --- |
+| `nexspec query "<question>"` | Starting points from the hybrid search (and any identifier you name), expanded through their relations. |
+| `nexspec path A B` | What is the shortest chain of relations between two nodes? |
+| `nexspec explain X` | What is this node: where, signature, dependencies, dependents, requirements, community, recent authors. |
+| `nexspec affected X` | Who depends on this, transitively, grouped by file and community? |
+
+`trace` stays as the "whole neighbourhood" view and now takes `--depth` and `--max-tokens` too.
+
+## Targets
+
+One resolver serves every command. A target can be a hex id, a marker (`REQ-CTC-001`), `path/fragment:Symbol`, a file path (or its tail), or a symbol name (case-insensitive as a fallback). When a name matches several nodes the command **lists them and stops**; it never guesses:
+
+```text
+error: the target matches 2 nodes; say which one (`path/fragment:Name`, or --pick N):
+  1. handler (src/a/handler.ts) [symbol]
+  2. handler (src/b/handler.ts) [symbol]
+```
+
+Use `a/handler.ts:handler` or `--pick 2`. "No path between A and B" is a normal answer, not an error.
+
+## Filters and confidence
+
+```bash
+nexspec affected CachePort --relation extends --relation references
+nexspec affected CachePort --context runtime --min-confidence extracted
+nexspec path UserService AuthGuard --relation dependencies
+```
+
+- `--relation` (repeatable): `imports`, `reexports`, `calls`, `instantiates`, `extends`, `references`, `satisfies`, `implements`, `defined_in`, `depends_on`, `cochanges`, or `dependencies` for all the dependency kinds. By default co-change and `defined_in` are not followed.
+- `--context` (repeatable): `runtime`, `type-only`, `test`, `spec`.
+- `--min-confidence extracted` drops edges that were only inferred.
+
+Every edge shown carries its relation, and `[inferred]`, `[type-only]`, `[test]` or `[spec]` when they apply.
+
+## Budget
+
+`--max-tokens N` (alias `--budget`) fits any answer into N tokens (90% safety margin); what does not fit is counted (`… +N more lines omitted`). `query` defaults to 2000. Without a budget, levels are still capped (25 nodes per level in `affected`, 60 nodes in `query`). `--format json` gives the same data for tools.
+
+## MCP
+
+`query_graph`, `find_path`, `explain_node` and `find_affected` take the same parameters (`relation`, `context`, `min_confidence`, `max_tokens`, `pick`, `format`).

@@ -72,3 +72,21 @@ Engine ──view()──► GraphView { snapshot, fwd, rev } ──┬─► af
 - **Nomes comuns** (`index`, `Config`, `Service`): o resolvedor devolve candidatos, e o aviso aparece no texto, não como erro mudo.
 - **Custo por chamada:** montar a visão (nós + arestas) a cada consulta; medido em ~20–60 ms no repo de referência. Se pesar no servidor MCP, cachear por `sync_version` (mesma técnica do HNSW).
 - **Saídas longas:** todo comando tem teto por hop e aceita orçamento; o teste de aceite exige que nenhuma consulta no repo de referência passe de 2 000 tokens com o padrão.
+
+## Resultados (T-1110, 2026-09-30)
+
+Clone local do condominium-management-system, `--release`, índice pronto:
+
+| Consulta | Tempo | Tamanho (~tokens) |
+|---|---:|---:|
+| `affected CachePort` (profundidade 2, 25 por nível) | 114 ms | ~1.150 |
+| `affected AccessUserPersonaReader` | 118 ms | ~1.200 |
+| `explain CachePort` | 189 ms | ~300 |
+| `path CacheRedisAdapter IdempotentInterceptor` | 77 ms | ~140 |
+| `query "what uses CachePort"` (orçamento padrão de 2.000) | 55 ms | dentro do orçamento |
+
+Nenhuma saída padrão passou de 2.000 tokens. `affected CachePort` lista os mesmos usuários do `trace` (interceptors, `CacheRedisAdapter` por `extends`, specs marcados `[spec]`), agrupados por arquivo e comunidade.
+
+**Ajuste pós-medição:** a primeira versão do `query` usava a pergunta inteira na busca; palavras como "what" e "uses" casam identificadores por sub-token (o tokenizador da Fase 8) e traziam sementes sem relação (`deleteGate`, `AccessUserPersonaView`). Agora (1) palavras-de-pergunta (inglês e português) saem do texto de busca, (2) palavras que nomeiam **exatamente** um nó (identificador, caminho, marcador) são as sementes, e a busca difusa só completa com 1 resultado; sem nome exato, valem os 5 melhores resultados da busca. Sobrou ruído de 1–2 sementes difusas por consulta; o custo em tokens é pequeno e a expansão parte do nó certo.
+
+**Falha rara de CI encontrada no caminho:** `LockBusy` do Tantivy ao abrir o writer logo após outro ser solto (1 em várias execuções, Linux). `TantivyParticipant::new` passou a esperar até 2 s pelo lock (seguro: o `SyncLock` entre processos já garante que não há outro dono), com teste.

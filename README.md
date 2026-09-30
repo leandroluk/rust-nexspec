@@ -59,7 +59,11 @@ Use `--repo <path>` to operate on another repository.
 | `sync [--resume]` | One incremental sync cycle; `--resume` replays unfinished WAL frames first. |
 | `compact` | Force CSR delta compaction. |
 | `search <query> [--max-tokens N]` | Hybrid search, optionally budgeted into dense Markdown. |
-| `trace <ID>` | Deterministic dependency trace from a `REQ`/`ADR` marker or symbol. |
+| `trace <ID> [--depth N] [--max-tokens N]` | Deterministic dependency trace from a `REQ`/`ADR` marker or symbol. |
+| `query "<question>"` | Answer from the graph: search seeds expanded through their relations, within a token budget. |
+| `path <A> <B>` | Shortest chain of relations between two nodes. |
+| `explain <X>` | Describe one node: location, signature, links, requirements, community, authors. |
+| `affected <X> [--relation R]… [--depth N]` | Who depends on it, transitively, grouped by file. |
 | `blame <symbol> [--full-history]` | AST-aware blame scoped to the symbol's lines. |
 | `diff --staged` | Structural impact of the dirty/staged tree. |
 | `report [--format md\|json] [--max-tokens N] [--top N] [--fail-on-cycle] [--diff REV]` | Structural report of the graph (see below). |
@@ -76,7 +80,7 @@ Use `--repo <path>` to operate on another repository.
 }
 ```
 
-Tools: `query_context`, `semantic_search`, `trace_requirement`, `find_impacted_code`, `get_symbol_history`, `graph_report`, `sync_workspace`.
+Tools: `query_context`, `semantic_search`, `trace_requirement`, `find_impacted_code`, `get_symbol_history`, `graph_report`, `query_graph`, `find_path`, `explain_node`, `find_affected`, `sync_workspace`.
 
 ## Graph report
 
