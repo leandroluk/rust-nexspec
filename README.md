@@ -67,7 +67,8 @@ Use `--repo <path>` to operate on another repository.
 | `blame <symbol> [--full-history]`                                                      | AST-aware blame scoped to the symbol's lines.                                                   |
 | `diff --staged`                                                                        | Structural impact of the dirty/staged tree.                                                     |
 | `report [--format md\|json] [--max-tokens N] [--top N] [--fail-on-cycle] [--diff REV]` | Structural report of the graph (see below).                                                     |
-| `bench [--corpus FILE] [--check] [--update-baseline]`                                  | Retrieval quality and token cost against a question corpus.                                     |
+| `bench [--corpus FILE] [--check] [--update-baseline] [--compare-enrich]` | Retrieval quality and token cost against a question corpus; `--compare-enrich` runs it without and with the `enrich` summaries. |
+| `enrich [--lang en,pt] [--top 20%] [--dry-run] [--status] [--clear] [--yes]` | Opt-in: an LLM writes a short summary per file so prose questions find code (see below). |
 | `watch [--debounce MS]`                                                                | Sync after each burst of file changes (one watcher per repository; Ctrl+C stops it).            |
 | `hook install\|uninstall\|status`                                                      | Git hooks (`post-commit`, `post-merge`, `post-checkout`) that run `sync` in the background.     |
 | `check-update`                                                                         | `up-to-date`, `stale: <reason>` or `no-index` on the first line; never writes.                  |
@@ -85,6 +86,22 @@ Use `--repo <path>` to operate on another repository.
 | `3`  | `check-update`: the index is stale (HEAD moved or the tree has uncommitted changes). |
 | `4`  | `check-update`: there is no index.                                                   |
 | `5`  | `doctor`: at least one check failed.                                                 |
+| `6`  | `enrich`: some files could not be summarised (the rest were kept).                   |
+
+## Retrieval enrichment
+
+Questions in prose ("how are invoices charged to residents") do not match identifiers, so `search` and `query` return nothing useful. `nexspec enrich` asks an LLM for one short summary per file, in the languages you choose, and indexes it next to the code text. It is strictly opt-in: nothing is sent until you run it, `sync` and the hooks never call a provider, and it is not an MCP tool.
+
+```bash
+export GEMINI_API_KEY=…
+nexspec enrich --dry-run --lang en,pt     # files, tokens and cost estimate, offline
+nexspec enrich --lang en,pt --top 20%     # the most important 20 % first; Ctrl+C keeps what is done
+nexspec enrich --status                   # up to date / stale / pending, tokens and cost so far
+nexspec search --no-enrich "…"            # rank on code text only
+nexspec bench --compare-enrich            # with vs without, judged against the acceptance criteria
+```
+
+Files that look like they hold a secret, `.env*`, keys and generated code are never sent; only the first 2500 characters of each file leave the machine. Summaries live in `.specs/.cache/enrichment.jsonl` (git-ignored, outside the index, so rebuilding the index does not cost again). A file that changed since its summary was written is *stale* and leaves the ranking until it is enriched again. See [the docs page](docs/content/docs/features/retrieval-enrichment.mdx).
 
 ## MCP
 

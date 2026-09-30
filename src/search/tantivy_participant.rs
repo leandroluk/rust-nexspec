@@ -10,15 +10,14 @@
 //! is a no-op (does not re-`add_document`, which would otherwise duplicate
 //! entries — Tantivy has no upsert-by-id semantics on its own).
 
-use crate::search::ident::{IDENT_TOKENIZER, IdentTokenizer};
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use tantivy::directory::MmapDirectory;
 use tantivy::{Index, IndexReader, IndexWriter, TantivyDocument};
 
-use crate::search::schema::TantivySchema;
+use crate::search::schema::{SummarySource, TantivySchema, register_tokenizers};
 use crate::sync::mutation::{MutationSet, NodeMutation};
 use crate::sync::participant::{SyncError, SyncParticipant};
 
@@ -88,6 +87,7 @@ pub struct TantivyParticipant {
     schema: TantivySchema,
     writer: Mutex<IndexWriter<TantivyDocument>>,
     reader: IndexReader,
+    summaries: Mutex<Option<Arc<dyn SummarySource>>>,
     staged_version: Mutex<Option<u64>>,
     committed_version: AtomicU64,
 }
@@ -117,16 +117,22 @@ impl TantivyParticipant {
         let schema = TantivySchema::new();
         let dir = MmapDirectory::open(index_path)?;
         let index = Index::open_or_create(dir, schema.schema.clone())?;
-        index.tokenizers().register(IDENT_TOKENIZER, IdentTokenizer);
+        register_tokenizers(&index);
         let writer = open_writer(&index)?;
         let reader = index.reader()?;
         Ok(Self {
             schema,
             writer: Mutex::new(writer),
             reader,
+            summaries: Mutex::new(None),
             staged_version: Mutex::new(None),
             committed_version: AtomicU64::new(0),
         })
+    }
+
+    /// Where file summaries come from when a file document is (re)built.
+    pub fn set_summary_source(&self, source: Arc<dyn SummarySource>) {
+        *self.summaries.lock().unwrap() = Some(source);
     }
 
     /// A cloneable handle to keep for querying — call this before moving
@@ -168,7 +174,13 @@ impl SyncParticipant for TantivyParticipant {
                         &aligned,
                     )
                     .map_err(|e| SyncError::Storage(e.to_string()))?;
-                let doc = self.schema.document_for(id, &decoded);
+                let summaries = match (&decoded, self.summaries.lock().unwrap().as_ref()) {
+                    (crate::graph::node::NodePayload::File { path, .. }, Some(source)) => source.summaries(path),
+                    _ => Default::default(),
+                };
+                let doc = self.schema.document_with_summaries(id, &decoded, &summaries);
+                // An upsert replaces: without this, re-applying a summary would leave two documents.
+                writer.delete_term(tantivy::Term::from_field_text(self.schema.id_field, &crate::search::schema::hex(id)));
                 writer.add_document(doc).map_err(|e| storage_err(SearchError::from(e)))?;
             }
             // NodeMutation::Remove is not yet reflected in the index (no

@@ -2,6 +2,7 @@
 
 pub mod baseline;
 pub mod baselines;
+pub mod compare;
 pub mod corpus;
 pub mod locate;
 pub mod metrics;

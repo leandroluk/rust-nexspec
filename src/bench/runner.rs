@@ -68,6 +68,8 @@ pub struct BenchOptions {
     /// question (e.g. STATE.md, the skill): their tokens are reported as a
     /// fixed cost, never folded into the per-question numbers.
     pub fixed_cost_files: Vec<PathBuf>,
+    /// Weight of the `enrich` summaries in lexical search: `None` = default, `Some(0.0)` = off.
+    pub summary_weight: Option<f32>,
 }
 
 impl BenchOptions {
@@ -80,6 +82,7 @@ impl BenchOptions {
             tokenizer: TokenizerKind::Heuristic,
             vector_search: true,
             fixed_cost_files: Vec::new(),
+            summary_weight: None,
         }
     }
 }
@@ -185,7 +188,7 @@ pub fn run(corpus: &Corpus, options: &BenchOptions) -> Result<BenchReport, Bench
         .unwrap_or_else(|| temp.as_ref().expect("temp dir exists when no index dir is given").path().to_path_buf());
 
     let started = Instant::now();
-    let engine = Engine::open_with(&index_dir, &repo, EngineOptions { vector_search: options.vector_search, ..EngineOptions::default() })?;
+    let engine = Engine::open_with(&index_dir, &repo, EngineOptions { vector_search: options.vector_search, summary_weight: options.summary_weight, ..EngineOptions::default() })?;
     engine.sync()?;
     let index_seconds = started.elapsed().as_secs_f64();
 

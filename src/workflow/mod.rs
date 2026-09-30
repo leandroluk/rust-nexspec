@@ -3,6 +3,7 @@
 
 pub mod check;
 pub mod doctor;
+pub mod gitignore;
 pub mod hooks;
 pub mod install;
 pub mod watch;

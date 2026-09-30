@@ -204,7 +204,7 @@ pub fn report_at_revision(
     let engine = Engine::open_with(
         scratch.path(),
         repo_root,
-        EngineOptions { vector_search: false, revision: Some(revision.to_string()) },
+        EngineOptions { vector_search: false, revision: Some(revision.to_string()), ..EngineOptions::default() },
     )?;
     engine.sync()?;
     let snapshot = engine.snapshot()?;

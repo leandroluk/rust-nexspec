@@ -29,14 +29,44 @@ pub fn find_by_id(
     }
 }
 
-/// Free-text BM25 search over the `text` field, ranked, top `limit` results.
+/// Weight of the `summary_*` fields relative to `text` (REQ-1907): `NEXSPEC_ENRICH_WEIGHT`,
+/// default 0.5; 0 leaves the summaries out of the query.
+pub fn summary_weight_from_env() -> f32 {
+    std::env::var("NEXSPEC_ENRICH_WEIGHT")
+        .ok()
+        .and_then(|v| v.trim().parse::<f32>().ok())
+        .filter(|w| w.is_finite() && *w >= 0.0)
+        .unwrap_or(0.5)
+}
+
+/// Free-text BM25 search over `text` and the file summaries, ranked, top `limit` results.
 pub fn search_text(
     participant: &impl TantivyQueryable,
     query_text: &str,
     limit: usize,
 ) -> Result<Vec<TantivyDocument>, SearchError> {
+    search_text_weighted(participant, query_text, limit, summary_weight_from_env())
+}
+
+/// [`search_text`] with an explicit summary weight (`0.0` = `text` only, what `--no-enrich` asks for).
+pub fn search_text_weighted(
+    participant: &impl TantivyQueryable,
+    query_text: &str,
+    limit: usize,
+    summary_weight: f32,
+) -> Result<Vec<TantivyDocument>, SearchError> {
     let searcher = participant.reader().searcher();
-    let query_parser = QueryParser::for_index(searcher.index(), vec![participant.schema().text_field]);
+    let schema = participant.schema();
+    let mut fields = vec![schema.text_field];
+    if summary_weight > 0.0 {
+        fields.extend(schema.summary_fields.iter().map(|(_, f)| *f));
+    }
+    let mut query_parser = QueryParser::for_index(searcher.index(), fields);
+    if summary_weight > 0.0 {
+        for (_, field) in &schema.summary_fields {
+            query_parser.set_field_boost(*field, summary_weight);
+        }
+    }
     let query = query_parser.parse_query(query_text)?;
     let top = searcher.search(&query, &TopDocs::with_limit(limit).order_by_score())?;
     top.into_iter()
@@ -114,5 +144,48 @@ mod tests {
             assert_eq!(search_text(&p, query, 10).unwrap().len(), 1, "{query:?} must reach CsrDeltaCompactor");
         }
         assert!(search_text(&p, "unrelatedword", 10).unwrap().is_empty());
+    }
+
+    struct FixedSummaries(std::collections::BTreeMap<String, String>);
+
+    impl crate::search::schema::SummarySource for FixedSummaries {
+        fn summaries(&self, _path: &str) -> std::collections::BTreeMap<String, String> {
+            self.0.clone()
+        }
+    }
+
+    fn file_participant(id: StableId, path: &str, summaries: &[(&str, &str)]) -> (TempDir, TantivyParticipant) {
+        let dir = TempDir::new().unwrap();
+        let p = TantivyParticipant::new(dir.path()).unwrap();
+        p.set_summary_source(std::sync::Arc::new(FixedSummaries(summaries.iter().map(|(l, s)| (l.to_string(), s.to_string())).collect())));
+        let payload = NodePayload::File { path: path.to_string(), source_hash: id };
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&payload).unwrap().to_vec();
+        let set = MutationSet { nodes: vec![NodeMutation::Upsert { id, payload: bytes }], edges: vec![], docs: vec![] };
+        p.stage(1, &set).unwrap();
+        p.commit(1).unwrap();
+        (dir, p)
+    }
+
+    #[test]
+    fn a_prose_question_reaches_a_file_through_its_summary_in_any_language() {
+        let (_dir, p) = file_participant(
+            [4u8; 32],
+            "src/lease/create-lease.usecase.ts",
+            &[("en", "Creates a tenant contract and validates its rental terms"), ("ru", "Создаёт договор аренды для арендатора")],
+        );
+        assert!(search_text_weighted(&p, "how is a tenant contract created", 10, 0.0).unwrap().is_empty(), "text alone cannot answer prose");
+        assert_eq!(search_text_weighted(&p, "how is a tenant contract created", 10, 0.5).unwrap().len(), 1);
+        assert_eq!(search_text_weighted(&p, "договоры аренды", 10, 0.5).unwrap().len(), 1, "Russian stemming: договоры -> договор");
+    }
+
+    #[test]
+    fn re_applying_a_summary_replaces_the_document() {
+        let (_dir, p) = file_participant([5u8; 32], "src/a.ts", &[("en", "billing invoices")]);
+        let payload = NodePayload::File { path: "src/a.ts".to_string(), source_hash: [5u8; 32] };
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&payload).unwrap().to_vec();
+        let set = MutationSet { nodes: vec![NodeMutation::Upsert { id: [5u8; 32], payload: bytes }], edges: vec![], docs: vec![] };
+        p.stage(2, &set).unwrap();
+        p.commit(2).unwrap();
+        assert_eq!(search_text_weighted(&p, "invoices", 10, 0.5).unwrap().len(), 1, "one document, not two");
     }
 }

@@ -19,7 +19,7 @@ quem quiser opt-in explícito, e só deve ser construída se a Fase 8 provar que
 
 ## Requirements (condicionais)
 
-- REQ-1701: **Provedor plugável** — `LlmProvider` (trait) com implementações para endpoints compatíveis com OpenAI e com Anthropic (URL base e modelo por configuração/variável de ambiente, incluindo servidores locais); nenhuma chamada de rede sem `--llm` explícito e chave configurada.
+- REQ-1701: **Provedor plugável** — `LlmProvider` (trait; a generalização do `EnrichProvider` da Fase 19, `src/enrich/provider.rs`, e reaproveita a contabilidade de tokens e custo de `src/enrich/cost.rs`) com implementações para endpoints compatíveis com OpenAI e com Anthropic (URL base e modelo por configuração/variável de ambiente, incluindo servidores locais); nenhuma chamada de rede sem `--llm` explícito e chave configurada.
 - REQ-1702: **Rótulos de comunidade** — `label [--missing-only]` nomeia comunidades (Fase 10) a partir de arquivos/símbolos principais, com cache por *hash* do conteúdo da comunidade, lote e concorrência configuráveis; rótulos são **anotações** (não alteram ids nem arestas) e o relatório funciona sem elas.
 - REQ-1703: **Extração semântica de documentos (Markdown/texto)** — conceitos e relações `INFERRED` ligando documentos a símbolos/REQs, com validação e limpeza do fragmento (contrato de schema), cache incremental por arquivo e **limite de custo** (`--token-budget`, `--max-concurrency`); resultado nunca sobrescreve arestas `EXTRACTED`.
 - REQ-1704: **Honestidade de proveniência** — toda aresta semântica é marcada `INFERRED` com modelo, data e hash da fonte; `--min-confidence EXTRACTED` (Fase 11) a exclui.

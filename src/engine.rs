@@ -171,8 +171,9 @@ pub struct BlameResult {
 /// themselves instead of serving wrong answers. 2 = capped co-change edges,
 /// 3 = identifier-aware tokenizer for the lexical index,
 /// 4 = no `File` nodes for binaries/lockfiles,
-/// 5 = `Edge.meta` and the dependency edge types.
-pub const INDEX_FORMAT: u64 = 5;
+/// 5 = `Edge.meta` and the dependency edge types,
+/// 6 = per-language `summary_*` fields in the lexical index (Fase 19).
+pub const INDEX_FORMAT: u64 = 6;
 
 /// Dependents appended to a search result after the seeds and their own
 /// neighbours (REQ-707: bounded, so a widely used type cannot flood an answer).
@@ -201,11 +202,14 @@ pub struct EngineOptions {
     /// Index this revision (branch, tag, sha, `HEAD~3`...) instead of `HEAD` plus
     /// the working tree: a read-only view, for comparing graphs across commits.
     pub revision: Option<String>,
+    /// Weight of the file summaries in lexical search (Fase 19). `None` reads
+    /// `NEXSPEC_ENRICH_WEIGHT` (default 0.5); `Some(0.0)` is `--no-enrich`.
+    pub summary_weight: Option<f32>,
 }
 
 impl Default for EngineOptions {
     fn default() -> Self {
-        Self { vector_search: true, revision: None }
+        Self { vector_search: true, revision: None, summary_weight: None }
     }
 }
 
@@ -222,6 +226,7 @@ pub struct Engine {
     hnsw_cache: std::sync::Mutex<Option<(u64, Arc<HnswParticipant>)>>,
     vector_enabled: bool,
     revision: Option<String>,
+    summary_weight: Option<f32>,
     /// Declared last so it is released after everything above is dropped
     /// (the database file must be closed before another process may open it).
     _lock: Option<SyncLock>,
@@ -276,6 +281,7 @@ impl Engine {
             hnsw_cache: std::sync::Mutex::new(None),
             vector_enabled: options.vector_search,
             revision: options.revision.clone(),
+            summary_weight: options.summary_weight,
             _lock: Some(lock),
         })
     }
@@ -339,6 +345,13 @@ impl Engine {
         let redb_participant = RedbParticipant::new(&self.db);
         let csr_participant = CsrParticipant::new(Arc::clone(&self.csr), self.csr_path());
         let tantivy_participant = TantivyParticipant::new(&self.tantivy_dir())?;
+        // A rebuilt index recovers its summaries from the local cache, without the provider (REQ-1907).
+        if let Ok(cache) = crate::enrich::cache::EnrichmentCache::load(&self.repo_root) {
+            let view = crate::enrich::cache::EnrichmentView::build(&self.repo_root, &cache);
+            if !view.is_empty() {
+                tantivy_participant.set_summary_source(Arc::new(view));
+            }
+        }
         #[cfg_attr(not(feature = "full"), allow(unused_mut))]
         let mut participants: Vec<Box<dyn SyncParticipant + '_>> = vec![
             Box::new(redb_participant),
@@ -364,6 +377,27 @@ impl Engine {
         let mut orchestrator =
             SyncOrchestrator::new(git, coordinator, VersionPointer::new(&self.db)).with_csr(Arc::clone(&self.csr));
         Ok(orchestrator.run_once()?)
+    }
+
+    /// Re-applies the cached summaries of `paths` to the lexical index (REQ-1907): one cycle through
+    /// the coordinator that upserts each file's node unchanged, so the file's document is rebuilt
+    /// with its summaries. Nodes, edges and ids do not change. Returns how many files were applied.
+    pub fn apply_enrichment(&self, paths: &[String]) -> Result<usize, EngineError> {
+        let mut nodes = Vec::new();
+        for path in paths {
+            let id = crate::graph::node::file_node_id(path);
+            let Some(payload) = self.node_payload(&id)? else { continue };
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&payload).map_err(|e| EngineError::Codec(e.to_string()))?.to_vec();
+            nodes.push(NodeMutation::Upsert { id, payload: bytes });
+        }
+        if nodes.is_empty() {
+            return Ok(0);
+        }
+        let applied = nodes.len();
+        let wal = Wal::open(self.wal_path())?;
+        let coordinator = Coordinator::new(wal, VersionPointer::new(&self.db), self.participants()?);
+        coordinator.stage(crate::sync::MutationSet { nodes, edges: vec![], docs: vec![] })?;
+        Ok(applied)
     }
 
     /// REQ-603: deterministic crash recovery, replaying any WAL frame no
@@ -403,7 +437,8 @@ impl Engine {
     /// Fase 5 pruning/budgeting/serialization pipeline.
     pub fn search(&self, query: &str, max_tokens: Option<u32>) -> Result<SearchResult, EngineError> {
         let tantivy = TantivyParticipant::new(&self.tantivy_dir())?;
-        let bm25_ranked: Vec<StableId> = search_text(&tantivy, query, 20)?
+        let weight = self.summary_weight.unwrap_or_else(crate::search::query::summary_weight_from_env);
+        let bm25_ranked: Vec<StableId> = crate::search::search_text_weighted(&tantivy, query, 20, weight)?
             .iter()
             .filter_map(|doc| doc.get_first(tantivy.schema().id_field)?.as_str().and_then(unhex))
             .collect();
@@ -1154,6 +1189,7 @@ mod tests {
             hnsw_cache: std::sync::Mutex::new(None),
             vector_enabled: true,
             revision: None,
+            summary_weight: None,
             _lock: None,
         };
         let result = engine.trace(&id_hex(&symbol_id)).unwrap();

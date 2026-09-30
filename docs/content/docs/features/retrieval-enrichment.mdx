@@ -1,0 +1,35 @@
+---
+title: "Phase 19 · Retrieval Enrichment"
+description: LLM summaries per file, indexed per language, so questions in prose can find code.
+---
+
+`nexspec enrich` closes the gap between a question in prose and the identifiers in code. It is opt-in and never runs on its own.
+
+Source: `.specs/features/retrieval-enrichment/`
+
+## How it works
+
+1. **Select.** Indexed TS/JS, Python, Go, Rust and Markdown files, honouring `.gitignore`. Never `.env*`, keys, certificates, binaries or generated code. The first 2500 characters of each file are scanned for secrets (private keys, cloud tokens, hard-coded passwords); a file that matches is kept back and listed by `--status`.
+2. **Order.** Most important first: graph degree, links to requirements and tasks, co-change. `--top 20%` or `--top 300` stops early.
+3. **Ask.** Batches of files go to the provider (Gemini first, key from `GEMINI_API_KEY`, sent in a header only). One request returns the summary in every language of `--lang`, written natively, not translated.
+4. **Keep.** After every batch the cache is rewritten and the summaries are applied to the index, so Ctrl+C or `--token-budget` lose nothing and repeat nothing.
+
+## Search
+
+The index has one field per language (`summary_en`, `summary_pt`, `summary_ru`, …, every language Tantivy can stem) next to `text`. Search queries all of them; summaries weigh `NEXSPEC_ENRICH_WEIGHT` (default 0.5, `0` switches them off) against 1.0 for code text. There is no language detection: a question in any language can match the summary written in that language. `--no-enrich` on `search` and `query` ranks on code text only.
+
+## Cost and control
+
+| Command | What it does |
+| --- | --- |
+| `enrich --dry-run` | Offline estimate: files, tokens in and out, cost at 20 %, 50 % and 100 % coverage. |
+| `enrich --status` | `enrichment: N/M files up to date (en,pt), S stale, P pending`, plus failures, omitted files and accumulated tokens and cost. |
+| `enrich --yes` | Skips the confirmation asked on the first use and above 500 000 estimated input tokens. |
+| `enrich --token-budget T` | Stops cleanly after `T` tokens as reported by the provider. |
+| `enrich --clear` | Deletes the cache. |
+
+Prices come from `NEXSPEC_ENRICH_PRICE_IN` / `NEXSPEC_ENRICH_PRICE_OUT` (USD per million tokens) or a small built-in table; an unknown model is flagged as a guess. Exit code 6 means some files failed and the rest were kept.
+
+## Is it worth it?
+
+`nexspec bench --compare-enrich` runs your corpus twice on the same commit. The summaries may keep a weight above zero only if prose (`behavior`) questions gain at least 15 points of `recall@5`, `locate` MRR drops by at most 2 points and median latency grows by at most 20 %. The report also says how many questions it takes for the enrichment tokens to pay themselves back.

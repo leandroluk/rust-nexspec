@@ -102,6 +102,9 @@ struct BenchArgs {
     /// reported as a fixed cost with its break-even point.
     #[arg(long = "fixed-cost-file")]
     fixed_cost_files: Vec<PathBuf>,
+    /// Run the corpus without and with the `enrich` summaries and judge the difference (REQ-1911).
+    #[arg(long)]
+    compare_enrich: bool,
 }
 
 #[derive(clap::Args)]
@@ -121,6 +124,46 @@ struct PlatformArgs {
 enum ScopeArg {
     Project,
     User,
+}
+
+#[derive(clap::Args)]
+struct EnrichArgs {
+    /// Provider: `gemini` (needs GEMINI_API_KEY). `fake` reads NEXSPEC_ENRICH_FIXTURES (tests).
+    #[arg(long, default_value = "gemini")]
+    provider: String,
+    /// Model name (default: NEXSPEC_ENRICH_MODEL or the provider's default).
+    #[arg(long)]
+    model: Option<String>,
+    /// Summary languages, comma separated (for example `en,pt`). One index field per language.
+    #[arg(long, default_value = "en", value_delimiter = ',')]
+    lang: Vec<String>,
+    /// Files per request.
+    #[arg(long, default_value_t = 8)]
+    batch: usize,
+    /// Requests in flight at once.
+    #[arg(long, default_value_t = 4)]
+    max_concurrency: usize,
+    /// Only the most important files: `300` or `20%`.
+    #[arg(long)]
+    top: Option<String>,
+    /// Stop after this many tokens (input + output, as the provider reports them).
+    #[arg(long)]
+    token_budget: Option<u64>,
+    /// Characters of each file that are sent.
+    #[arg(long, default_value_t = nexspec::enrich::select::DEFAULT_SNIPPET_CHARS)]
+    snippet_chars: usize,
+    /// Estimate files, tokens and cost offline; send nothing.
+    #[arg(long)]
+    dry_run: bool,
+    /// Show what is enriched, stale and pending; send nothing.
+    #[arg(long)]
+    status: bool,
+    /// Delete the enrichment cache (the index keeps working; summaries leave it at the next sync).
+    #[arg(long)]
+    clear: bool,
+    /// Do not ask for confirmation (first use, or more than 500 000 estimated input tokens).
+    #[arg(long)]
+    yes: bool,
 }
 
 #[derive(Subcommand)]
@@ -155,6 +198,9 @@ enum Command {
         /// this many tokens (90% safety margin).
         #[arg(long = "max-tokens")]
         max_tokens: Option<u32>,
+        /// Ignore the file summaries written by `enrich`; rank on code text only.
+        #[arg(long)]
+        no_enrich: bool,
     },
     /// Deterministic topological dependency trace.
     Trace {
@@ -178,6 +224,9 @@ enum Command {
         /// Token budget for the answer (default 2000).
         #[arg(long = "max-tokens", alias = "budget")]
         max_tokens: Option<u32>,
+        /// Ignore the file summaries written by `enrich`; rank on code text only.
+        #[arg(long)]
+        no_enrich: bool,
         #[command(flatten)]
         filter: FilterArgs,
         /// `md` (default) or `json`.
@@ -254,6 +303,9 @@ enum Command {
     Uninstall(PlatformArgs),
     /// Check the installation (build, model, index, WAL, hooks, agents, .gitignore); exit 5 on any failure.
     Doctor,
+    /// Ask an LLM for a short summary of each file, so prose questions can find code (opt-in; sends code
+    /// to the provider; never runs from a hook). `--dry-run` and `--status` make no request.
+    Enrich(EnrichArgs),
     /// Say whether the index is in step with HEAD and the working tree. First stdout line:
     /// `up-to-date` (exit 0), `stale: <reason>` (exit 3) or `no-index` (exit 4). Never writes.
     CheckUpdate,
@@ -289,6 +341,144 @@ enum Command {
     /// Measure retrieval quality and token cost against a question corpus
     /// (never writes into the repository: the index is built in a temp dir).
     Bench(Box<BenchArgs>),
+}
+
+fn engine_options(no_enrich: bool) -> nexspec::engine::EngineOptions {
+    nexspec::engine::EngineOptions { summary_weight: no_enrich.then_some(0.0), ..Default::default() }
+}
+
+/// Exit code of `enrich` when some files could not be summarised (REQ-1909).
+const EXIT_PARTIAL: i32 = 6;
+
+fn run_enrich(repo: &Path, index_dir: &Path, args: &EnrichArgs) -> Result<i32, Box<dyn std::error::Error>> {
+    use nexspec::enrich::cost::{CONFIRM_ABOVE_INPUT_TOKENS, Pricing, coverage_curve, format_usd};
+    use nexspec::enrich::provider::{EnrichProvider, FakeProvider, GeminiProvider};
+    use nexspec::enrich::{cache::EnrichmentCache, run as enrich_run, select::Top};
+    use std::io::IsTerminal;
+
+    if args.clear {
+        let removed = enrich_run::clear(repo)?;
+        println!("{}", if removed { "enrichment cache cleared" } else { "no enrichment cache" });
+        return Ok(0);
+    }
+    let langs: Vec<String> = args.lang.iter().map(|l| l.trim().to_lowercase()).filter(|l| !l.is_empty()).collect();
+    let engine = Engine::open(index_dir, repo)?;
+
+    if args.status {
+        let status = enrich_run::status(&engine, repo, &langs)?;
+        println!("{}", status.first_line());
+        let state = &status.state;
+        println!("cache: {} entries in {}", status.cache_entries, enrich_run::cache_dir(repo).display());
+        if state.runs > 0 {
+            println!("last run: model {}, {} run(s), {} input / {} output tokens, {}", state.model, state.runs, state.input_tokens, state.output_tokens, format_usd(state.cost_usd));
+            for path in &state.failed {
+                println!("failed: {path}");
+            }
+            for item in &state.omitted_secret {
+                println!("omitted (secret): {item}");
+            }
+        }
+        return Ok(0);
+    }
+
+    let options = enrich_run::EnrichOptions {
+        langs: langs.clone(),
+        batch: args.batch,
+        concurrency: args.max_concurrency,
+        top: args.top.as_deref().map(Top::parse).transpose()?,
+        token_budget: args.token_budget,
+        snippet_chars: args.snippet_chars,
+    };
+    let provider: Box<dyn EnrichProvider> = match (args.dry_run, args.provider.as_str()) {
+        (_, "fake") => {
+            let path = std::env::var("NEXSPEC_ENRICH_FIXTURES").map_err(|_| "NEXSPEC_ENRICH_FIXTURES is not set")?;
+            let table: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>> = serde_json::from_str(&std::fs::read_to_string(path)?)?;
+            let answers: Vec<(&str, Vec<(&str, &str)>)> = table.iter().map(|(p, l)| (p.as_str(), l.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect())).collect();
+            let borrowed: Vec<(&str, &[(&str, &str)])> = answers.iter().map(|(p, l)| (*p, l.as_slice())).collect();
+            Box::new(FakeProvider::new(&borrowed))
+        }
+        (false, "gemini") => Box::new(GeminiProvider::from_env(args.model.as_deref())?),
+        (true, "gemini") => Box::new(FakeProvider::new(&[])),
+        (_, other) => return Err(format!("unknown provider `{other}` (gemini)").into()),
+    };
+    let model = match (&args.model, args.dry_run && args.provider == "gemini") {
+        (Some(model), _) => model.clone(),
+        (None, true) => std::env::var("NEXSPEC_ENRICH_MODEL").unwrap_or_else(|_| nexspec::enrich::provider::DEFAULT_MODEL.to_string()),
+        (None, false) => provider.model().to_string(),
+    };
+
+    let cache = EnrichmentCache::load(repo)?;
+    let plan = enrich_run::plan(&engine, repo, &cache, &options, &model)?;
+    let pricing = Pricing::for_model(&model);
+    let snippets: Vec<&str> = plan.files.iter().map(|f| f.snippet.as_str()).collect();
+    let total = nexspec::enrich::cost::estimate(&snippets, options.langs.len(), options.batch, &pricing);
+
+    println!(
+        "{} file(s) to send ({} already up to date, {} kept back for looking like secrets), {} chars, ~{} input / ~{} output tokens, ~{} with {model}{}",
+        plan.files.len(),
+        plan.fresh,
+        plan.omitted_secret.len(),
+        total.chars,
+        total.usage.input_tokens,
+        total.usage.output_tokens,
+        format_usd(total.cost_usd),
+        if pricing.known { "" } else { " (price unknown for this model: set NEXSPEC_ENRICH_PRICE_IN/OUT)" }
+    );
+    if args.dry_run {
+        for (percent, estimate) in coverage_curve(&snippets, options.langs.len(), options.batch, &pricing) {
+            println!("  top {percent:>3}%: {:>5} files, ~{} tokens in, ~{}", estimate.files, estimate.usage.input_tokens, format_usd(estimate.cost_usd));
+        }
+        for (path, kind) in &plan.omitted_secret {
+            println!("  omitted: {path} ({kind})");
+        }
+        return Ok(0);
+    }
+    if plan.files.is_empty() {
+        println!("nothing to do");
+        return Ok(0);
+    }
+
+    let first_use = !nexspec::enrich::run::State::load(repo).used_before();
+    let large = total.usage.input_tokens > CONFIRM_ABOVE_INPUT_TOKENS;
+    if (first_use || large) && !args.yes {
+        if !std::io::stdin().is_terminal() {
+            return Err(if large {
+                format!("~{} input tokens is a large run: pass --yes to go ahead", total.usage.input_tokens).into()
+            } else {
+                "the first `enrich` sends code to the provider: pass --yes to confirm".into()
+            });
+        }
+        eprint!("send {} file(s), {} chars, to {} ({model}) in {}? [y/N] ", plan.files.len(), total.chars, args.provider, options.langs.join(","));
+        let mut answer = String::new();
+        std::io::stdin().read_line(&mut answer)?;
+        if !matches!(answer.trim().to_lowercase().as_str(), "y" | "yes") {
+            println!("cancelled, nothing was sent");
+            return Ok(0);
+        }
+    }
+
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    {
+        let stop = Arc::clone(&stop);
+        ctrlc::set_handler(move || stop.store(true, std::sync::atomic::Ordering::SeqCst))?;
+    }
+    let report = enrich_run::run(&engine, repo, provider.as_ref(), &options, plan, &stop, |progress, batches| {
+        eprintln!("batch {}/{batches}: {} file(s) done, {} failed", progress.batches, progress.enriched_files, progress.failed.len());
+    })?;
+    for (path, reason) in &report.failed {
+        eprintln!("warning: {path}: {reason}");
+    }
+    println!(
+        "enriched {} file(s), {} failed; {} input / {} output tokens, {}{}{}",
+        report.enriched_files,
+        report.failed.len(),
+        report.usage.input_tokens,
+        report.usage.output_tokens,
+        format_usd(pricing.cost(report.usage)),
+        if report.budget_reached { "; stopped at the token budget" } else { "" },
+        if report.interrupted { "; interrupted, progress saved" } else { "" },
+    );
+    Ok(if report.failed.is_empty() { 0 } else { EXIT_PARTIAL })
 }
 
 fn home_dir() -> Option<PathBuf> {
@@ -387,6 +577,12 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+        Command::Enrich(args) => {
+            let code = run_enrich(&repo, &index_dir, &args)?;
+            if code != 0 {
+                std::process::exit(code);
+            }
+        }
         Command::Install(args) => run_platforms(&repo, &args, true)?,
         Command::Uninstall(args) => run_platforms(&repo, &args, false)?,
         Command::Doctor => {
@@ -402,6 +598,10 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Command::Init => {
             Engine::open(&index_dir, &repo)?;
             println!("initialized {}", index_dir.display());
+            use nexspec::workflow::gitignore::{CACHE_ENTRY, INDEX_ENTRY, ensure};
+            for added in ensure(&repo, &[INDEX_ENTRY, CACHE_ENTRY])? {
+                println!("added {added} to .gitignore");
+            }
         }
         Command::Sync { resume, verbose } => {
             let engine = Engine::open(&index_dir, &repo)?;
@@ -414,6 +614,13 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 "sync: target_version={:?} added={} modified={} deleted={} dirty={}",
                 report.target_version, report.files_added, report.files_modified, report.files_deleted, report.files_dirty
             );
+            // Only when there already is an enrichment cache: a hint, no network, never an error.
+            if nexspec::enrich::cache::cache_path(&repo).is_file()
+                && let Ok(status) = nexspec::enrich::run::status(&engine, &repo, &[])
+                && (status.stale > 0 || status.pending > 0)
+            {
+                println!("enrichment: {} stale, {} pending — nexspec enrich", status.stale, status.pending);
+            }
             if verbose {
                 let t = &report.timings;
                 println!(
@@ -432,8 +639,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             engine.compact()?;
             println!("compacted");
         }
-        Command::Search { query, max_tokens } => {
-            let engine = Engine::open(&index_dir, &repo)?;
+        Command::Search { query, max_tokens, no_enrich } => {
+            let engine = Engine::open_with(&index_dir, &repo, engine_options(no_enrich))?;
             let result = engine.search(&query, max_tokens)?;
             if let Some(markdown) = result.markdown {
                 println!("{markdown}");
@@ -489,9 +696,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 println!("{line}");
             }
         }
-        Command::Query { question, dfs, depth, max_tokens, filter, format } => {
+        Command::Query { question, dfs, depth, max_tokens, no_enrich, filter, format } => {
             let output = OutputArgs { max_tokens: Some(max_tokens.unwrap_or(2000)), format };
-            let engine = Engine::open(&index_dir, &repo)?;
+            let engine = Engine::open_with(&index_dir, &repo, engine_options(no_enrich))?;
             let options = nexspec::query::expand::ExpandOptions { dfs, max_depth: depth, filter: filter.build()?, ..Default::default() };
             print!("{}", nexspec::query::api::query_graph(&engine, &question, options, &output.common(None)?)?);
         }
@@ -639,7 +846,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Command::Bench(args) => {
-            let BenchArgs { corpus, ks, index_dir, format, tokenizer, budget, output, no_vector, check, update_baseline, min_locate_recall, fixed_cost_files } = *args;
+            let BenchArgs { corpus, ks, index_dir, format, tokenizer, budget, output, no_vector, check, update_baseline, min_locate_recall, fixed_cost_files, compare_enrich } = *args;
             use nexspec::bench::{report, runner};
             let corpus_path = corpus.unwrap_or_else(|| runner::default_corpus_path(&repo));
             let corpus = nexspec::bench::Corpus::load(&corpus_path)?;
@@ -658,6 +865,17 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             options.tokenizer = tokenizer;
             options.vector_search = !no_vector;
             options.fixed_cost_files = fixed_cost_files;
+            if compare_enrich {
+                let state = nexspec::enrich::run::State::load(&repo);
+                let spent = (state.runs > 0).then_some(state.input_tokens + state.output_tokens);
+                let comparison = nexspec::bench::compare::compare(&corpus, &options, spent)?;
+                let text = if format == "json" { serde_json::to_string_pretty(&comparison)? } else { nexspec::bench::compare::to_markdown(&comparison) };
+                match output {
+                    Some(path) => std::fs::write(path, text)?,
+                    None => println!("{text}"),
+                }
+                return Ok(());
+            }
             let result = runner::run(&corpus, &options)?;
             let text = if format == "json" { report::to_json(&result) } else { report::to_markdown(&result) };
             match output {

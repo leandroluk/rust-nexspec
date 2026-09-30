@@ -6,6 +6,7 @@
 pub mod bench;
 pub mod code;
 pub mod engine;
+pub mod enrich;
 pub mod git;
 pub mod graph;
 pub mod hybrid;

@@ -9,6 +9,7 @@
     "report-command",
     "graph-query-surface",
     "workflow-integration",
+    "retrieval-enrichment",
     "vector-engine",
     "token-budgeting",
     "cli-mcp-server"

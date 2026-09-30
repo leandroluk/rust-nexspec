@@ -45,6 +45,7 @@ pub fn run(repo: &Path, index_dir: &Path, home: Option<&Path>) -> Vec<Check> {
     checks.push(hooks_check(repo));
     checks.extend(mcp_checks(repo, home));
     checks.push(gitignore_check(repo));
+    checks.extend(enrichment_check(repo));
     checks
 }
 
@@ -139,19 +140,49 @@ fn mcp_checks(repo: &Path, home: Option<&Path>) -> Vec<Check> {
 }
 
 fn gitignore_check(repo: &Path) -> Check {
-    let ignored = std::fs::read_to_string(repo.join(".gitignore"))
-        .map(|t| t.lines().any(|l| matches!(l.trim().trim_end_matches('/'), ".specs/.index" | "/.specs/.index" | ".specs/.index/*")))
-        .unwrap_or(false);
-    if ignored {
-        check("gitignore", Level::Ok, ".specs/.index/ is ignored by git", None)
+    use crate::workflow::gitignore::{CACHE_ENTRY, INDEX_ENTRY, covers};
+    let cache_exists = crate::enrich::cache::cache_path(repo).is_file();
+    let mut missing = Vec::new();
+    if !covers(repo, INDEX_ENTRY) {
+        missing.push(INDEX_ENTRY);
+    }
+    if cache_exists && !covers(repo, CACHE_ENTRY) {
+        missing.push(CACHE_ENTRY);
+    }
+    if missing.is_empty() {
+        check("gitignore", Level::Ok, "nexspec's local directories are ignored by git", None)
     } else {
         check(
             "gitignore",
             Level::Warn,
-            ".specs/.index/ is not in .gitignore (the index would show up as changes)",
-            Some("echo '.specs/.index/' >> .gitignore"),
+            format!("{} not in .gitignore (local data would show up as changes)", missing.join(", ")),
+            Some("nexspec init   (adds the missing entries)"),
         )
     }
+}
+
+/// Only speaks when an enrichment cache exists: a repository that never used `enrich` has nothing to check.
+fn enrichment_check(repo: &Path) -> Option<Check> {
+    use crate::enrich::cache::{EnrichmentCache, stale_files};
+    if !crate::enrich::cache::cache_path(repo).is_file() {
+        return None;
+    }
+    let cache = EnrichmentCache::load(repo).ok()?;
+    let files = cache.paths().len().max(1);
+    let stale = stale_files(repo, &cache);
+    let key_set = ["GEMINI_API_KEY", "GOOGLE_API_KEY"].iter().any(|k| std::env::var(k).is_ok_and(|v| !v.trim().is_empty()));
+    Some(if stale * 4 > files {
+        check("enrichment", Level::Warn, format!("{stale} of {files} summarised files changed since they were summarised"), Some("nexspec enrich"))
+    } else if !key_set {
+        check(
+            "enrichment",
+            Level::Warn,
+            format!("{files} file summaries cached, GEMINI_API_KEY is not set (new or changed files cannot be summarised)"),
+            Some("export GEMINI_API_KEY=…   (only needed to run `nexspec enrich` again)"),
+        )
+    } else {
+        check("enrichment", Level::Ok, format!("{files} file summaries cached, {stale} stale"), None)
+    })
 }
 
 pub fn render(checks: &[Check]) -> String {
