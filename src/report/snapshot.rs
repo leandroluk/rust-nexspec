@@ -26,6 +26,55 @@ impl GraphSnapshot {
         Self { nodes, edges, file_of }
     }
 
+    /// Which repository each node of a *global* graph came from, read off the prefixes `global::merge`
+    /// writes into names: file paths and package directories (`tag/…`), table schemas and requirement
+    /// titles (`tag:…`). Symbols, columns, constraints and endpoints inherit it through `DefinedIn` and `Calls`.
+    pub fn repo_map(&self) -> HashMap<StableId, String> {
+        let mut map: HashMap<StableId, String> = HashMap::new();
+        for (id, payload) in &self.nodes {
+            let tag = match payload {
+                NodePayload::File { path, .. } => path.split('/').next(),
+                NodePayload::Package { dir, .. } => dir.split('/').next(),
+                NodePayload::Table { schema, .. } => schema.split(':').next().filter(|_| schema.contains(':')),
+                NodePayload::Requirement { title, .. } | NodePayload::Task { title, .. } | NodePayload::Adr { title, .. } | NodePayload::DocSection { title, .. } => {
+                    title.split(':').next().filter(|_| title.contains(':'))
+                }
+                _ => None,
+            };
+            if let Some(tag) = tag {
+                map.insert(*id, tag.to_string());
+            }
+        }
+        // Two rounds reach column -> table -> (nothing more) and symbol -> file.
+        for _ in 0..2 {
+            for edge in &self.edges {
+                match edge.edge_type {
+                    EdgeType::DefinedIn => {
+                        if let Some(tag) = map.get(&edge.to).cloned() {
+                            map.entry(edge.from).or_insert(tag);
+                        }
+                    }
+                    EdgeType::Calls => {
+                        if let (Some(tag), Some(NodePayload::Endpoint { external: true, .. })) = (map.get(&edge.from).cloned(), self.nodes.get(&edge.to)) {
+                            map.entry(edge.to).or_insert(tag);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        map
+    }
+
+    /// A snapshot holding only the nodes (and the edges among them) of repository `tag`.
+    pub fn restricted_to_repo(&self, tag: &str) -> GraphSnapshot {
+        let repos = self.repo_map();
+        let keep = |id: &StableId| repos.get(id).is_some_and(|t| t == tag);
+        let nodes = self.nodes.iter().filter(|(id, _)| keep(id)).map(|(id, p)| (*id, p.clone())).collect();
+        let edges = self.edges.iter().filter(|e| keep(&e.from) && keep(&e.to)).cloned().collect();
+        GraphSnapshot::new(nodes, edges)
+    }
+
     /// The file a node belongs to: itself for a file, the defining file for a symbol.
     pub fn file_id_of(&self, id: &StableId) -> Option<StableId> {
         match self.nodes.get(id)? {

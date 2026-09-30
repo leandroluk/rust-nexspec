@@ -71,6 +71,9 @@ Use `--repo <path>` to operate on another repository.
 | `enrich [--lang en,pt] [--top 20%] [--dry-run] [--status] [--clear] [--yes]` | Opt-in: an LLM writes a short summary per file so prose questions find code (see below). |
 | `extract --postgres DSN [--dry-run]` | Opt-in, read-only: compare the changesets with a live PostgreSQL database (`drift: …` first line) and add the objects that exist only there to the graph. |
 | `export [--format json\|html\|tree\|wiki] [--out PATH] [--path GLOB] [--kind K] [--check]` | Portable JSON, an interactive HTML page, a collapsible tree or a Markdown wiki of the graph; `--check` exits 7 when the export on disk is stale. |
+| `global add\|list\|remove\|path` | The graph of several repositories in one (`~/.nexspec/global`); `--global` on `query`/`path`/`explain`/`affected` asks it, `--repo TAG` picks the target's repository. |
+| `merge-graphs A.json B.json --out FILE` | Unite exports of several repositories (ids tagged, package and HTTP links across them). |
+| `merge-driver BASE OURS THEIRS` | Git merge driver for `*.graph.json` (registered by `hook install`). |
 | `watch [--debounce MS]`                                                                | Sync after each burst of file changes (one watcher per repository; Ctrl+C stops it).            |
 | `hook install\|uninstall\|status`                                                      | Git hooks (`post-commit`, `post-merge`, `post-checkout`) that run `sync` in the background.     |
 | `check-update`                                                                         | `up-to-date`, `stale: <reason>` or `no-index` on the first line; never writes.                  |
@@ -109,6 +112,10 @@ Files that look like they hold a secret, `.env*`, keys and generated code are ne
 ## Database and package nodes
 
 `sync` also reads the database schema and the workspace packages (see [the docs page](docs/content/docs/features/domain-extractors.mdx)): tables, views, columns and named constraints from `*.sql` and Liquibase XML/YAML changesets, `Package` nodes from `package.json` and `Cargo.toml`, and entity-to-table links for TypeORM, sequelize-typescript, SQLAlchemy and Prisma when the table name is literal. `nexspec affected tb_contract_reminder` then reaches the entity, the repository and the use cases. `nexspec extract --postgres DSN` (opt-in, read-only) reports the drift between the changesets and a live database.
+
+## Several repositories
+
+`nexspec global add <repo>` puts a synced repository into a global graph; `merge-graphs` does the same into a file. Package dependencies and HTTP calls that cross repositories become inferred edges, so `nexspec affected @acme/shared --global` or `nexspec affected "GET /contracts/{}" --global` answers across repository boundaries. See [the docs page](docs/content/docs/features/multi-repo-graph.mdx).
 
 ## MCP
 

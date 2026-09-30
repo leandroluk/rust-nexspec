@@ -55,7 +55,17 @@ fn domain_names(payload: &NodePayload) -> Vec<String> {
         NodePayload::Table { schema, name, .. } => vec![name.clone(), format!("{schema}.{name}")],
         NodePayload::Column { table, name, .. } => vec![format!("{table}.{name}")],
         NodePayload::Constraint { name, .. } | NodePayload::Package { name, .. } => vec![name.clone()],
+        NodePayload::Endpoint { method, path, .. } => vec![format!("{method} {path}"), path.clone()],
         _ => Vec::new(),
+    }
+}
+
+/// [`resolve`] among the nodes of one repository of a global graph (`--repo TAG`); the walk that follows
+/// is not restricted, only the choice of the starting node.
+pub fn resolve_in_repo(snapshot: &GraphSnapshot, target: &str, repo: Option<&str>) -> Resolved {
+    match repo {
+        Some(tag) => resolve(&snapshot.restricted_to_repo(tag), target),
+        None => resolve(snapshot, target),
     }
 }
 
@@ -74,7 +84,7 @@ pub fn resolve(snapshot: &GraphSnapshot, target: &str) -> Resolved {
         let ids: Vec<StableId> = snapshot
             .nodes
             .iter()
-            .filter(|(_, p)| matches!(p, NodePayload::Requirement { title, .. } | NodePayload::Task { title, .. } | NodePayload::Adr { title, .. } if title == target))
+            .filter(|(_, p)| matches!(p, NodePayload::Requirement { title, .. } | NodePayload::Task { title, .. } | NodePayload::Adr { title, .. } if title == target || title.ends_with(&format!(":{target}"))))
             .map(|(id, _)| *id)
             .collect();
         if let Some(found) = verdict(snapshot, ids) {

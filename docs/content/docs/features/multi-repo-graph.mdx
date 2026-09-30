@@ -1,0 +1,44 @@
+---
+title: "Phase 13 · Multi-Repo Graph"
+description: One graph over several repositories, with links that cross them, queried like any other.
+---
+
+Each repository keeps its own local index. To ask "who calls this service?" when the callers live in another repository, `nexspec` can unite the exports of several repositories into one graph, add the links that cross the boundary, and answer the usual queries over it.
+
+Source: `.specs/features/multi-repo-graph/`
+
+```bash
+nexspec global add ../web                   # a repository (it must have been synced) — tag "web"
+nexspec global add contracts.json --as api  # or a JSON export
+nexspec global list                         # tag, nodes, edges, source
+nexspec affected @acme/shared --global      # who uses this package, in any repository
+nexspec affected "GET /contracts/{}" --global --depth 3
+nexspec explain package.json --global --repo web   # choose the repository of the target
+nexspec global remove api
+nexspec merge-graphs web.json api.json --out all.graph.json   # the same union, as a file
+```
+
+## How it works
+
+The global graph is an ordinary nexspec index in `~/.nexspec/global/` (or `$NEXSPEC_HOME/global/`), rebuilt from the exports kept in `repos/`. `global add` with a tag that already exists replaces it; rebuilding takes well under a second for a repository of a thousand files.
+
+Every node gets a global id (`blake3("repo:<tag>:<id>")`), so the `package.json` of each repository is its own node. The **origin shows in the name**: file paths and package directories start with `<tag>/`, table schemas and requirement titles with `<tag>:`; symbols, columns and endpoints inherit it. Exports produced by `merge-graphs` also carry `repo` on every node.
+
+## Links across repositories
+
+Both are inferred from names, so both are marked `INFERRED` (`--min-confidence extracted` leaves them out):
+
+- **Packages.** A package whose manifest lists a dependency named like a package of another repository gets a `DependsOn` edge to it.
+- **HTTP.** `openapi.json/yaml` and `swagger.*` files define endpoints (`Endpoint` nodes, `DefinedIn` the file). Client code that calls a literal path (`fetch('/x')`, `axios.get(...)`, `this.http.post(...)`, `requests.get(...)`) gets a `Calls` edge from its file to an endpoint node marked as consumed. A consumed `GET /api/v1/contracts/{}` is linked to a served `GET /contracts/{}` in another repository: same method, same path once `{id}`, `:id` and `<id>` are read as `{}`, differing only by `api` and version segments. Generic endpoints (`/health`, `/login`…) are never linked.
+
+## Queries
+
+`query`, `path`, `explain` and `affected` take `--global`. With it, `--repo TAG` picks the repository the **target** is looked up in (a path such as `package.json` exists in every repository and is otherwise ambiguous); the walk that follows crosses repositories freely.
+
+## Merging exports
+
+`merge-graphs` tags each input (the file name, or `--as` once per input), unites the nodes and edges, renumbers communities and adds the cross links. A tag given twice keeps the later input: exports carry no date or commit, which is what keeps them diffable.
+
+## Git merge driver
+
+`nexspec hook install` also registers a merge driver for `*.graph.json` (a block in `.gitattributes` and a `[merge "nexspec"]` section in `.git/config`; `hook uninstall` removes both). On a merge, Git runs `nexspec merge-driver %O %A %B`, which writes the **union** of both sides over ours. A union cannot express a deletion, so a node one side removed comes back if the other still has it; when both sides have a node with the same id but different content, ours wins; nodes that only theirs has are left without a community.

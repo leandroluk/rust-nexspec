@@ -247,8 +247,8 @@ impl QueryFilterArgs {
 
 fn query_common(max_tokens: Option<u32>, format: &Option<String>, pick: Option<usize>) -> Result<crate::query::api::Common, String> {
     match format.as_deref() {
-        None | Some("md") => Ok(crate::query::api::Common { max_tokens, json: false, pick }),
-        Some("json") => Ok(crate::query::api::Common { max_tokens, json: true, pick }),
+        None | Some("md") => Ok(crate::query::api::Common { max_tokens, json: false, pick, repo: None }),
+        Some("json") => Ok(crate::query::api::Common { max_tokens, json: true, pick, repo: None }),
         Some(other) => Err(format!("unknown format {other:?} (expected md or json)")),
     }
 }

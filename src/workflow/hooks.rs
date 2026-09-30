@@ -1,6 +1,10 @@
 //! Git hooks that keep the index fresh (REQ-1602 in
 //! `.specs/features/workflow-integration/spec.md`).
 //!
+//! The same marked-block technique registers the Git merge driver for versioned graph exports
+//! (`.gitattributes` and the `[merge "nexspec"]` section of `.git/config`, REQ-1306 of the multi-repo
+//! graph): `hook install` adds it, `hook uninstall` removes it, `hook status` reports it.
+//!
 //! The hook gets a marked block *appended* to whatever is already there, so a
 //! repository's own `post-commit` keeps working; uninstalling removes only that
 //! block. The block runs `nexspec sync` in the background and only if the
@@ -83,6 +87,48 @@ fn make_executable(_path: &Path) -> Result<(), HookError> {
     Ok(())
 }
 
+const ATTRIBUTES_BODY: &str = "# Versioned graph exports merge as a union of nodes and edges.\n*.graph.json merge=nexspec\n";
+const CONFIG_BODY: &str = "[merge \"nexspec\"]\n\tname = nexspec graph union\n\tdriver = nexspec merge-driver %O %A %B\n";
+
+fn wrap(body: &str) -> String {
+    format!("{BEGIN}\n{body}{END}\n")
+}
+
+/// The two files of the merge driver: `.gitattributes` in the work tree and the shared `.git/config`.
+fn driver_targets(repo: &Path) -> Result<[(&'static str, PathBuf, &'static str); 2], HookError> {
+    let opened = gix::open(repo).map_err(|e| HookError::Open { path: repo.display().to_string(), message: e.to_string() })?;
+    Ok([("gitattributes", repo.join(".gitattributes"), ATTRIBUTES_BODY), ("merge-driver", opened.common_dir().join("config"), CONFIG_BODY)])
+}
+
+fn put_block(path: &Path, body: &str) -> Result<HookChange, HookError> {
+    let existing = read(path)?;
+    if existing.as_deref().is_some_and(has_block) {
+        return Ok(HookChange::Unchanged);
+    }
+    let mut text = existing.unwrap_or_default();
+    if !text.is_empty() {
+        if !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push('\n');
+    }
+    text.push_str(&wrap(body));
+    std::fs::write(path, text).map_err(io(path))?;
+    Ok(HookChange::Added)
+}
+
+/// Removes our block; a file that held nothing else is deleted unless it is `keep`'s (`.git/config`).
+fn drop_block(path: &Path, delete_when_empty: bool) -> Result<HookChange, HookError> {
+    let Some(text) = read(path)?.filter(|t| has_block(t)) else { return Ok(HookChange::Unchanged) };
+    let remaining = strip_block(&text);
+    if delete_when_empty && remaining.trim().is_empty() {
+        std::fs::remove_file(path).map_err(io(path))?;
+    } else {
+        std::fs::write(path, remaining).map_err(io(path))?;
+    }
+    Ok(HookChange::Removed)
+}
+
 pub fn install(repo: &Path) -> Result<Vec<(&'static str, HookChange)>, HookError> {
     let dir = hooks_dir(repo)?;
     std::fs::create_dir_all(&dir).map_err(io(&dir))?;
@@ -110,6 +156,9 @@ pub fn install(repo: &Path) -> Result<Vec<(&'static str, HookChange)>, HookError
         };
         changes.push((name, change));
     }
+    for (name, path, body) in driver_targets(repo)? {
+        changes.push((name, put_block(&path, body)?));
+    }
     Ok(changes)
 }
 
@@ -133,6 +182,9 @@ pub fn uninstall(repo: &Path) -> Result<Vec<(&'static str, HookChange)>, HookErr
             _ => HookChange::Unchanged,
         };
         changes.push((name, change));
+    }
+    for (name, path, _) in driver_targets(repo)? {
+        changes.push((name, drop_block(&path, name == "gitattributes")?));
     }
     Ok(changes)
 }
@@ -166,13 +218,15 @@ fn strip_block(text: &str) -> String {
 
 pub fn status(repo: &Path) -> Result<Vec<(&'static str, HookState)>, HookError> {
     let dir = hooks_dir(repo)?;
-    HOOK_NAMES
-        .iter()
-        .map(|name| {
-            let installed = read(&dir.join(name))?.is_some_and(|text| has_block(&text));
-            Ok((*name, if installed { HookState::Installed } else { HookState::NotInstalled }))
-        })
-        .collect()
+    let state = |installed: bool| if installed { HookState::Installed } else { HookState::NotInstalled };
+    let mut states = Vec::new();
+    for name in HOOK_NAMES {
+        states.push((name, state(read(&dir.join(name))?.is_some_and(|text| has_block(&text)))));
+    }
+    for (name, path, _) in driver_targets(repo)? {
+        states.push((name, state(read(&path)?.is_some_and(|text| has_block(&text)))));
+    }
+    Ok(states)
 }
 
 #[cfg(test)]

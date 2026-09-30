@@ -137,7 +137,7 @@ mod tests {
             "requirement" => ExportPayload::Requirement { title: label.to_string(), source_hash: "00".repeat(32), body: String::new() },
             _ => ExportPayload::Symbol { name: label.to_string(), source_hash: "00".repeat(32), line_start: 0, line_end: 1 },
         };
-        ExportNode { id: id.into(), kind: kind.into(), label: label.into(), path: path.map(str::to_string), community, payload }
+        ExportNode { id: id.into(), kind: kind.into(), label: label.into(), path: path.map(str::to_string), community, repo: None, payload }
     }
 
     fn edge(from: &str, to: &str, relation: &str) -> ExportEdge {

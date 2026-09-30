@@ -53,7 +53,11 @@ fn not_found_message(target: &str, suggestions: &[String]) -> String {
 
 /// Resolves `target`, optionally choosing among ambiguous candidates (1-based).
 pub fn resolve(view: &GraphView, target: &str, pick: Option<usize>) -> Result<StableId, QueryError> {
-    match target::resolve(&view.snapshot, target) {
+    resolve_in(view, target, pick, None)
+}
+
+pub fn resolve_in(view: &GraphView, target: &str, pick: Option<usize>, repo: Option<&str>) -> Result<StableId, QueryError> {
+    match target::resolve_in_repo(&view.snapshot, target, repo) {
         Resolved::One(id) => Ok(id),
         Resolved::Ambiguous(candidates) => match pick {
             Some(n) if n >= 1 && n <= candidates.len() => Ok(candidates[n - 1].id),
@@ -78,11 +82,13 @@ pub struct Common {
     pub max_tokens: Option<u32>,
     pub json: bool,
     pub pick: Option<usize>,
+    /// In a global graph: resolve the target among this repository's nodes only.
+    pub repo: Option<String>,
 }
 
 pub fn affected(engine: &Engine, target: &str, options: AffectedOptions, common: &Common) -> Result<String, QueryError> {
     let view = engine.query_view()?;
-    let id = resolve(&view, target, common.pick)?;
+    let id = resolve_in(&view, target, common.pick, common.repo.as_deref())?;
     let result = affected::affected(&view, &id, &options);
     if common.json {
         return Ok(json(&result));
@@ -93,8 +99,8 @@ pub fn affected(engine: &Engine, target: &str, options: AffectedOptions, common:
 
 pub fn find_path(engine: &Engine, from: &str, to: &str, filter: &EdgeFilter, common: &Common) -> Result<String, QueryError> {
     let view = engine.query_view()?;
-    let a = resolve(&view, from, None)?;
-    let b = resolve(&view, to, None)?;
+    let a = resolve_in(&view, from, None, common.repo.as_deref())?;
+    let b = resolve_in(&view, to, None, common.repo.as_deref())?;
     let result = path::find_path(&view, &a, &b, filter, 12);
     if common.json {
         return Ok(json(&result));
@@ -104,7 +110,7 @@ pub fn find_path(engine: &Engine, from: &str, to: &str, filter: &EdgeFilter, com
 
 pub fn explain(engine: &Engine, target: &str, filter: &EdgeFilter, common: &Common) -> Result<String, QueryError> {
     let view = engine.query_view()?;
-    let id = resolve(&view, target, common.pick)?;
+    let id = resolve_in(&view, target, common.pick, common.repo.as_deref())?;
     let context = engine.explain_context(&view, &id);
     let explanation = explain::explain(&view, &id, &context, filter, 10)
         .ok_or_else(|| QueryError::NotFound(target.to_string(), Vec::new()))?;

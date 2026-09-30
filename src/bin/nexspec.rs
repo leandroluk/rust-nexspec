@@ -51,6 +51,10 @@ struct OutputArgs {
     /// `md` (default) or `json`.
     #[arg(long, default_value = "md")]
     format: String,
+    /// Ask the global graph (see `global add`) instead of this repository. With `--global`, `--repo TAG`
+    /// picks the repository the target is looked up in; the walk still crosses repositories.
+    #[arg(long)]
+    global: bool,
 }
 
 impl OutputArgs {
@@ -58,7 +62,7 @@ impl OutputArgs {
         if !matches!(self.format.as_str(), "md" | "json") {
             return Err(format!("unknown format {:?} (expected md or json)", self.format).into());
         }
-        Ok(nexspec::query::api::Common { max_tokens: self.max_tokens, json: self.format == "json", pick })
+        Ok(nexspec::query::api::Common { max_tokens: self.max_tokens, json: self.format == "json", pick, repo: None })
     }
 }
 
@@ -202,6 +206,37 @@ struct ExportArgs {
 }
 
 #[derive(Subcommand)]
+enum GlobalAction {
+    /// Add a repository (its synced local index) or an export file to the global graph; the same `--as` replaces it.
+    Add {
+        /// A repository directory, or a JSON export made with `nexspec export`.
+        source: PathBuf,
+        /// Tag the repository goes by (default: the directory or file name).
+        #[arg(long = "as")]
+        tag: Option<String>,
+    },
+    /// The repositories in the global graph.
+    List,
+    /// Take a repository out of the global graph.
+    Remove { tag: String },
+    /// Print the folder that holds the global graph.
+    Path,
+}
+
+#[derive(clap::Args)]
+struct MergeArgs {
+    /// Two or more JSON exports to unite.
+    #[arg(required = true, num_args = 1..)]
+    inputs: Vec<PathBuf>,
+    /// Tag for each input, in order (default: the file name without extension).
+    #[arg(long = "as")]
+    tags: Vec<String>,
+    /// Where to write the merged export.
+    #[arg(long)]
+    out: PathBuf,
+}
+
+#[derive(Subcommand)]
 enum HookAction {
     /// Append the nexspec block to post-commit, post-merge and post-checkout (idempotent).
     Install,
@@ -262,6 +297,9 @@ enum Command {
         /// Ignore the file summaries written by `enrich`; rank on code text only.
         #[arg(long)]
         no_enrich: bool,
+        /// Ask the global graph (see `global add`); `--repo TAG` narrows seeds and targets to one repository.
+        #[arg(long)]
+        global: bool,
         #[command(flatten)]
         filter: FilterArgs,
         /// `md` (default) or `json`.
@@ -344,6 +382,19 @@ enum Command {
     /// Compare the changesets with a live PostgreSQL database (read-only, opt-in) and add the objects that
     /// exist only there to the graph. Prints `drift: none` or `drift: N difference(s)` first.
     Extract(ExtractArgs),
+    /// The graph of several repositories in one: add, list, remove, or find the folder (`--global` queries use it).
+    Global {
+        #[command(subcommand)]
+        action: GlobalAction,
+    },
+    /// Git merge driver for `*.graph.json` exports (called by Git: `nexspec merge-driver %O %A %B`); writes the union over `ours`.
+    MergeDriver {
+        base: PathBuf,
+        ours: PathBuf,
+        theirs: PathBuf,
+    },
+    /// Unite JSON exports of several repositories into one export (ids tagged per repository, links across them).
+    MergeGraphs(MergeArgs),
     /// Export the graph: portable JSON, an interactive HTML page, a collapsible tree or a Markdown wiki.
     Export(ExportArgs),
     /// Say whether the index is in step with HEAD and the working tree. First stdout line:
@@ -668,6 +719,25 @@ fn index_dir(repo: &Path) -> PathBuf {
     repo.join(".specs").join(".index")
 }
 
+/// The engine a query runs on: this repository's index, or the global graph.
+fn query_engine(repo: &Path, index_dir: &Path, global: bool, options: nexspec::engine::EngineOptions) -> Result<Engine, Box<dyn std::error::Error>> {
+    if !global {
+        return Ok(Engine::open_with(index_dir, repo, options)?);
+    }
+    use nexspec::global::store;
+    let home = store::home()?;
+    let index = store::index_dir(&home);
+    if !index.join("metadata.redb").is_file() {
+        return Err("no global graph yet: add a repository with `nexspec global add <repo>`".into());
+    }
+    Ok(Engine::open_with(&index, &store::global_dir(&home), options)?)
+}
+
+/// With `--global`, an explicit `--repo` is a repository *tag* (the default `.` means "all").
+fn global_repo(repo_arg: &Path, global: bool) -> Option<String> {
+    (global && repo_arg != Path::new(".")).then(|| repo_arg.to_string_lossy().to_string())
+}
+
 fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
     match run(cli) {
@@ -680,6 +750,7 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
+    let repo_arg = cli.repo.clone();
     let repo = cli.repo.canonicalize().unwrap_or(cli.repo);
     let index_dir = index_dir(&repo);
 
@@ -706,6 +777,61 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
+        }
+        Command::Global { action } => {
+            use nexspec::export::ExportGraph;
+            use nexspec::global::store;
+            let home = store::home()?;
+            match action {
+                GlobalAction::Add { source, tag } => {
+                    let tag = tag.unwrap_or_else(|| store::default_tag(&source));
+                    let graph = if source.is_dir() {
+                        store::export_repository(&source)?
+                    } else {
+                        ExportGraph::from_json(&std::fs::read_to_string(&source)?)?
+                    };
+                    let entry = store::add(&home, &tag, &graph, &source.display().to_string())?;
+                    println!("added {}: {} nodes, {} edges", entry.tag, entry.nodes, entry.edges);
+                    println!("global graph: {} repositories", store::list(&home).len());
+                }
+                GlobalAction::List => {
+                    let entries = store::list(&home);
+                    if entries.is_empty() {
+                        println!("no repositories in the global graph");
+                    }
+                    for entry in entries {
+                        println!("{}  {} nodes, {} edges  ({})", entry.tag, entry.nodes, entry.edges, entry.source);
+                    }
+                }
+                GlobalAction::Remove { tag } => {
+                    if store::remove(&home, &tag)? {
+                        println!("removed {tag}");
+                    } else {
+                        return Err(format!("no repository tagged `{tag}` (see `nexspec global list`)").into());
+                    }
+                }
+                GlobalAction::Path => println!("{}", store::global_dir(&home).display()),
+            }
+        }
+        Command::MergeDriver { base, ours, theirs } => {
+            nexspec::global::driver::run(&base, &ours, &theirs)?;
+        }
+        Command::MergeGraphs(args) => {
+            use nexspec::export::ExportGraph;
+            if !args.tags.is_empty() && args.tags.len() != args.inputs.len() {
+                return Err(format!("{} input(s) but {} --as tag(s): give one tag per input, or none", args.inputs.len(), args.tags.len()).into());
+            }
+            let mut parts = Vec::new();
+            for (i, input) in args.inputs.iter().enumerate() {
+                let tag = args.tags.get(i).cloned().unwrap_or_else(|| nexspec::global::store::default_tag(input));
+                if !nexspec::global::merge::valid_tag(&tag) {
+                    return Err(format!("invalid tag `{tag}` for {}: use letters, digits, `.`, `_` and `-`", input.display()).into());
+                }
+                parts.push((tag, ExportGraph::from_json(&std::fs::read_to_string(input)?)?));
+            }
+            let merged = nexspec::global::merge::merge(parts);
+            std::fs::write(&args.out, merged.to_json())?;
+            println!("merged {} export(s): {} nodes, {} edges -> {}", args.inputs.len(), merged.nodes.len(), merged.edges.len(), args.out.display());
         }
         Command::Export(args) => {
             let code = run_export(&repo, &index_dir, &args)?;
@@ -850,24 +976,32 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 println!("{line}");
             }
         }
-        Command::Query { question, dfs, depth, max_tokens, no_enrich, filter, format } => {
-            let output = OutputArgs { max_tokens: Some(max_tokens.unwrap_or(2000)), format };
-            let engine = Engine::open_with(&index_dir, &repo, engine_options(no_enrich))?;
+        Command::Query { question, dfs, depth, max_tokens, no_enrich, global, filter, format } => {
+            let output = OutputArgs { max_tokens: Some(max_tokens.unwrap_or(2000)), format, global };
+            let engine = query_engine(&repo, &index_dir, global, engine_options(no_enrich))?;
             let options = nexspec::query::expand::ExpandOptions { dfs, max_depth: depth, filter: filter.build()?, ..Default::default() };
-            print!("{}", nexspec::query::api::query_graph(&engine, &question, options, &output.common(None)?)?);
+            let mut common = output.common(None)?;
+            common.repo = global_repo(&repo_arg, global);
+            print!("{}", nexspec::query::api::query_graph(&engine, &question, options, &common)?);
         }
         Command::Path { from, to, filter, output } => {
-            let engine = Engine::open(&index_dir, &repo)?;
-            print!("{}", nexspec::query::api::find_path(&engine, &from, &to, &filter.build()?, &output.common(None)?)?);
+            let engine = query_engine(&repo, &index_dir, output.global, Default::default())?;
+            let mut common = output.common(None)?;
+            common.repo = global_repo(&repo_arg, output.global);
+            print!("{}", nexspec::query::api::find_path(&engine, &from, &to, &filter.build()?, &common)?);
         }
         Command::Explain { target, pick, filter, output } => {
-            let engine = Engine::open(&index_dir, &repo)?;
-            print!("{}", nexspec::query::api::explain(&engine, &target, &filter.build()?, &output.common(pick)?)?);
+            let engine = query_engine(&repo, &index_dir, output.global, Default::default())?;
+            let mut common = output.common(pick)?;
+            common.repo = global_repo(&repo_arg, output.global);
+            print!("{}", nexspec::query::api::explain(&engine, &target, &filter.build()?, &common)?);
         }
         Command::Affected { target, depth, limit, pick, filter, output } => {
-            let engine = Engine::open(&index_dir, &repo)?;
+            let engine = query_engine(&repo, &index_dir, output.global, Default::default())?;
             let options = nexspec::query::affected::AffectedOptions { depth, max_per_hop: limit.max(1), filter: filter.build()? };
-            print!("{}", nexspec::query::api::affected(&engine, &target, options, &output.common(pick)?)?);
+            let mut common = output.common(pick)?;
+            common.repo = global_repo(&repo_arg, output.global);
+            print!("{}", nexspec::query::api::affected(&engine, &target, options, &common)?);
         }
         Command::Blame { symbol, full_history } => {
             let engine = Engine::open(&index_dir, &repo)?;

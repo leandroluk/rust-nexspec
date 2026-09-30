@@ -37,6 +37,12 @@ pub fn constraint_node_id(schema: &str, table: &str, name: &str) -> StableId {
     *blake3::hash(format!("constraint:{schema}.{table}.{name}").as_bytes()).as_bytes()
 }
 
+/// An HTTP endpoint: defined by an OpenAPI file (`external = false`) or called by client code
+/// (`external = true`). The two never share an id, so a repository can both serve and consume `GET /x`.
+pub fn endpoint_node_id(method: &str, path: &str, external: bool) -> StableId {
+    *blake3::hash(format!("endpoint:{}:{method} {path}", if external { "external" } else { "defined" }).as_bytes()).as_bytes()
+}
+
 pub fn package_node_id(name: &str) -> StableId {
     *blake3::hash(format!("package:{name}").as_bytes()).as_bytes()
 }
@@ -53,6 +59,7 @@ pub enum NodeType {
     Column,
     Constraint,
     Package,
+    Endpoint,
 }
 
 /// One variant per [`NodeType`], serialized with `rkyv` for consistency with
@@ -116,6 +123,16 @@ pub enum NodePayload {
         version: String,
         /// Repository-relative directory.
         dir: String,
+        /// Every dependency the manifest declares (runtime, dev, peer), external ones included, sorted.
+        dependencies: Vec<String>,
+    },
+    /// An HTTP endpoint (Fase 13): `method` upper case, `path` normalised (`{}` for parameters).
+    Endpoint {
+        method: String,
+        path: String,
+        operation_id: String,
+        /// `false`: served (OpenAPI). `true`: called by client code in this repository.
+        external: bool,
     },
 }
 
@@ -127,6 +144,7 @@ impl NodePayload {
             NodePayload::Column { table, name, .. } => Some(("column", format!("{table}.{name}"))),
             NodePayload::Constraint { table, name, .. } => Some(("constraint", format!("{name} ({table})"))),
             NodePayload::Package { name, .. } => Some(("package", name.clone())),
+            NodePayload::Endpoint { method, path, .. } => Some(("endpoint", format!("{method} {path}"))),
             _ => None,
         }
     }
@@ -148,6 +166,7 @@ impl NodePayload {
             NodePayload::Column { .. } => NodeType::Column,
             NodePayload::Constraint { .. } => NodeType::Constraint,
             NodePayload::Package { .. } => NodeType::Package,
+            NodePayload::Endpoint { .. } => NodeType::Endpoint,
         }
     }
 }

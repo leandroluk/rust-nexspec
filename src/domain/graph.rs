@@ -6,9 +6,10 @@ use std::collections::{BTreeMap, HashSet};
 
 use crate::code::parser::edge_id;
 use crate::domain::schema::Schema;
+use crate::domain::http::{self, ClientCall};
 use crate::domain::{liquibase, manifest, orm};
 use crate::graph::edge::{Confidence, EdgeContext, EdgeType, encode_meta};
-use crate::graph::node::{NodePayload, column_node_id, constraint_node_id, file_node_id, package_node_id, symbol_node_id, table_node_id};
+use crate::graph::node::{NodePayload, column_node_id, constraint_node_id, endpoint_node_id, file_node_id, package_node_id, symbol_node_id, table_node_id};
 use crate::sync::mutation::{EdgeMutation, MutationSet, NodeMutation, StableId};
 
 /// Everything the pass reads, already loaded.
@@ -20,6 +21,10 @@ pub struct DomainInput {
     pub manifests: Vec<(String, String)>,
     /// `(path, content)` of code files that hold an entity marker (and every `.prisma` file).
     pub entity_files: Vec<(String, String)>,
+    /// `(path, content)` of OpenAPI/Swagger files.
+    pub openapi_files: Vec<(String, String)>,
+    /// Code files and the HTTP calls with a literal path found in them.
+    pub client_calls: Vec<(String, Vec<ClientCall>)>,
     /// Tracked repository paths, to keep edges to files that exist.
     pub tracked: HashSet<String>,
     /// What `extract --postgres` last read from a live database (REQ-1405): objects that exist only
@@ -35,6 +40,9 @@ pub struct DomainStats {
     pub constraints: usize,
     pub packages: usize,
     pub entity_links: usize,
+    /// Endpoints served (OpenAPI) and endpoints called by client code.
+    pub endpoints_defined: usize,
+    pub endpoints_called: usize,
     /// SQL statements recognised as SQL but not understood.
     pub skipped_statements: usize,
 }
@@ -140,7 +148,7 @@ pub fn build(input: &DomainInput) -> DomainGraph {
     packages.retain(|p| seen.insert(p.name.clone()));
     for package in &packages {
         let id = package_node_id(&package.name);
-        nodes.insert(id, node(NodePayload::Package { name: package.name.clone(), version: package.version.clone(), dir: package.dir.clone() }, id));
+        nodes.insert(id, node(NodePayload::Package { name: package.name.clone(), version: package.version.clone(), dir: package.dir.clone(), dependencies: package.dependencies.iter().cloned().collect() }, id));
         stats.packages += 1;
         if input.tracked.contains(&package.manifest) {
             edges.add("domain-defined-in", EdgeType::DefinedIn, id, file_node_id(&package.manifest), Confidence::Extracted);
@@ -161,6 +169,33 @@ pub fn build(input: &DomainInput) -> DomainGraph {
             let from = if link.has_symbol { symbol_node_id(&link.path, &link.name, link.ordinal) } else { file_node_id(&link.path) };
             edges.add("domain-implements", EdgeType::Implements, from, table_node_id(&table.schema, &table.name), Confidence::Extracted);
             stats.entity_links += 1;
+        }
+    }
+
+    // HTTP endpoints: served (OpenAPI) and called (client code with a literal path).
+    let mut openapi: Vec<&(String, String)> = input.openapi_files.iter().collect();
+    openapi.sort_by(|a, b| a.0.cmp(&b.0));
+    for (path, content) in openapi {
+        for def in http::parse_openapi(path, content) {
+            let id = endpoint_node_id(&def.method, &def.path, false);
+            if nodes.insert(id, node(NodePayload::Endpoint { method: def.method.clone(), path: def.path.clone(), operation_id: def.operation_id.clone(), external: false }, id)).is_none() {
+                stats.endpoints_defined += 1;
+            }
+            if input.tracked.contains(path) {
+                edges.add("domain-defined-in", EdgeType::DefinedIn, id, file_node_id(path), Confidence::Extracted);
+            }
+        }
+    }
+    let mut clients: Vec<&(String, Vec<ClientCall>)> = input.client_calls.iter().collect();
+    clients.sort_by(|a, b| a.0.cmp(&b.0));
+    for (path, calls) in clients {
+        for call in calls {
+            let id = endpoint_node_id(&call.method, &call.path, true);
+            if nodes.insert(id, node(NodePayload::Endpoint { method: call.method.clone(), path: call.path.clone(), operation_id: String::new(), external: true }, id)).is_none() {
+                stats.endpoints_called += 1;
+            }
+            // A literal in the source, but the URL may be built around it: inferred.
+            edges.add("domain-calls", EdgeType::Calls, file_node_id(path), id, Confidence::Inferred);
         }
     }
 
@@ -232,6 +267,7 @@ mod tests {
             entity_files: vec![("src/reminder.entity.ts".into(), "@Entity({name: 'tb_contract_reminder'})\nexport class ContractReminderEntity {}\n".into())],
             tracked: ["db/changeset/001.xml", "apps/web/package.json", "pkgs/ui/package.json", "apps/web/tsconfig.json", "tsconfig.base.json", "src/reminder.entity.ts"].iter().map(|s| s.to_string()).collect(),
             live: None,
+            ..DomainInput::default()
         }
     }
 
@@ -283,6 +319,22 @@ mod tests {
         assert_eq!(graph.stats.tables, 3, "the two from the changesets and the live-only one");
         assert!(graph.nodes.iter().any(|n| matches!(n, NodeMutation::Upsert { id, .. } if *id == table_node_id("public", "tb_only_live"))));
         assert!(!edge_set(&graph).iter().any(|(t, from, _)| *t == EdgeType::DefinedIn.to_code() && *from == table_node_id("public", "tb_only_live")), "no file defines it");
+    }
+
+    #[test]
+    fn openapi_and_client_calls_become_endpoints_with_their_edges() {
+        let mut i = input();
+        i.openapi_files = vec![("api/openapi.json".into(), r#"{ "paths": { "/contracts/{id}": { "get": { "operationId": "getContract" } } } }"#.into())];
+        i.client_calls = vec![("src/billing.ts".into(), vec![ClientCall { method: "GET".into(), path: "/invoices/{}".into() }])];
+        i.tracked.extend(["api/openapi.json".to_string(), "src/billing.ts".to_string()]);
+        let graph = build(&i);
+        assert_eq!((graph.stats.endpoints_defined, graph.stats.endpoints_called), (1, 1));
+        let edges = edge_set(&graph);
+        let served = endpoint_node_id("GET", "/contracts/{}", false);
+        let called = endpoint_node_id("GET", "/invoices/{}", true);
+        assert!(edges.contains(&(EdgeType::DefinedIn.to_code(), served, file_node_id("api/openapi.json"))));
+        assert!(edges.contains(&(EdgeType::Calls.to_code(), file_node_id("src/billing.ts"), called)));
+        assert_ne!(endpoint_node_id("GET", "/x", false), endpoint_node_id("GET", "/x", true), "serving and calling GET /x are different nodes");
     }
 
     #[test]

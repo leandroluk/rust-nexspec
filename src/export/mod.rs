@@ -30,7 +30,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 pub enum ExportError {
     #[error("invalid path pattern `{0}`: {1}")]
     Glob(String, String),
-    #[error("unknown node kind `{0}` (file, symbol, requirement, task, adr, doc_section, table, view, column, constraint, package)")]
+    #[error("unknown node kind `{0}` (file, symbol, requirement, task, adr, doc_section, table, view, column, constraint, package, endpoint)")]
     Kind(String),
     #[error("{0}")]
     Json(String),
@@ -38,7 +38,7 @@ pub enum ExportError {
     Version(u32),
 }
 
-const KINDS: [&str; 11] = ["file", "symbol", "requirement", "task", "adr", "doc_section", "table", "view", "column", "constraint", "package"];
+const KINDS: [&str; 12] = ["file", "symbol", "requirement", "task", "adr", "doc_section", "table", "view", "column", "constraint", "package", "endpoint"];
 
 /// A node payload with every field, hashes as hex; the mirror of [`NodePayload`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,7 +53,8 @@ pub enum ExportPayload {
     Table { schema: String, name: String, is_view: bool },
     Column { table: String, name: String, sql_type: String, nullable: bool },
     Constraint { table: String, name: String, kind: String },
-    Package { name: String, version: String, dir: String },
+    Package { name: String, version: String, dir: String, #[serde(default)] dependencies: Vec<String> },
+    Endpoint { method: String, path: String, operation_id: String, external: bool },
 }
 
 impl From<&NodePayload> for ExportPayload {
@@ -70,7 +71,8 @@ impl From<&NodePayload> for ExportPayload {
             NodePayload::Table { schema, name, is_view } => Self::Table { schema: schema.clone(), name: name.clone(), is_view: *is_view },
             NodePayload::Column { table, name, sql_type, nullable } => Self::Column { table: table.clone(), name: name.clone(), sql_type: sql_type.clone(), nullable: *nullable },
             NodePayload::Constraint { table, name, kind } => Self::Constraint { table: table.clone(), name: name.clone(), kind: kind.clone() },
-            NodePayload::Package { name, version, dir } => Self::Package { name: name.clone(), version: version.clone(), dir: dir.clone() },
+            NodePayload::Package { name, version, dir, dependencies } => Self::Package { name: name.clone(), version: version.clone(), dir: dir.clone(), dependencies: dependencies.clone() },
+            NodePayload::Endpoint { method, path, operation_id, external } => Self::Endpoint { method: method.clone(), path: path.clone(), operation_id: operation_id.clone(), external: *external },
         }
     }
 }
@@ -91,7 +93,8 @@ impl ExportPayload {
             Self::Table { schema, name, is_view } => NodePayload::Table { schema: schema.clone(), name: name.clone(), is_view: *is_view },
             Self::Column { table, name, sql_type, nullable } => NodePayload::Column { table: table.clone(), name: name.clone(), sql_type: sql_type.clone(), nullable: *nullable },
             Self::Constraint { table, name, kind } => NodePayload::Constraint { table: table.clone(), name: name.clone(), kind: kind.clone() },
-            Self::Package { name, version, dir } => NodePayload::Package { name: name.clone(), version: version.clone(), dir: dir.clone() },
+            Self::Package { name, version, dir, dependencies } => NodePayload::Package { name: name.clone(), version: version.clone(), dir: dir.clone(), dependencies: dependencies.clone() },
+            Self::Endpoint { method, path, operation_id, external } => NodePayload::Endpoint { method: method.clone(), path: path.clone(), operation_id: operation_id.clone(), external: *external },
         })
     }
 }
@@ -105,6 +108,9 @@ pub struct ExportNode {
     /// Repository-relative path of the file (or the symbol's file, or the package directory).
     pub path: Option<String>,
     pub community: Option<usize>,
+    /// Repository tag; only in merged or global exports (Fase 13).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
     pub payload: ExportPayload,
 }
 
@@ -195,7 +201,7 @@ impl ExportGraph {
                 continue;
             }
             let community = path.as_deref().and_then(|p| community_of_file.get(p)).copied();
-            nodes.insert(hex(id), ExportNode { id: hex(id), kind: kind.to_string(), label: snapshot.label(id), path, community, payload: payload.into() });
+            nodes.insert(hex(id), ExportNode { id: hex(id), kind: kind.to_string(), label: snapshot.label(id), path, community, repo: None, payload: payload.into() });
         }
 
         let mut edges: Vec<ExportEdge> = snapshot

@@ -202,6 +202,7 @@ mod tests {
             label: label.into(),
             path: path.map(str::to_string),
             community: None,
+            repo: None,
             payload: ExportPayload::File { path: label.into(), source_hash: "00".repeat(32) },
         };
         ExportGraph {

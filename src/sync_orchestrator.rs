@@ -288,7 +288,7 @@ impl<'a> SyncOrchestrator<'a> {
             .chain(dirty_paths.iter())
             .map(|p| p.to_string_lossy().replace('\\', "/"))
             .collect();
-        let entity_marker_changed = code_files.iter().any(|(_, text, _)| domain::orm::has_marker(text))
+        let entity_marker_changed = code_files.iter().any(|(_, text, _)| domain::orm::has_marker(text) || domain::http::has_call_marker(text))
             || diff.deleted.iter().any(|p| is_entity_candidate(&p.to_string_lossy()));
         if since.is_none() || self.force_domain || entity_marker_changed || touched.iter().any(|p| is_domain_path(p)) {
             let input = self.domain_input(&dirty_paths)?;
@@ -351,7 +351,7 @@ fn is_entity_candidate(path: &str) -> bool {
 
 /// Paths whose change can alter the domain subgraph (besides an entity marker in a code file).
 fn is_domain_path(path: &str) -> bool {
-    domain::liquibase::is_candidate(path) || domain::manifest::is_manifest(path) || path.ends_with(".prisma")
+    domain::liquibase::is_candidate(path) || domain::manifest::is_manifest(path) || path.ends_with(".prisma") || domain::http::is_openapi_file(path)
 }
 
 impl SyncOrchestrator<'_> {
@@ -373,7 +373,11 @@ pub fn collect_domain_input(git: &GitSource, dirty_paths: &[PathBuf]) -> Result<
             if is_engine_artifact(Path::new(path)) {
                 continue;
             }
-            if domain::liquibase::is_candidate(path) {
+            if domain::http::is_openapi_file(path) {
+                if let Some(text) = read_repo_text(git, path) {
+                    input.openapi_files.push((path.clone(), text));
+                }
+            } else if domain::liquibase::is_candidate(path) {
                 if let Some(text) = read_repo_text(git, path) {
                     input.schema_files.push((path.clone(), text));
                 }
@@ -383,9 +387,16 @@ pub fn collect_domain_input(git: &GitSource, dirty_paths: &[PathBuf]) -> Result<
                 }
             } else if is_entity_candidate(path)
                 && let Some(text) = read_repo_text(git, path)
-                && (path.ends_with(".prisma") || domain::orm::has_marker(&text))
             {
-                input.entity_files.push((path.clone(), text));
+                if domain::http::has_call_marker(&text) && !path.ends_with(".prisma") {
+                    let calls = domain::http::scan_client_calls(&text);
+                    if !calls.is_empty() {
+                        input.client_calls.push((path.clone(), calls));
+                    }
+                }
+                if path.ends_with(".prisma") || domain::orm::has_marker(&text) {
+                    input.entity_files.push((path.clone(), text));
+                }
             }
         }
         input.tracked = tracked.into_iter().collect();

@@ -92,6 +92,27 @@ pub struct TantivyParticipant {
     committed_version: AtomicU64,
 }
 
+/// Runs `f`, trying again for a moment when Windows answers "Access is denied" (os error 5): another handle
+/// on `meta.json` or a segment file (a reader or a finishing merge of a previous participant in this process)
+/// is gone within milliseconds. Seen as a rare failure of a whole `sync` on CI; any other error passes through.
+fn retry_access_denied<T>(mut f: impl FnMut() -> Result<T, tantivy::TantivyError>) -> Result<T, tantivy::TantivyError> {
+    let mut attempts = 0u32;
+    loop {
+        match f() {
+            Err(e) if attempts < 40 && is_access_denied(&e) => {
+                attempts += 1;
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            other => return other,
+        }
+    }
+}
+
+fn is_access_denied(error: &tantivy::TantivyError) -> bool {
+    let text = error.to_string();
+    text.contains("Access is denied") || text.contains("os error 5") || text.contains("PermissionDenied")
+}
+
 /// Opens the index writer, waiting briefly when its lock is still held.
 /// Every `Engine` call builds its own participant and drops it when done; on a
 /// loaded machine the previous writer's lock can take a moment to disappear
@@ -116,10 +137,10 @@ impl TantivyParticipant {
         std::fs::create_dir_all(index_path)?;
         let schema = TantivySchema::new();
         let dir = MmapDirectory::open(index_path)?;
-        let index = Index::open_or_create(dir, schema.schema.clone())?;
+        let index = retry_access_denied(|| Index::open_or_create(dir.clone(), schema.schema.clone()))?;
         register_tokenizers(&index);
         let writer = open_writer(&index)?;
-        let reader = index.reader()?;
+        let reader = retry_access_denied(|| index.reader())?;
         Ok(Self {
             schema,
             writer: Mutex::new(writer),
@@ -208,7 +229,7 @@ impl SyncParticipant for TantivyParticipant {
         }
         let mut writer = self.writer.lock().unwrap();
         writer.commit().map_err(|e| storage_err(SearchError::from(e)))?;
-        self.reader.reload().map_err(|e| storage_err(SearchError::from(e)))?;
+        retry_access_denied(|| self.reader.reload()).map_err(|e| storage_err(SearchError::from(e)))?;
         self.committed_version.store(target_version, Ordering::SeqCst);
         *staged = None;
         Ok(())
@@ -235,6 +256,25 @@ mod tests {
     use tantivy::schema::IndexRecordOption;
     use tantivy::Term;
     use tempfile::TempDir;
+
+    #[test]
+    fn access_denied_is_retried_briefly_and_other_errors_are_not() {
+        let denied = || tantivy::TantivyError::IoError(std::sync::Arc::new(std::io::Error::other("Access is denied. (os error 5)")));
+        let mut calls = 0;
+        let result = retry_access_denied(|| {
+            calls += 1;
+            if calls < 3 { Err(denied()) } else { Ok(calls) }
+        });
+        assert_eq!(result.unwrap(), 3, "two refusals, then success");
+
+        let mut calls = 0;
+        let other: Result<(), _> = retry_access_denied(|| {
+            calls += 1;
+            Err(tantivy::TantivyError::InvalidArgument("nope".to_string()))
+        });
+        assert!(other.is_err());
+        assert_eq!(calls, 1, "an unrelated error is reported at once");
+    }
 
     fn upsert(id: [u8; 32], name: &str) -> MutationSet {
         let payload = NodePayload::Symbol {

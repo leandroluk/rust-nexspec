@@ -10,6 +10,7 @@ pub mod engine;
 pub mod export;
 pub mod enrich;
 pub mod git;
+pub mod global;
 pub mod graph;
 pub mod hybrid;
 pub mod mcp;

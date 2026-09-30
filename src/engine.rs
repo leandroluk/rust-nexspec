@@ -175,8 +175,9 @@ pub struct BlameResult {
 /// 4 = no `File` nodes for binaries/lockfiles,
 /// 5 = `Edge.meta` and the dependency edge types,
 /// 6 = per-language `summary_*` fields in the lexical index (Fase 19),
-/// 7 = table/column/constraint/package nodes (Fase 14).
-pub const INDEX_FORMAT: u64 = 7;
+/// 7 = table/column/constraint/package nodes (Fase 14),
+/// 8 = package dependencies and endpoint nodes (Fase 13).
+pub const INDEX_FORMAT: u64 = 8;
 
 /// Dependents appended to a search result after the seeds and their own
 /// neighbours (REQ-707: bounded, so a widely used type cannot flood an answer).
@@ -421,6 +422,16 @@ impl Engine {
         nodes.into_iter().filter(|(_, bytes)| decode_node_payload(bytes).is_ok_and(|p| p.is_domain())).map(|(id, _)| id).collect()
     }
 
+    /// Stages `set` as one cycle through the coordinator: how the global graph is written into its index.
+    pub fn apply_mutations(&self, set: crate::sync::MutationSet) -> Result<Option<u64>, EngineError> {
+        if set.nodes.is_empty() && set.edges.is_empty() && set.docs.is_empty() {
+            return Ok(None);
+        }
+        let wal = Wal::open(self.wal_path())?;
+        let coordinator = Coordinator::new(wal, VersionPointer::new(&self.db), self.participants()?);
+        Ok(Some(coordinator.stage(set)?))
+    }
+
     /// Re-applies the cached summaries of `paths` to the lexical index (REQ-1907): one cycle through
     /// the coordinator that upserts each file's node unchanged, so the file's document is rebuilt
     /// with its summaries. Nodes, edges and ids do not change. Returns how many files were applied.
@@ -582,7 +593,7 @@ impl Engine {
             | NodePayload::Adr { title, body, .. } => (format!("{title}\n{body}"), Some("markdown")),
             NodePayload::DocSection { title, .. } => (title.clone(), Some("markdown")),
             NodePayload::File { path, .. } => (path.clone(), None),
-            NodePayload::Table { .. } | NodePayload::Column { .. } | NodePayload::Constraint { .. } | NodePayload::Package { .. } => {
+            NodePayload::Table { .. } | NodePayload::Column { .. } | NodePayload::Constraint { .. } | NodePayload::Package { .. } | NodePayload::Endpoint { .. } => {
                 (payload.domain_label().map(|(kind, label)| format!("{kind} {label}")).unwrap_or_default(), None)
             }
             NodePayload::Symbol { name, line_start, line_end, .. } => {
@@ -970,7 +981,7 @@ impl Engine {
             }
             NodePayload::DocSection { .. } => Ok(Vec::new()),
             // Database objects and packages are not code locations.
-            NodePayload::Table { .. } | NodePayload::Column { .. } | NodePayload::Constraint { .. } | NodePayload::Package { .. } => Ok(Vec::new()),
+            NodePayload::Table { .. } | NodePayload::Column { .. } | NodePayload::Constraint { .. } | NodePayload::Package { .. } | NodePayload::Endpoint { .. } => Ok(Vec::new()),
         }
     }
 

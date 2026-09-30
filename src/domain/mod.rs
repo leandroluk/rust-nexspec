@@ -8,3 +8,4 @@ pub mod manifest;
 pub mod orm;
 pub mod graph;
 pub mod live;
+pub mod http;

@@ -177,6 +177,7 @@ fn describe(payload: &NodePayload) -> (&'static str, String, Option<String>) {
         NodePayload::Column { table, name, sql_type, .. } => ("column", format!("{table}.{name} {sql_type}"), None),
         NodePayload::Constraint { table, name, kind } => ("constraint", format!("{name} {table} {kind}"), None),
         NodePayload::Package { name, dir, .. } => ("package", format!("{name} {dir}"), Some(dir.clone())),
+        NodePayload::Endpoint { method, path, operation_id, .. } => ("endpoint", format!("{method} {path} {operation_id}"), None),
         NodePayload::Symbol { name, .. } => ("symbol", name.clone(), None),
         NodePayload::File { path, .. } => ("file", path.clone(), Some(path.clone())),
     }

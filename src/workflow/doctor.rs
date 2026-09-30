@@ -107,7 +107,7 @@ fn hooks_check(repo: &Path) -> Check {
         Ok(states) => {
             let missing: Vec<_> = states.iter().filter(|(_, s)| *s == HookState::NotInstalled).map(|(n, _)| *n).collect();
             if missing.is_empty() {
-                check("hooks", Level::Ok, "post-commit, post-merge and post-checkout keep the index fresh", None)
+                check("hooks", Level::Ok, "post-commit, post-merge and post-checkout keep the index fresh; the merge driver for graph exports is registered", None)
             } else {
                 check("hooks", Level::Warn, format!("not installed: {}", missing.join(", ")), Some("nexspec hook install"))
             }

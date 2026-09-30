@@ -12,6 +12,7 @@
     "retrieval-enrichment",
     "domain-extractors",
     "graph-export",
+    "multi-repo-graph",
     "vector-engine",
     "token-budgeting",
     "cli-mcp-server"
