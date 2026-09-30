@@ -140,7 +140,9 @@ impl TantivyParticipant {
         let index = retry_access_denied(|| Index::open_or_create(dir.clone(), schema.schema.clone()))?;
         register_tokenizers(&index);
         let writer = open_writer(&index)?;
-        let reader = retry_access_denied(|| index.reader())?;
+        // Manual reloads only (`commit` reloads). The default policy starts a thread that watches `meta.json`,
+        // and on Windows its open handle collides with the rename that `commit` does: a rare "Access is denied".
+        let reader = retry_access_denied(|| index.reader_builder().reload_policy(tantivy::ReloadPolicy::Manual).try_into())?;
         Ok(Self {
             schema,
             writer: Mutex::new(writer),
