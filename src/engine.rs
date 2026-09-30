@@ -150,6 +150,10 @@ pub struct Engine {
     repo_root: PathBuf,
     #[cfg(feature = "full")]
     embedder: Embedder,
+    /// HNSW graph reused across searches of one `Engine` (building it is
+    /// O(points)); keyed by the `sync_version` it was loaded at.
+    #[cfg(feature = "full")]
+    hnsw_cache: std::sync::Mutex<Option<(u64, Arc<HnswParticipant>)>>,
 }
 
 impl Engine {
@@ -185,6 +189,8 @@ impl Engine {
             repo_root: repo_root.to_path_buf(),
             #[cfg(feature = "full")]
             embedder,
+            #[cfg(feature = "full")]
+            hnsw_cache: std::sync::Mutex::new(None),
         })
     }
 
@@ -276,6 +282,22 @@ impl Engine {
         Ok(())
     }
 
+    /// The HNSW participant for the current `sync_version`, loaded once and
+    /// reused until a sync moves the version.
+    #[cfg(feature = "full")]
+    fn cached_hnsw(&self) -> Result<Arc<HnswParticipant>, EngineError> {
+        let version = VersionPointer::new(&self.db).current()?;
+        let mut cache = self.hnsw_cache.lock().unwrap();
+        if let Some((cached_version, hnsw)) = cache.as_ref()
+            && *cached_version == version
+        {
+            return Ok(Arc::clone(hnsw));
+        }
+        let hnsw = Arc::new(HnswParticipant::new(&self.hnsw_path())?);
+        *cache = Some((version, Arc::clone(&hnsw)));
+        Ok(hnsw)
+    }
+
     /// REQ-605: hybrid search (BM25 always, HNSW when `full` and a model is
     /// available) + RRF fusion + 1-hop expansion. `max_tokens` opts into the
     /// Fase 5 pruning/budgeting/serialization pipeline.
@@ -289,7 +311,7 @@ impl Engine {
         #[cfg(feature = "full")]
         let hnsw_ranked: Vec<StableId> = match self.embedder.embed(query) {
             Ok(vector) => {
-                let hnsw = HnswParticipant::new(&self.hnsw_path())?;
+                let hnsw = self.cached_hnsw()?;
                 hnsw.index().search(&vector, 20).into_iter().map(|(id, _)| id).collect()
             }
             Err(VectorError::ModelNotAvailable(_)) => Vec::new(),
@@ -790,6 +812,8 @@ mod tests {
             repo_root: repo_dir.path().to_path_buf(),
             #[cfg(feature = "full")]
             embedder: Embedder::new("nonexistent.onnx", "nonexistent.json"),
+            #[cfg(feature = "full")]
+            hnsw_cache: std::sync::Mutex::new(None),
         };
         let result = engine.trace(&id_hex(&symbol_id)).unwrap();
         assert_eq!(result.hops.len(), 1);

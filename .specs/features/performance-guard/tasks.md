@@ -76,13 +76,21 @@ Primeiro corte = T-901…T-906 incluindo T-903b, T-904b, T-904c (aprovado em 202
 - **Done when**: gates verdes, medição real registrada, commit feito.
 - **Gate**: `cargo test && cargo test --no-default-features --features lean && cargo clippy --all-targets -- -D warnings`
 
-## T-907: Teste de orçamento de tempo (REQ-902) [ ]
+## T-907: Teste de orçamento de tempo (REQ-902) [x]
 - **REQ**: REQ-902
 - **What**: `tests/perf_budget.rs` `#[ignore]`: init+sync frio, sync sem mudança (min de 3; e sem novo frame no WAL), sync após 1 arquivo, `search`/`trace`. Limites via `NEXSPEC_BUDGET_*`, escala via `NEXSPEC_SYNTH_SCALE`.
 - **Where**: `tests/perf_budget.rs`
 - **Depends on**: T-902, T-904
 - **Done when**: passa com folga local em `--release`; forçar um limite absurdo (`NEXSPEC_BUDGET_COLD_S=1`) o faz falhar com mensagem que nomeia a fase.
 - **Gate**: `cargo test --release --test perf_budget -- --ignored`
+
+## T-907b: HNSW sob demanda + cache no Engine [x]
+- **REQ**: REQ-902 (sync sem mudanças, sync de 1 arquivo, search)
+- **What**: Achado da T-907: `HnswParticipant::new` reconstruía o grafo HNSW inteiro (~1,1 s para 5 mil pontos) em todo `sync`, mesmo sem mudanças, e de novo a cada `commit`. O grafo agora é construído sob demanda (`index()`), invalidado por commit; `Engine::search` reutiliza um `HnswParticipant` por `sync_version`.
+- **Where**: `src/vector/hnsw.rs`, `src/engine.rs`
+- **Depends on**: T-907
+- **Done when**: sync sem mudanças 1,3 s → 22 ms; sync de 1 arquivo 2,5 s → 0,19 s (sintético, release); teste garante que um participante reaberto acha os pontos persistidos e que um commit posterior invalida o grafo.
+- **Gate**: `cargo test --lib vector::hnsw && cargo test --release --test perf_budget -- --ignored`
 
 ## T-908: Micro-benchmarks de complexidade (REQ-904) [ ]
 - **REQ**: REQ-904

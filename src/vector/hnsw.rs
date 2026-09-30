@@ -19,7 +19,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, RwLock};
 
 use instant_distance::{Builder, HnswMap, Search};
@@ -151,6 +151,11 @@ type StagedPoints = (u64, Vec<(StableId, Vec<f32>)>);
 
 pub struct HnswParticipant {
     index: HnswIndex,
+    /// `true` while `index` does not reflect `committed_points`. Building the
+    /// graph is O(points) and takes ~1 s for a few thousand nodes, so it is
+    /// deferred until somebody actually searches: a `sync` never pays for it
+    /// (`.specs/features/performance-guard/design.md`, T-907).
+    index_stale: AtomicBool,
     path: PathBuf,
     committed_points: Mutex<HashMap<StableId, Vec<f32>>>,
     staged: Mutex<Option<StagedPoints>>,
@@ -158,8 +163,8 @@ pub struct HnswParticipant {
 }
 
 impl HnswParticipant {
-    /// Loads any previously persisted points from `path` (if it exists) and
-    /// rebuilds the search index from them.
+    /// Loads any previously persisted points from `path` (if it exists). The
+    /// search index is built lazily, on the first call to [`Self::index`].
     pub fn new(path: &Path) -> Result<Self, HnswError> {
         let committed_points = if path.exists() && std::fs::metadata(path)?.len() > 0 {
             let bytes = std::fs::read(path)?;
@@ -172,11 +177,9 @@ impl HnswParticipant {
             HashMap::new()
         };
 
-        let index = HnswIndex::new();
-        index.rebuild(&committed_points);
-
         Ok(Self {
-            index,
+            index: HnswIndex::new(),
+            index_stale: AtomicBool::new(true),
             path: path.to_path_buf(),
             committed_points: Mutex::new(committed_points),
             staged: Mutex::new(None),
@@ -184,7 +187,11 @@ impl HnswParticipant {
         })
     }
 
+    /// The search index, (re)built first if points changed since the last build.
     pub fn index(&self) -> &HnswIndex {
+        if self.index_stale.swap(false, Ordering::SeqCst) {
+            self.index.rebuild(&self.committed_points.lock().unwrap());
+        }
         &self.index
     }
 
@@ -245,7 +252,7 @@ impl SyncParticipant for HnswParticipant {
             committed.insert(id, vector);
         }
         self.persist(&committed)?;
-        self.index.rebuild(&committed);
+        self.index_stale.store(true, Ordering::SeqCst);
         self.committed_version.store(target_version, Ordering::SeqCst);
         Ok(())
     }
@@ -289,6 +296,24 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].0, [1u8; 32]);
         assert_eq!(p.committed_version().unwrap(), 1);
+    }
+
+    #[test]
+    fn reopened_participant_builds_its_index_lazily_and_finds_persisted_points() {
+        let file = NamedTempFile::new().unwrap();
+        {
+            let p = HnswParticipant::new(file.path()).unwrap();
+            p.stage(1, &upsert([1u8; 32], vec![1.0, 0.0, 0.0])).unwrap();
+            p.commit(1).unwrap();
+            p.stage(2, &upsert([2u8; 32], vec![0.0, 1.0, 0.0])).unwrap();
+            p.commit(2).unwrap();
+            // A second commit after a search must invalidate the built graph.
+            assert_eq!(p.index().search(&[0.0, 1.0, 0.0], 5)[0].0, [2u8; 32]);
+        }
+        let reopened = HnswParticipant::new(file.path()).unwrap();
+        let hits = reopened.index().search(&[1.0, 0.0, 0.0], 5);
+        assert_eq!(hits.len(), 2, "both persisted points are searchable after reopen");
+        assert_eq!(hits[0].0, [1u8; 32]);
     }
 
     #[test]

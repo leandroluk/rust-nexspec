@@ -85,6 +85,16 @@ impl SyntheticRepo {
         let repo = FixtureRepo::init();
         run_git(repo.path(), &["config", "core.autocrlf", "false"]);
 
+        // Like a real project: the engine's own directories are ignored (via
+        // `info/exclude`, so the tracked file count stays exactly `params.files`).
+        std::fs::write(
+            repo.path().join(".git").join("info").join("exclude"),
+            ".specs/.index/
+.models/
+",
+        )
+        .expect("write info/exclude");
+
         let stream = build_stream(params);
         let mut child = Command::new("git")
             .args(["fast-import", "--quiet", "--force"])
