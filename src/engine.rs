@@ -761,6 +761,43 @@ impl Engine {
         }
     }
 
+    /// The graph as queries see it (snapshot + adjacency).
+    pub fn query_view(&self) -> Result<crate::query::GraphView, EngineError> {
+        Ok(crate::query::GraphView::new(self.snapshot()?))
+    }
+
+    /// Pruned source of a symbol (signature with bodies elided), if it can be read.
+    pub fn signature_of(&self, id: &StableId) -> Option<String> {
+        let Some(NodePayload::Symbol { line_start, line_end, .. }) = self.node_payload(id).ok()? else {
+            return None;
+        };
+        let git = GitSource::open(&self.repo_root).ok()?;
+        self.prune_symbol_source(id, line_start, line_end, &git).map(|(text, _)| text)
+    }
+
+    /// What `explain` needs from outside the graph: signature, the file's
+    /// community and recent authors. Every part degrades to "absent".
+    pub fn explain_context(&self, view: &crate::query::GraphView, id: &StableId) -> crate::query::explain::ExplainContext {
+        let mut authors: Vec<String> = Vec::new();
+        if let (Some(NodePayload::Symbol { line_start, line_end, .. }), Some(path), Ok(git)) =
+            (view.snapshot.nodes.get(id), view.snapshot.path_of(id), GitSource::open(&self.repo_root))
+            && let Ok(mut hunks) = blame_symbol(&git, Path::new(path), *line_start, *line_end)
+        {
+            hunks.sort_by_key(|h| std::cmp::Reverse(h.author_unix_seconds));
+            for hunk in hunks {
+                if !authors.contains(&hunk.author_name) {
+                    authors.push(hunk.author_name);
+                }
+            }
+            authors.truncate(3);
+        }
+        crate::query::explain::ExplainContext {
+            signature: self.signature_of(id),
+            community: crate::query::api::community_of(view, id),
+            authors,
+        }
+    }
+
     /// Facts about the index itself, for the report summary.
     pub fn index_info(&self) -> Result<crate::report::IndexInfo, EngineError> {
         let version = VersionPointer::new(&self.db);

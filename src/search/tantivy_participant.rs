@@ -92,6 +92,25 @@ pub struct TantivyParticipant {
     committed_version: AtomicU64,
 }
 
+/// Opens the index writer, waiting briefly when its lock is still held.
+/// Every `Engine` call builds its own participant and drops it when done; on a
+/// loaded machine the previous writer's lock can take a moment to disappear
+/// (seen as a rare `LockBusy` on CI). The cross-process `SyncLock` already
+/// rules out a real second owner, so a short bounded wait is safe.
+fn open_writer(index: &Index) -> Result<IndexWriter<TantivyDocument>, SearchError> {
+    let mut waited = 0u32;
+    loop {
+        match index.writer::<TantivyDocument>(50_000_000) {
+            Ok(writer) => return Ok(writer),
+            Err(tantivy::TantivyError::LockFailure(_, _)) if waited < 80 => {
+                waited += 1;
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+}
+
 impl TantivyParticipant {
     pub fn new(index_path: &Path) -> Result<Self, SearchError> {
         std::fs::create_dir_all(index_path)?;
@@ -99,7 +118,7 @@ impl TantivyParticipant {
         let dir = MmapDirectory::open(index_path)?;
         let index = Index::open_or_create(dir, schema.schema.clone())?;
         index.tokenizers().register(IDENT_TOKENIZER, IdentTokenizer);
-        let writer = index.writer::<TantivyDocument>(50_000_000)?;
+        let writer = open_writer(&index)?;
         let reader = index.reader()?;
         Ok(Self {
             schema,
@@ -290,5 +309,20 @@ mod tests {
             .search(&query, &TopDocs::with_limit(10).order_by_score())
             .unwrap();
         assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn a_new_participant_waits_for_the_previous_writer_to_let_go() {
+        let dir = TempDir::new().unwrap();
+        let first = TantivyParticipant::new(dir.path()).unwrap();
+        let releaser = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            drop(first);
+        });
+        let started = std::time::Instant::now();
+        let second = TantivyParticipant::new(dir.path()).expect("waits instead of failing with LockBusy");
+        assert!(started.elapsed() >= std::time::Duration::from_millis(150), "it really had to wait");
+        drop(second);
+        releaser.join().unwrap();
     }
 }
