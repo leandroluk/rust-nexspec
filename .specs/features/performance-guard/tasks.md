@@ -2,7 +2,7 @@
 
 Primeiro corte = T-901…T-906 incluindo T-904b (aprovado em 2026-09-29). Segundo corte = T-907…T-912.
 
-## T-901: `PhaseTimings` e `sync --verbose` [ ]
+## T-901: `PhaseTimings` e `sync --verbose` [x]
 - **REQ**: REQ-908 (parte)
 - **What**: `PhaseTimings { diff, markdown, code, co_change, stage, nodes, edges }` (`Duration` + contagens) preenchido em `run_once` e exposto em `SyncReport.timings`. Flag `--verbose` em `nexspec sync` imprime uma linha por fase. Necessário antes de qualquer otimização (medir primeiro).
 - **Where**: `src/sync_orchestrator.rs`, `src/bin/nexspec.rs`
@@ -10,7 +10,7 @@ Primeiro corte = T-901…T-906 incluindo T-904b (aprovado em 2026-09-29). Segund
 - **Done when**: teste de integração roda `sync` num fixture e verifica `timings.stage > 0` e `edges == soma das arestas staged`; testes existentes de `SyncReport` seguem verdes.
 - **Gate**: `cargo test sync_orchestrator && cargo test --test cli_integration`
 
-## T-902: Gerador de repositório sintético (REQ-901) [ ]
+## T-902: Gerador de repositório sintético (REQ-901) [x]
 - **REQ**: REQ-901
 - **What**: `SyntheticParams { files, markdown_files, commits, big_commit_files, seed, scale }` com default espelhando o repo de referência (1.300 arq., ~160 commits, 1 commit de 800). `SyntheticRepo::generate(&params) -> SyntheticRepo` (TempDir). Escreve TS com classes/imports e `.md` com `REQ-…`, monta o stream e roda `git fast-import`. Timestamps retroativos a partir de `now` (D2). PRNG xorshift local.
 - **Where**: `tests/fixtures/synthetic.rs`, `tests/fixtures/mod.rs` (`pub mod synthetic;`)

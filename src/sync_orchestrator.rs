@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use crate::code::{self, CodeError};
 use crate::git::cochange::CoChangeWindow;
@@ -31,6 +32,21 @@ pub enum SyncOrchestratorError {
     Code(#[from] CodeError),
 }
 
+/// Wall-clock time per phase of one sync cycle, plus what was staged
+/// (REQ-908). `diff` includes the working-tree dirty scan; `markdown` and
+/// `code` are the two extraction passes.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct PhaseTimings {
+    pub diff: Duration,
+    pub markdown: Duration,
+    pub code: Duration,
+    pub co_change: Duration,
+    pub stage: Duration,
+    pub nodes: usize,
+    pub edges: usize,
+    pub co_change_edges: usize,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SyncReport {
     /// `None` when the diff produced no mutations (nothing to stage).
@@ -42,6 +58,7 @@ pub struct SyncReport {
     /// (REQ-204) — independent of `files_added`/`files_modified`, which
     /// only reflect committed history.
     pub files_dirty: usize,
+    pub timings: PhaseTimings,
 }
 
 pub struct SyncOrchestrator<'a> {
@@ -69,8 +86,11 @@ impl<'a> SyncOrchestrator<'a> {
     /// everything in one `Coordinator::stage()` call, then advance
     /// `last_indexed_commit` — only after staging succeeds.
     pub fn run_once(&mut self) -> Result<SyncReport, SyncOrchestratorError> {
+        let mut timings = PhaseTimings::default();
+        let started = Instant::now();
         let since = self.version.last_indexed_commit()?;
         let diff = self.git.diff_since(since)?;
+        timings.diff = started.elapsed();
 
         let mut combined = MutationSet::default();
 
@@ -104,13 +124,18 @@ impl<'a> SyncOrchestrator<'a> {
         // REQ-204: uncommitted working-tree changes also enter the sync,
         // independent of the committed-history diff above (a repo can have
         // no new commits but a dirty tree, or vice versa). Markdown pass.
+        let markdown_started = Instant::now();
+        let mut scan_time = Duration::ZERO;
         let mut files_dirty = 0usize;
         let mut dirty_paths: Vec<PathBuf> = Vec::new();
         // `is_dirty()` ignores untracked files, so gate on the path list
         // itself: a brand-new (uncommitted) spec must still be indexed.
         if let Some(root) = self.git.work_dir() {
+            let scan_started = Instant::now();
             let candidates = self.git.dirty_paths()?;
             dirty_paths = self.dirty_cache.scan(root, &candidates);
+            scan_time = scan_started.elapsed();
+            timings.diff += scan_time;
             for path in &dirty_paths {
                 if is_markdown(path)
                     && let Ok(text) = std::fs::read_to_string(root.join(path))
@@ -127,6 +152,8 @@ impl<'a> SyncOrchestrator<'a> {
 
         // Pass 2 (REQ-306): code files, now that Markdown-derived REQ/ADR
         // nodes from this same cycle are known.
+        timings.markdown = markdown_started.elapsed().saturating_sub(scan_time);
+        let code_started = Instant::now();
         let known_markers = known_markers_from(&combined.nodes);
         for path in diff.added.iter().chain(diff.modified.iter()) {
             if let Some(language) = code::Language::from_extension(path)
@@ -151,24 +178,32 @@ impl<'a> SyncOrchestrator<'a> {
             }
         }
 
+        timings.code = code_started.elapsed();
+
         // Co-change edges depend only on commit history: recompute them when
         // HEAD moved (or on the first sync), not on every no-op cycle -- the
         // full pair set is ~O(files^2) per large commit.
         let history_changed = since.is_none()
             || !(diff.added.is_empty() && diff.modified.is_empty() && diff.deleted.is_empty());
+        let co_change_started = Instant::now();
         if history_changed {
-            combined
-                .edges
-                .extend(self.git.co_change_edges(&CoChangeWindow::default())?);
+            let co_change = self.git.co_change_edges(&CoChangeWindow::default())?;
+            timings.co_change_edges = co_change.len();
+            combined.edges.extend(co_change);
         }
+        timings.co_change = co_change_started.elapsed();
 
         let has_changes =
             !combined.nodes.is_empty() || !combined.edges.is_empty() || !combined.docs.is_empty();
+        timings.nodes = combined.nodes.len();
+        timings.edges = combined.edges.len();
+        let stage_started = Instant::now();
         let target_version = if has_changes {
             Some(self.coordinator.stage(combined)?)
         } else {
             None
         };
+        timings.stage = stage_started.elapsed();
 
         self.version
             .set_last_indexed_commit(self.git.head_commit_oid()?)?;
@@ -179,6 +214,7 @@ impl<'a> SyncOrchestrator<'a> {
             files_modified: diff.modified.len(),
             files_deleted: diff.deleted.len(),
             files_dirty,
+            timings,
         })
     }
 }

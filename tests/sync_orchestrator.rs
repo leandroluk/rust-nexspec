@@ -68,3 +68,39 @@ fn run_once_twice_only_processes_new_commits() {
 
     let _ = csr_handle; // kept alive for potential future assertions
 }
+
+#[test]
+fn run_once_reports_phase_timings_and_staged_counts() {
+    let repo = FixtureRepo::init();
+    repo.write_file("spec.md", "## Requirements
+- REQ-410: timed requirement
+");
+    repo.write_file("a.ts", "export class Alpha {}
+");
+    repo.write_file("b.ts", "export class Beta {}
+");
+    repo.commit("chore: seed");
+
+    let db_file = NamedTempFile::new().unwrap();
+    let db = Database::create(db_file.path()).unwrap();
+    let wal_file = NamedTempFile::new().unwrap();
+    let wal = nexspec::sync::Wal::open(wal_file.path()).unwrap();
+    let coordinator = Coordinator::new(
+        wal,
+        VersionPointer::new(&db),
+        vec![Box::new(RedbParticipant::new(&db))],
+    );
+    let git = GitSource::open(repo.path()).unwrap();
+    let mut orchestrator = SyncOrchestrator::new(git, coordinator, VersionPointer::new(&db));
+
+    let first = orchestrator.run_once().unwrap();
+    let t = &first.timings;
+    assert!(t.nodes >= 3, "3 file nodes at least, got {}", t.nodes);
+    assert!(t.co_change_edges > 0, "one commit touching 3 files yields co-change edges");
+    assert!(t.edges >= t.co_change_edges);
+    assert!(t.stage > std::time::Duration::ZERO);
+
+    let second = orchestrator.run_once().unwrap();
+    assert_eq!(second.timings.nodes, 0);
+    assert_eq!(second.timings.edges, 0, "no-op sync stages nothing");
+}

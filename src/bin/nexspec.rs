@@ -29,6 +29,9 @@ enum Command {
         /// Replay any WAL frame no store fully applied yet before syncing.
         #[arg(long)]
         resume: bool,
+        /// Print time per phase and staged node/edge counts.
+        #[arg(long)]
+        verbose: bool,
     },
     /// Force CSR delta-layer compaction.
     Compact,
@@ -83,7 +86,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             Engine::open(&index_dir, &repo)?;
             println!("initialized {}", index_dir.display());
         }
-        Command::Sync { resume } => {
+        Command::Sync { resume, verbose } => {
             let engine = Engine::open(&index_dir, &repo)?;
             if resume {
                 engine.resume()?;
@@ -94,6 +97,18 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 "sync: target_version={:?} added={} modified={} deleted={} dirty={}",
                 report.target_version, report.files_added, report.files_modified, report.files_deleted, report.files_dirty
             );
+            if verbose {
+                let t = &report.timings;
+                println!(
+                    "phases: diff={:.3}s markdown={:.3}s code={:.3}s co_change={:.3}s stage={:.3}s",
+                    t.diff.as_secs_f64(),
+                    t.markdown.as_secs_f64(),
+                    t.code.as_secs_f64(),
+                    t.co_change.as_secs_f64(),
+                    t.stage.as_secs_f64()
+                );
+                println!("staged: nodes={} edges={} (co_change={})", t.nodes, t.edges, t.co_change_edges);
+            }
         }
         Command::Compact => {
             let engine = Engine::open(&index_dir, &repo)?;

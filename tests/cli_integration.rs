@@ -57,6 +57,11 @@ fn init_sync_search_trace_blame_diff_all_work_end_to_end() {
 
     let sync_out = nexspec(repo_dir.path(), &["sync"]);
     assert!(sync_out.contains("target_version"));
+    assert!(!sync_out.contains("phases:"), "phase timings only with --verbose");
+
+    let verbose_out = nexspec(repo_dir.path(), &["sync", "--verbose"]);
+    assert!(verbose_out.contains("phases: diff="), "got: {verbose_out}");
+    assert!(verbose_out.contains("staged: nodes="), "got: {verbose_out}");
 
     let search_out = nexspec(repo_dir.path(), &["search", "cli integration test requirement"]);
     assert!(!search_out.trim().is_empty(), "search should find the synced requirement");

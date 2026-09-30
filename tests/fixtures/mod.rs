@@ -8,6 +8,8 @@
 //! full API surface is intentional, not accidental cruft.
 #![allow(dead_code)]
 
+pub mod synthetic;
+
 use std::path::Path;
 use std::process::Command;
 
