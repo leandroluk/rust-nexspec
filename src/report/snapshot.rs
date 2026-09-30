@@ -57,6 +57,7 @@ impl GraphSnapshot {
                 title.clone()
             }
             Some(NodePayload::DocSection { title, .. }) => title.clone(),
+            Some(domain) => domain.domain_label().map(|(_, label)| label).unwrap_or_default(),
             None => "(unknown node)".to_string(),
         }
     }
@@ -69,6 +70,7 @@ impl GraphSnapshot {
             Some(NodePayload::Task { .. }) => "task",
             Some(NodePayload::Adr { .. }) => "adr",
             Some(NodePayload::DocSection { .. }) => "doc_section",
+            Some(domain) => domain.domain_label().map_or("unknown", |(kind, _)| kind),
             None => "unknown",
         }
     }

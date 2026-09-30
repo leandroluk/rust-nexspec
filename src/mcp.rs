@@ -32,6 +32,7 @@ fn node_dto(id: &StableId, payload: &NodePayload) -> NodeDto {
         NodePayload::DocSection { title, .. } => ("doc_section", title.clone()),
         NodePayload::File { path, .. } => ("file", path.clone()),
         NodePayload::Symbol { name, .. } => ("symbol", name.clone()),
+        domain => domain.domain_label().unwrap_or(("unknown", String::new())),
     };
     NodeDto { id: id_hex(id), kind, summary }
 }

@@ -23,6 +23,24 @@ pub fn symbol_node_id(path: &str, name: &str, ordinal: usize) -> StableId {
     *blake3::hash(format!("symbol:{path}:{name}:{ordinal}").as_bytes()).as_bytes()
 }
 
+/// Deterministic ids of the domain nodes (Fase 14): the same object gets the same id
+/// on every sync, whatever file it was found in.
+pub fn table_node_id(schema: &str, name: &str) -> StableId {
+    *blake3::hash(format!("table:{schema}.{name}").as_bytes()).as_bytes()
+}
+
+pub fn column_node_id(schema: &str, table: &str, name: &str) -> StableId {
+    *blake3::hash(format!("column:{schema}.{table}.{name}").as_bytes()).as_bytes()
+}
+
+pub fn constraint_node_id(schema: &str, table: &str, name: &str) -> StableId {
+    *blake3::hash(format!("constraint:{schema}.{table}.{name}").as_bytes()).as_bytes()
+}
+
+pub fn package_node_id(name: &str) -> StableId {
+    *blake3::hash(format!("package:{name}").as_bytes()).as_bytes()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub enum NodeType {
     Requirement,
@@ -31,6 +49,10 @@ pub enum NodeType {
     DocSection,
     Symbol,
     File,
+    Table,
+    Column,
+    Constraint,
+    Package,
 }
 
 /// One variant per [`NodeType`], serialized with `rkyv` for consistency with
@@ -68,9 +90,52 @@ pub enum NodePayload {
         path: String,
         source_hash: [u8; 32],
     },
+    /// A database table or view (Fase 14).
+    Table {
+        schema: String,
+        name: String,
+        is_view: bool,
+    },
+    Column {
+        /// Name of the table it belongs to.
+        table: String,
+        name: String,
+        sql_type: String,
+        nullable: bool,
+    },
+    /// Primary key, unique, foreign key, check or index, with the name the database gives it.
+    Constraint {
+        table: String,
+        name: String,
+        /// `primary_key`, `unique`, `foreign_key`, `check`, `index` or `unique_index`.
+        kind: String,
+    },
+    /// A workspace package (`package.json`, `Cargo.toml`).
+    Package {
+        name: String,
+        version: String,
+        /// Repository-relative directory.
+        dir: String,
+    },
 }
 
 impl NodePayload {
+    /// `kind` and display name of the domain nodes; `None` for the rest.
+    pub fn domain_label(&self) -> Option<(&'static str, String)> {
+        match self {
+            NodePayload::Table { name, is_view, .. } => Some((if *is_view { "view" } else { "table" }, name.clone())),
+            NodePayload::Column { table, name, .. } => Some(("column", format!("{table}.{name}"))),
+            NodePayload::Constraint { table, name, .. } => Some(("constraint", format!("{name} ({table})"))),
+            NodePayload::Package { name, .. } => Some(("package", name.clone())),
+            _ => None,
+        }
+    }
+
+    /// Whether the node belongs to the domain pass (added and removed by it as a whole).
+    pub fn is_domain(&self) -> bool {
+        self.domain_label().is_some()
+    }
+
     pub fn node_type(&self) -> NodeType {
         match self {
             NodePayload::Requirement { .. } => NodeType::Requirement,
@@ -79,6 +144,10 @@ impl NodePayload {
             NodePayload::DocSection { .. } => NodeType::DocSection,
             NodePayload::Symbol { .. } => NodeType::Symbol,
             NodePayload::File { .. } => NodeType::File,
+            NodePayload::Table { .. } => NodeType::Table,
+            NodePayload::Column { .. } => NodeType::Column,
+            NodePayload::Constraint { .. } => NodeType::Constraint,
+            NodePayload::Package { .. } => NodeType::Package,
         }
     }
 }

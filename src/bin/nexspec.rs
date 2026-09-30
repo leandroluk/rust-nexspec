@@ -624,10 +624,11 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             if verbose {
                 let t = &report.timings;
                 println!(
-                    "phases: diff={:.3}s markdown={:.3}s code={:.3}s co_change={:.3}s stage={:.3}s",
+                    "phases: diff={:.3}s markdown={:.3}s code={:.3}s domain={:.3}s co_change={:.3}s stage={:.3}s",
                     t.diff.as_secs_f64(),
                     t.markdown.as_secs_f64(),
                     t.code.as_secs_f64(),
+                    t.domain.as_secs_f64(),
                     t.co_change.as_secs_f64(),
                     t.stage.as_secs_f64()
                 );
@@ -916,6 +917,7 @@ fn describe_payload(payload: &nexspec::NodePayload) -> String {
         DocSection { title, .. } => title.clone(),
         File { path, .. } => path.clone(),
         Symbol { name, .. } => name.clone(),
+        domain => domain.domain_label().map(|(kind, label)| format!("{kind} {label}")).unwrap_or_default(),
     }
 }
 

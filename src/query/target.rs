@@ -49,6 +49,16 @@ fn is_marker(target: &str) -> bool {
     ["REQ-", "TASK-", "ADR-"].iter().any(|p| target.starts_with(p) && target.len() > p.len())
 }
 
+/// The names a domain node answers to: `tb_x` and `public.tb_x` for a table, `tb_x.col` for a column.
+fn domain_names(payload: &NodePayload) -> Vec<String> {
+    match payload {
+        NodePayload::Table { schema, name, .. } => vec![name.clone(), format!("{schema}.{name}")],
+        NodePayload::Column { table, name, .. } => vec![format!("{table}.{name}")],
+        NodePayload::Constraint { name, .. } | NodePayload::Package { name, .. } => vec![name.clone()],
+        _ => Vec::new(),
+    }
+}
+
 pub fn resolve(snapshot: &GraphSnapshot, target: &str) -> Resolved {
     let target = target.trim();
 
@@ -112,6 +122,19 @@ pub fn resolve(snapshot: &GraphSnapshot, target: &str) -> Resolved {
             .filter(|(_, p)| {
                 matches!(p, NodePayload::Symbol { name, .. } if if exact { name == target } else { name.eq_ignore_ascii_case(target) })
             })
+            .map(|(id, _)| *id)
+            .collect();
+        if let Some(found) = verdict(snapshot, ids) {
+            return found;
+        }
+    }
+
+    // 5b. A table, view, column (`table.column`), constraint/index or workspace package by name (Fase 14).
+    for exact in [true, false] {
+        let ids: Vec<StableId> = snapshot
+            .nodes
+            .iter()
+            .filter(|(_, p)| domain_names(p).iter().any(|n| if exact { n == target } else { n.eq_ignore_ascii_case(target) }))
             .map(|(id, _)| *id)
             .collect();
         if let Some(found) = verdict(snapshot, ids) {

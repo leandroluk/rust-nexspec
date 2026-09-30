@@ -172,8 +172,9 @@ pub struct BlameResult {
 /// 3 = identifier-aware tokenizer for the lexical index,
 /// 4 = no `File` nodes for binaries/lockfiles,
 /// 5 = `Edge.meta` and the dependency edge types,
-/// 6 = per-language `summary_*` fields in the lexical index (Fase 19).
-pub const INDEX_FORMAT: u64 = 6;
+/// 6 = per-language `summary_*` fields in the lexical index (Fase 19),
+/// 7 = table/column/constraint/package nodes (Fase 14).
+pub const INDEX_FORMAT: u64 = 7;
 
 /// Dependents appended to a search result after the seeds and their own
 /// neighbours (REQ-707: bounded, so a widely used type cannot flood an answer).
@@ -374,9 +375,17 @@ impl Engine {
         };
         let wal = Wal::open(self.wal_path())?;
         let coordinator = Coordinator::new(wal, VersionPointer::new(&self.db), self.participants()?);
-        let mut orchestrator =
-            SyncOrchestrator::new(git, coordinator, VersionPointer::new(&self.db)).with_csr(Arc::clone(&self.csr));
+        let mut orchestrator = SyncOrchestrator::new(git, coordinator, VersionPointer::new(&self.db))
+            .with_csr(Arc::clone(&self.csr))
+            .with_domain_state(|| self.domain_node_ids());
         Ok(orchestrator.run_once()?)
+    }
+
+    /// Ids of the table, column, constraint and package nodes in the index (what the domain pass owns).
+    fn domain_node_ids(&self) -> std::collections::HashSet<StableId> {
+        let redb = RedbParticipant::new(&self.db);
+        let Ok(nodes) = redb.all_nodes() else { return Default::default() };
+        nodes.into_iter().filter(|(_, bytes)| decode_node_payload(bytes).is_ok_and(|p| p.is_domain())).map(|(id, _)| id).collect()
     }
 
     /// Re-applies the cached summaries of `paths` to the lexical index (REQ-1907): one cycle through
@@ -540,6 +549,9 @@ impl Engine {
             | NodePayload::Adr { title, body, .. } => (format!("{title}\n{body}"), Some("markdown")),
             NodePayload::DocSection { title, .. } => (title.clone(), Some("markdown")),
             NodePayload::File { path, .. } => (path.clone(), None),
+            NodePayload::Table { .. } | NodePayload::Column { .. } | NodePayload::Constraint { .. } | NodePayload::Package { .. } => {
+                (payload.domain_label().map(|(kind, label)| format!("{kind} {label}")).unwrap_or_default(), None)
+            }
             NodePayload::Symbol { name, line_start, line_end, .. } => {
                 if let Some(pruned) = self.prune_symbol_source(id, *line_start, *line_end, git) {
                     return pruned;
@@ -924,6 +936,8 @@ impl Engine {
                 Ok(locations)
             }
             NodePayload::DocSection { .. } => Ok(Vec::new()),
+            // Database objects and packages are not code locations.
+            NodePayload::Table { .. } | NodePayload::Column { .. } | NodePayload::Constraint { .. } | NodePayload::Package { .. } => Ok(Vec::new()),
         }
     }
 

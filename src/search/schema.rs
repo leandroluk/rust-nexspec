@@ -173,6 +173,10 @@ fn describe(payload: &NodePayload) -> (&'static str, String, Option<String>) {
         NodePayload::Task { title, body, .. } => ("task", format!("{title} {body}"), None),
         NodePayload::Adr { title, body, .. } => ("adr", format!("{title} {body}"), None),
         NodePayload::DocSection { title, .. } => ("doc_section", title.clone(), None),
+        NodePayload::Table { schema, name, is_view } => (if *is_view { "view" } else { "table" }, format!("{schema}.{name}"), None),
+        NodePayload::Column { table, name, sql_type, .. } => ("column", format!("{table}.{name} {sql_type}"), None),
+        NodePayload::Constraint { table, name, kind } => ("constraint", format!("{name} {table} {kind}"), None),
+        NodePayload::Package { name, dir, .. } => ("package", format!("{name} {dir}"), Some(dir.clone())),
         NodePayload::Symbol { name, .. } => ("symbol", name.clone(), None),
         NodePayload::File { path, .. } => ("file", path.clone(), Some(path.clone())),
     }

@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::code::{self, CodeError};
+use crate::domain::{self, graph::DomainInput};
 use crate::git::cochange::CoChangeWindow;
 use crate::git::dirty_cache::DirtyCache;
 use crate::git::source::{GitError, GitSource};
@@ -44,6 +45,8 @@ pub struct PhaseTimings {
     pub markdown: Duration,
     pub code: Duration,
     pub co_change: Duration,
+    /// The domain pass (Fase 14): schema, manifests, entity links. Zero when it did not run.
+    pub domain: Duration,
     pub stage: Duration,
     pub nodes: usize,
     pub edges: usize,
@@ -73,7 +76,11 @@ pub struct SyncOrchestrator<'a> {
     /// contribute so stale symbols and edges can be removed (REQ-706). Without
     /// it the orchestrator only ever adds.
     csr: Option<Arc<Csr>>,
+    /// Ids of the domain nodes already indexed (Fase 14), asked for only when the domain pass runs.
+    domain_state: Option<DomainState<'a>>,
 }
+
+type DomainState<'a> = Box<dyn Fn() -> HashSet<StableId> + 'a>;
 
 impl<'a> SyncOrchestrator<'a> {
     pub fn new(git: GitSource, coordinator: Coordinator<'a>, version: VersionPointer<'a>) -> Self {
@@ -83,7 +90,15 @@ impl<'a> SyncOrchestrator<'a> {
             version,
             dirty_cache: DirtyCache::new(),
             csr: None,
+            domain_state: None,
         }
+    }
+
+    /// Lets the domain pass remove tables, columns and packages that disappeared: `existing` returns
+    /// the ids of the domain nodes currently in the index.
+    pub fn with_domain_state(mut self, existing: impl Fn() -> HashSet<StableId> + 'a) -> Self {
+        self.domain_state = Some(Box::new(existing));
+        self
     }
 
     /// Lets the orchestrator reconcile changed files against the graph.
@@ -252,6 +267,36 @@ impl<'a> SyncOrchestrator<'a> {
         }
         timings.code = code_started.elapsed();
 
+        // Pass 3 (Fase 14): database schema, manifests and entity links. The schema is cumulative, so the
+        // pass reads every candidate and rebuilds the whole domain subgraph, but only when something it
+        // depends on changed.
+        let domain_started = Instant::now();
+        let touched: Vec<String> = diff
+            .added
+            .iter()
+            .chain(diff.modified.iter())
+            .chain(diff.deleted.iter())
+            .chain(dirty_paths.iter())
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .collect();
+        let entity_marker_changed = code_files.iter().any(|(_, text, _)| domain::orm::has_marker(text))
+            || diff.deleted.iter().any(|p| is_entity_candidate(&p.to_string_lossy()));
+        if since.is_none() || entity_marker_changed || touched.iter().any(|p| is_domain_path(p)) {
+            let input = self.domain_input(&dirty_paths)?;
+            let graph = domain::graph::build(&input);
+            let (existing_nodes, existing_edges) = match (&self.domain_state, &self.csr) {
+                (Some(existing), Some(csr)) => (
+                    existing(),
+                    csr.all_edges().iter().map(|e| (e.id, e.from, e.to, e.edge_type == EdgeType::DependsOn)).collect::<Vec<_>>(),
+                ),
+                _ => (HashSet::new(), Vec::new()),
+            };
+            let set = domain::graph::reconcile(&graph, &existing_nodes, &existing_edges);
+            combined.nodes.extend(set.nodes);
+            combined.edges.extend(set.edges);
+        }
+        timings.domain = domain_started.elapsed();
+
         // Co-change edges depend only on commit history: recompute them when
         // HEAD moved (or on the first sync), not on every no-op cycle -- the
         // full pair set is ~O(files^2) per large commit.
@@ -288,6 +333,47 @@ impl<'a> SyncOrchestrator<'a> {
             files_dirty,
             timings,
         })
+    }
+}
+
+fn is_entity_candidate(path: &str) -> bool {
+    [".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs", ".py", ".prisma"].iter().any(|e| path.ends_with(e))
+}
+
+/// Paths whose change can alter the domain subgraph (besides an entity marker in a code file).
+fn is_domain_path(path: &str) -> bool {
+    domain::liquibase::is_candidate(path) || domain::manifest::is_manifest(path) || path.ends_with(".prisma")
+}
+
+impl SyncOrchestrator<'_> {
+    /// Reads every file the domain pass needs: schema candidates, manifests and entity-looking code.
+    fn domain_input(&self, dirty_paths: &[PathBuf]) -> Result<DomainInput, SyncOrchestratorError> {
+        let mut tracked: Vec<String> = self.git.tracked_paths_at_head()?.iter().map(|p| p.to_string_lossy().replace('\\', "/")).collect();
+        tracked.extend(dirty_paths.iter().map(|p| p.to_string_lossy().replace('\\', "/")));
+        tracked.sort();
+        tracked.dedup();
+        let mut input = DomainInput::default();
+        for path in &tracked {
+            if is_engine_artifact(Path::new(path)) {
+                continue;
+            }
+            if domain::liquibase::is_candidate(path) {
+                if let Some(text) = read_repo_text(&self.git, path) {
+                    input.schema_files.push((path.clone(), text));
+                }
+            } else if domain::manifest::is_manifest(path) {
+                if let Some(text) = read_repo_text(&self.git, path) {
+                    input.manifests.push((path.clone(), text));
+                }
+            } else if is_entity_candidate(path)
+                && let Some(text) = read_repo_text(&self.git, path)
+                && (path.ends_with(".prisma") || domain::orm::has_marker(&text))
+            {
+                input.entity_files.push((path.clone(), text));
+            }
+        }
+        input.tracked = tracked.into_iter().collect();
+        Ok(input)
     }
 }
 

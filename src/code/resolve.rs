@@ -313,7 +313,7 @@ fn split_package_specifier(specifier: &str) -> (String, String) {
 }
 
 /// JSON with `//` and `/* */` comments and trailing commas (tsconfig style).
-fn parse_jsonc(text: &str) -> Option<Value> {
+pub(crate) fn parse_jsonc(text: &str) -> Option<Value> {
     serde_json::from_str(&strip_jsonc(text)).ok()
 }
 
