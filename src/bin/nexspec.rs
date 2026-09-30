@@ -104,6 +104,35 @@ struct BenchArgs {
     fixed_cost_files: Vec<PathBuf>,
 }
 
+#[derive(clap::Args)]
+struct PlatformArgs {
+    /// Agent to configure: claude, gemini, cursor, vscode or codex (repeatable, or `all`).
+    #[arg(long = "platform", required = true)]
+    platforms: Vec<String>,
+    /// Where the configuration lives: `user` is required for codex and invalid for the others.
+    #[arg(long, value_enum)]
+    scope: Option<ScopeArg>,
+    /// Show what would change without writing anything.
+    #[arg(long)]
+    dry_run: bool,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum ScopeArg {
+    Project,
+    User,
+}
+
+#[derive(Subcommand)]
+enum HookAction {
+    /// Append the nexspec block to post-commit, post-merge and post-checkout (idempotent).
+    Install,
+    /// Remove only the nexspec block from those hooks.
+    Uninstall,
+    /// Show which hooks carry the block.
+    Status,
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Create `.specs/.index/` if it doesn't exist yet (idempotent).
@@ -214,6 +243,18 @@ enum Command {
         #[arg(long, default_value_t = 500)]
         debounce: u64,
     },
+    /// Install, remove or inspect the git hooks that run `nexspec sync` after commit, merge and checkout.
+    Hook {
+        #[command(subcommand)]
+        action: HookAction,
+    },
+    /// Register the nexspec MCP server with a coding agent (backup first, other entries untouched).
+    Install(PlatformArgs),
+    /// Remove the nexspec MCP server entry from a coding agent's configuration.
+    Uninstall(PlatformArgs),
+    /// Say whether the index is in step with HEAD and the working tree. First stdout line:
+    /// `up-to-date` (exit 0), `stale: <reason>` (exit 3) or `no-index` (exit 4). Never writes.
+    CheckUpdate,
     /// Watch the working tree and sync after each burst of changes (one watcher per repository).
     Watch {
         /// Quiet time (ms) after the last change before syncing.
@@ -248,6 +289,59 @@ enum Command {
     Bench(Box<BenchArgs>),
 }
 
+fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(PathBuf::from)
+}
+
+fn run_platforms(repo: &Path, args: &PlatformArgs, install: bool) -> Result<(), Box<dyn std::error::Error>> {
+    use nexspec::workflow::install::{self as inst, Action, Platform, Scope};
+    let mut platforms = Vec::new();
+    for name in &args.platforms {
+        if name == "all" {
+            // Codex is user-level: only with an explicit `--scope user`.
+            platforms.extend(Platform::ALL.into_iter().filter(|p| *p != Platform::Codex || matches!(args.scope, Some(ScopeArg::User))));
+        } else {
+            platforms.push(Platform::parse(name).ok_or_else(|| format!("unknown platform `{name}` (claude, gemini, cursor, vscode, codex, all)"))?);
+        }
+    }
+    let scope = args.scope.map(|s| match s {
+        ScopeArg::Project => Scope::Project,
+        ScopeArg::User => Scope::User,
+    });
+    let home = home_dir();
+    // Plan everything first: a bad platform must not leave the others half done.
+    let mut plans = Vec::new();
+    for platform in platforms {
+        // `all --scope user` also covers the project-level agents.
+        let scope_for = if platform == Platform::Codex { scope } else { scope.filter(|s| *s != Scope::User) };
+        let plan = if install {
+            inst::plan_install(platform, scope_for, repo, home.as_deref())?
+        } else {
+            inst::plan_uninstall(platform, scope_for, repo, home.as_deref())?
+        };
+        plans.push(plan);
+    }
+    for plan in &plans {
+        let verb = match (plan.action, args.dry_run) {
+            (Action::Unchanged, _) => "unchanged",
+            (Action::Create, true) => "would create",
+            (Action::Create, false) => "created",
+            (Action::Update, true) => "would update",
+            (Action::Update, false) => "updated",
+            (Action::Remove, true) => "would remove the entry from",
+            (Action::Remove, false) => "removed the entry from",
+        };
+        println!("{}: {verb} {}", plan.platform.name(), plan.path.display());
+        for note in &plan.notes {
+            println!("  note: {note}");
+        }
+        if !args.dry_run && let Some(backup) = inst::apply(plan)? {
+            println!("  backup: {}", backup.display());
+        }
+    }
+    Ok(())
+}
+
 fn index_dir(repo: &Path) -> PathBuf {
     repo.join(".specs").join(".index")
 }
@@ -268,6 +362,36 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     let index_dir = index_dir(&repo);
 
     match cli.command {
+        Command::Hook { action } => {
+            use nexspec::workflow::hooks::{self, HookChange, HookState};
+            match action {
+                HookAction::Install | HookAction::Uninstall => {
+                    let installing = matches!(action, HookAction::Install);
+                    let changes = if installing { hooks::install(&repo)? } else { hooks::uninstall(&repo)? };
+                    for (name, change) in changes {
+                        let what = match (change, installing) {
+                            (HookChange::Added, _) => "installed",
+                            (HookChange::Removed, _) => "removed",
+                            (HookChange::Unchanged, true) => "already installed",
+                            (HookChange::Unchanged, false) => "not installed",
+                        };
+                        println!("{name}: {what}");
+                    }
+                }
+                HookAction::Status => {
+                    for (name, state) in hooks::status(&repo)? {
+                        println!("{name}: {}", if state == HookState::Installed { "installed" } else { "not installed" });
+                    }
+                }
+            }
+        }
+        Command::Install(args) => run_platforms(&repo, &args, true)?,
+        Command::Uninstall(args) => run_platforms(&repo, &args, false)?,
+        Command::CheckUpdate => {
+            let freshness = nexspec::workflow::check::check(&repo, &index_dir)?;
+            println!("{}", freshness.line());
+            std::process::exit(freshness.exit_code());
+        }
         Command::Init => {
             Engine::open(&index_dir, &repo)?;
             println!("initialized {}", index_dir.display());
