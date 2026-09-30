@@ -59,21 +59,21 @@ capability gap, not a hard failure of the whole search path.
 
 ## New Components
 
-| Component | Responsibility | Location |
-|---|---|---|
-| `Embedder` | Lazy-loaded `ort::Session` + tokenizer, `embed(text) -> Vec<f32>` | `src/vector/embedder.rs` |
-| `VectorError` | `ModelNotAvailable`, `Inference(String)`, `Io(...)` | `src/vector/embedder.rs` |
-| `HnswIndex` | Wraps `instant_distance::Hnsw`, cosine similarity, `search(vec, k) -> Vec<(StableId, f32)>` | `src/vector/hnsw.rs` |
-| `HnswParticipant` | `SyncParticipant` impl — stage/commit/abort over `HnswIndex`, same shape as `CsrParticipant` | `src/vector/hnsw.rs` |
-| `hybrid::seed_discovery` | RRF fusion of BM25 + HNSW rankings | `src/hybrid.rs` |
-| `hybrid::expand` | Bounded k-hop CSR traversal from seeds | `src/hybrid.rs` |
+| Component                | Responsibility                                                                               | Location                 |
+| ------------------------ | -------------------------------------------------------------------------------------------- | ------------------------ |
+| `Embedder`               | Lazy-loaded `ort::Session` + tokenizer, `embed(text) -> Vec<f32>`                            | `src/vector/embedder.rs` |
+| `VectorError`            | `ModelNotAvailable`, `Inference(String)`, `Io(...)`                                          | `src/vector/embedder.rs` |
+| `HnswIndex`              | Wraps `instant_distance::Hnsw`, cosine similarity, `search(vec, k) -> Vec<(StableId, f32)>`  | `src/vector/hnsw.rs`     |
+| `HnswParticipant`        | `SyncParticipant` impl — stage/commit/abort over `HnswIndex`, same shape as `CsrParticipant` | `src/vector/hnsw.rs`     |
+| `hybrid::seed_discovery` | RRF fusion of BM25 + HNSW rankings                                                           | `src/hybrid.rs`          |
+| `hybrid::expand`         | Bounded k-hop CSR traversal from seeds                                                       | `src/hybrid.rs`          |
 
 ## Modified Components
 
-| Component | Change | Risk |
-|---|---|---|
-| `Cargo.toml` | New optional deps (`ort`, `instant-distance`) gated by default-on feature, `lean` feature to exclude them | Medium — first feature-flag split in the crate; must verify both `cargo build` and `cargo build --features lean` (or equivalent) stay green |
-| `sync::coordinator::Coordinator` (construction sites) | 4th participant | None — same `Vec<Box<dyn SyncParticipant>>` |
+| Component                                             | Change                                                                                                    | Risk                                                                                                                                        |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Cargo.toml`                                          | New optional deps (`ort`, `instant-distance`) gated by default-on feature, `lean` feature to exclude them | Medium — first feature-flag split in the crate; must verify both `cargo build` and `cargo build --features lean` (or equivalent) stay green |
+| `sync::coordinator::Coordinator` (construction sites) | 4th participant                                                                                           | None — same `Vec<Box<dyn SyncParticipant>>`                                                                                                 |
 
 ## Risks
 

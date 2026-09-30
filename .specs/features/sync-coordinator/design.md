@@ -67,14 +67,14 @@ seguro porque nenhum leitor consulta o participante diretamente sem checar
 
 ## New Components
 
-| Component | Responsibility | Location |
-|---|---|---|
-| `SyncParticipant` (trait) | Contrato `fn stage(&self, target_version: u64, mutations: &MutationSet) -> Result<()>`, `fn committed_version(&self) -> u64`, `fn commit(&self, target_version: u64) -> Result<()>`, `fn abort(&self, target_version: u64) -> Result<()>` | `src/sync/participant.rs` |
-| `RedbParticipant` | Único `SyncParticipant` real na Fase 0 — grava metadados em staging keys, promove via transação `redb` | `src/sync/redb_participant.rs` |
-| `Wal` | Append-only frame log (`sync.wal`): `append_frame`, `pending_frames`, `mark_done` | `src/sync/wal.rs` |
-| `MutationSet` | Struct serializável (rkyv) representando o lote de mutações de um ciclo (`Vec<NodeMutation>`, `Vec<EdgeMutation>`, `Vec<DocMutation>`) | `src/sync/mutation.rs` |
-| `Coordinator` | Orquestra `stage()` → fan-out para participantes → `commit()`/`abort()`, expõe `resume()` para o startup | `src/sync/coordinator.rs` |
-| `VersionPointer` | Wrapper de leitura/escrita do `sync_version` em `redb` (tabela `meta`) | `src/sync/version.rs` |
+| Component                 | Responsibility                                                                                                                                                                                                                            | Location                       |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| `SyncParticipant` (trait) | Contrato `fn stage(&self, target_version: u64, mutations: &MutationSet) -> Result<()>`, `fn committed_version(&self) -> u64`, `fn commit(&self, target_version: u64) -> Result<()>`, `fn abort(&self, target_version: u64) -> Result<()>` | `src/sync/participant.rs`      |
+| `RedbParticipant`         | Único `SyncParticipant` real na Fase 0 — grava metadados em staging keys, promove via transação `redb`                                                                                                                                    | `src/sync/redb_participant.rs` |
+| `Wal`                     | Append-only frame log (`sync.wal`): `append_frame`, `pending_frames`, `mark_done`                                                                                                                                                         | `src/sync/wal.rs`              |
+| `MutationSet`             | Struct serializável (rkyv) representando o lote de mutações de um ciclo (`Vec<NodeMutation>`, `Vec<EdgeMutation>`, `Vec<DocMutation>`)                                                                                                    | `src/sync/mutation.rs`         |
+| `Coordinator`             | Orquestra `stage()` → fan-out para participantes → `commit()`/`abort()`, expõe `resume()` para o startup                                                                                                                                  | `src/sync/coordinator.rs`      |
+| `VersionPointer`          | Wrapper de leitura/escrita do `sync_version` em `redb` (tabela `meta`)                                                                                                                                                                    | `src/sync/version.rs`          |
 
 ## Modified Components
 

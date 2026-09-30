@@ -13,23 +13,23 @@
                           ▼
               sync::coordinator::Coordinator::stage()
                           │  (fan-out — Fase 0, inalterado)
-           ┌──────────────┼───────────────────┐
+           ┌──────────────┼────────────────────┐
            ▼                                   ▼
-  ┌─────────────────────┐          ┌──────────────────────────┐
-  │ RedbParticipant       │          │ CsrParticipant (novo)     │
-  │ (Fase 0 — nós/docs em │          │ topologia (edges) — CSR   │
-  │ redb::nodes/docs)     │          │ base + delta              │
-  └─────────────────────┘          └──────────┬───────────────┘
+  ┌───────────────────────┐          ┌──────────────────────────┐
+  │ RedbParticipant       │          │ CsrParticipant (novo)    │
+  │ (Fase 0 — nós/docs em │          │ topologia (edges) — CSR  │
+  │ redb::nodes/docs)     │          │ base + delta             │
+  └───────────────────────┘          └──────────┬───────────────┘
                                                │
                                     ┌──────────┴───────────┐
                                     ▼                       ▼
-                          ┌──────────────────┐   ┌────────────────────┐
-                          │ Base layer        │   │ Delta layer         │
-                          │ edges.bin (rkyv,  │   │ ArcSwap<DeltaSet>    │
-                          │ mmap, imutável    │   │ (COW, lock-free)     │
+                          ┌────────────────────┐   ┌─────────────────────┐
+                          │ Base layer         │   │ Delta layer         │
+                          │ edges.bin (rkyv,   │   │ ArcSwap<DeltaSet>   │
+                          │ mmap, imutável     │   │ (COW, lock-free)    │
                           │ entre compactações)│   │ append-only até     │
-                          └──────────────────┘   │ threshold → compact │
-                                                  └────────────────────┘
+                          └────────────────────┘   │ threshold → compact │
+                                                   └─────────────────────┘
 ```
 
 Leitura de grafo (`query`/`path`/`explain`, fora do escopo desta fase mas o
@@ -58,22 +58,22 @@ atômico via `ArcSwap`) — nunca lê o delta "ao vivo" sendo mutado.
 
 ## New Components
 
-| Component | Responsibility | Location |
-|---|---|---|
-| `Node`, `NodeType`, `NodePayload` | Entidade de nó tipada + payload por tipo (enum) | `src/graph/node.rs` |
-| `Edge`, `EdgeType` | Entidade de edge tipada | `src/graph/edge.rs` |
-| `CsrBase` | Arquivo mmap imutável (`edges.bin`, rkyv), lookups O(1) por direção/tipo | `src/graph/csr/base.rs` |
-| `CsrDelta` | Estrutura append-only de edges pendentes, publicada via `ArcSwap<CsrDelta>` | `src/graph/csr/delta.rs` |
-| `CsrParticipant` | Implementa `SyncParticipant`; `stage()` monta o próximo `CsrDelta` off-thread, `commit()` troca o `ArcSwap`; aciona compactação por threshold | `src/graph/csr/participant.rs` |
-| `Csr` (fachada) | Combina `CsrBase` + `ArcSwap<CsrDelta>`; expõe `edges_from(id, edge_type)` mesclando as duas camadas | `src/graph/csr/mod.rs` |
-| `markdown::extract` | Parseia `.specs/**/*.md` com `comrak`, retorna `MutationSet` (REQ/TASK/ADR/DocSection + edges de relação) | `src/graph/markdown.rs` |
+| Component                         | Responsibility                                                                                                                                | Location                       |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| `Node`, `NodeType`, `NodePayload` | Entidade de nó tipada + payload por tipo (enum)                                                                                               | `src/graph/node.rs`            |
+| `Edge`, `EdgeType`                | Entidade de edge tipada                                                                                                                       | `src/graph/edge.rs`            |
+| `CsrBase`                         | Arquivo mmap imutável (`edges.bin`, rkyv), lookups O(1) por direção/tipo                                                                      | `src/graph/csr/base.rs`        |
+| `CsrDelta`                        | Estrutura append-only de edges pendentes, publicada via `ArcSwap<CsrDelta>`                                                                   | `src/graph/csr/delta.rs`       |
+| `CsrParticipant`                  | Implementa `SyncParticipant`; `stage()` monta o próximo `CsrDelta` off-thread, `commit()` troca o `ArcSwap`; aciona compactação por threshold | `src/graph/csr/participant.rs` |
+| `Csr` (fachada)                   | Combina `CsrBase` + `ArcSwap<CsrDelta>`; expõe `edges_from(id, edge_type)` mesclando as duas camadas                                          | `src/graph/csr/mod.rs`         |
+| `markdown::extract`               | Parseia `.specs/**/*.md` com `comrak`, retorna `MutationSet` (REQ/TASK/ADR/DocSection + edges de relação)                                     | `src/graph/markdown.rs`        |
 
 ## Modified Components
 
-| Component | Change | Risk |
-|---|---|---|
-| `sync::participant::SyncParticipant` | Nenhuma mudança de assinatura esperada — `CsrParticipant` é o primeiro teste real do contrato desenhado na Fase 0 | Se o contrato não bastar (ex.: `stage()` precisar de mais contexto que `target_version`+`MutationSet`), a trait muda aqui — documentado como risco aceito desde `sync-coordinator/design.md` |
-| `sync::redb_participant::RedbParticipant` | Nenhuma mudança de código — passa a receber `NodeMutation`/`DocMutation` com payloads reais (antes só bytes de teste) | Baixo — já foi desenhado para bytes opacos |
+| Component                                 | Change                                                                                                                | Risk                                                                                                                                                                                         |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sync::participant::SyncParticipant`      | Nenhuma mudança de assinatura esperada — `CsrParticipant` é o primeiro teste real do contrato desenhado na Fase 0     | Se o contrato não bastar (ex.: `stage()` precisar de mais contexto que `target_version`+`MutationSet`), a trait muda aqui — documentado como risco aceito desde `sync-coordinator/design.md` |
+| `sync::redb_participant::RedbParticipant` | Nenhuma mudança de código — passa a receber `NodeMutation`/`DocMutation` com payloads reais (antes só bytes de teste) | Baixo — já foi desenhado para bytes opacos                                                                                                                                                   |
 
 ## Risks
 

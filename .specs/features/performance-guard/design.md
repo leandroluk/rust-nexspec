@@ -42,14 +42,14 @@ Risco correlato descoberto na leitura: `CsrDelta::edges_from` (`src/graph/csr/de
 
 Bases: sintético default (1.300 arq., 160 commits, 1 commit de 800) e clone local do condominium-management-system (1.267 arq., 164 commits).
 
-| Fase | Sintético (antes) | Real (antes) | Real (após T-903b) |
-|---|---|---|---|
-| diff (+ scan de sujos) | 0,18 s | 1,12 s | 0,08 s |
-| markdown | ~0 | ~0 | 0,04 s |
-| **code (Tree-sitter)** | **12,1 s** | **11,9 s** | **0,60 s** |
-| co-change (cálculo) | 0,32 s | 1,02 s | 0,66 s |
-| **stage (WAL + 4 participantes)** | 3,1 s | 3,7 s | 3,7 s |
-| **total (parede)** | 15,9 s | 18,0 s | 6,6 s |
+| Fase                              | Sintético (antes) | Real (antes) | Real (após T-903b) |
+| --------------------------------- | ----------------- | ------------ | ------------------ |
+| diff (+ scan de sujos)            | 0,18 s            | 1,12 s       | 0,08 s             |
+| markdown                          | ~0                | ~0           | 0,04 s             |
+| **code (Tree-sitter)**            | **12,1 s**        | **11,9 s**   | **0,60 s**         |
+| co-change (cálculo)               | 0,32 s            | 1,02 s       | 0,66 s             |
+| **stage (WAL + 4 participantes)** | 3,1 s             | 3,7 s        | 3,7 s              |
+| **total (parede)**                | 15,9 s            | 18,0 s       | 6,6 s              |
 
 Arestas staged: 646 mil (sintético) / 1,04 mi (real), das quais 99,4% são co-change. Tamanhos após o sync real: `metadata.redb` 539 MB, `sync.wal` 113 MB, `edges.bin` 102 MB.
 
@@ -61,26 +61,26 @@ Arestas staged: 646 mil (sintético) / 1,04 mi (real), das quais 99,4% são co-c
 
 ## New Components
 
-| Component | Responsibility | Location |
-|---|---|---|
-| `SyntheticRepo` / `SyntheticParams` | Gera repo git determinístico (arquivos TS/MD, commits, commit grande) via `git fast-import` com seed fixa | `tests/fixtures/synthetic.rs` |
-| `PhaseTimings` | Tempo por fase do sync (diff, markdown, código, co-change, stage) + contagem de nós/arestas | `src/sync_orchestrator.rs` |
-| `perf_budget` test | Executa init+sync, sync sem mudança, sync com 1 arquivo, search/trace e compara com limites | `tests/perf_budget.rs` |
-| `regressions` tests | Um teste por bug real (a–g) | `tests/regressions.rs` |
-| Benchmarks criterion | `CsrDelta`, `co_change_edges`, markdown, símbolos; razão T(2N)/T(N) ≤ 2,2 | `benches/complexity.rs` |
-| `IndexFormat` | Chave `index_format` em `meta`; `Engine::open` reconstrói o índice em caso de divergência | `src/sync/version.rs`, `src/engine.rs` |
-| `SyncLock` | Lock de arquivo (`.specs/.index/sync.lock`) com espera e timeout | `src/sync/lock.rs` |
-| CI matrix | windows/ubuntu × (full, lean, clippy) + job de orçamento | `.github/workflows/ci.yml` |
+| Component                           | Responsibility                                                                                            | Location                               |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `SyntheticRepo` / `SyntheticParams` | Gera repo git determinístico (arquivos TS/MD, commits, commit grande) via `git fast-import` com seed fixa | `tests/fixtures/synthetic.rs`          |
+| `PhaseTimings`                      | Tempo por fase do sync (diff, markdown, código, co-change, stage) + contagem de nós/arestas               | `src/sync_orchestrator.rs`             |
+| `perf_budget` test                  | Executa init+sync, sync sem mudança, sync com 1 arquivo, search/trace e compara com limites               | `tests/perf_budget.rs`                 |
+| `regressions` tests                 | Um teste por bug real (a–g)                                                                               | `tests/regressions.rs`                 |
+| Benchmarks criterion                | `CsrDelta`, `co_change_edges`, markdown, símbolos; razão T(2N)/T(N) ≤ 2,2                                 | `benches/complexity.rs`                |
+| `IndexFormat`                       | Chave `index_format` em `meta`; `Engine::open` reconstrói o índice em caso de divergência                 | `src/sync/version.rs`, `src/engine.rs` |
+| `SyncLock`                          | Lock de arquivo (`.specs/.index/sync.lock`) com espera e timeout                                          | `src/sync/lock.rs`                     |
+| CI matrix                           | windows/ubuntu × (full, lean, clippy) + job de orçamento                                                  | `.github/workflows/ci.yml`             |
 
 ## Modified Components
 
-| Component | Change | Risk |
-|---|---|---|
+| Component                            | Change                                                                                                                                                                                                                                                                                                       | Risk                                                                                                                                        |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `CoChangeWindow` (`git/cochange.rs`) | Novos campos `max_files_per_commit` (default 200, env `COCHANGE_MAX_FILES`) e `max_pairs_per_file` (default 50). Commit acima do teto é ignorado por inteiro. Cada arquivo mantém no máximo `max_pairs_per_file` parceiros, priorizando os de commits mais recentes (percurso é do mais novo ao mais antigo) | Muda o grafo de co-change de projetos existentes → precisa reindexar; `Default` é usado em `sync_orchestrator.rs:162` e `engine.rs` (blame) |
-| `SyncReport` | Campo `timings: PhaseTimings`; `bin/nexspec.rs` imprime com `--verbose` | Struct é `PartialEq`; testes existentes comparam relatórios — usar `..Default` |
-| `Wal` | `truncate_if_idle()`: após `mark_done` do último frame, se `pending_frames()` é vazio, `set_len(0)` | Truncar quebra `resume()` se chamado antes do commit-marker durável; só chamar depois do `fsync` do marker |
-| `Engine::open`/`sync` | Adquire `SyncLock` antes do `Database::create` | Lock órfão após crash: usar lock de SO (`fs2`/`std::fs::File::lock`), não arquivo-existe |
-| `Coordinator::stage` | Nenhuma (frame único mantido) — só reavaliar se T-903 apontar o frame gigante | God node de escrita; qualquer mudança exige os testes de crash recovery |
+| `SyncReport`                         | Campo `timings: PhaseTimings`; `bin/nexspec.rs` imprime com `--verbose`                                                                                                                                                                                                                                      | Struct é `PartialEq`; testes existentes comparam relatórios — usar `..Default`                                                              |
+| `Wal`                                | `truncate_if_idle()`: após `mark_done` do último frame, se `pending_frames()` é vazio, `set_len(0)`                                                                                                                                                                                                          | Truncar quebra `resume()` se chamado antes do commit-marker durável; só chamar depois do `fsync` do marker                                  |
+| `Engine::open`/`sync`                | Adquire `SyncLock` antes do `Database::create`                                                                                                                                                                                                                                                               | Lock órfão após crash: usar lock de SO (`fs2`/`std::fs::File::lock`), não arquivo-existe                                                    |
+| `Coordinator::stage`                 | Nenhuma (frame único mantido) — só reavaliar se T-903 apontar o frame gigante                                                                                                                                                                                                                                | God node de escrita; qualquer mudança exige os testes de crash recovery                                                                     |
 
 ## Decision Log
 

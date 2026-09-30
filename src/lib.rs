@@ -16,6 +16,7 @@ pub mod search;
 pub mod sync;
 pub mod sync_orchestrator;
 pub mod token;
+pub mod workflow;
 #[cfg(feature = "full")]
 pub mod vector;
 

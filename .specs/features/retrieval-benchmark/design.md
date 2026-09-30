@@ -34,27 +34,27 @@ Lidos no código (nexspec ainda não indexa este repo):
 
 ## New Components
 
-| Component | Responsibility | Location |
-|---|---|---|
-| `Corpus`, `Query`, `Kind` | Parse/validação do TOML (REQ-801) | `src/bench/corpus.rs` |
-| `locations_of_hit` / `Engine::hit_locations` | Hit → arquivos (+ marcadores) para comparar com `expect` | `src/engine.rs` (método novo), `src/bench/locate.rs` |
-| `metrics` | `recall@k`, `MRR`, agregação por `kind` (funções puras) | `src/bench/metrics.rs` |
-| `baselines` | Tokens de `grep -rn` do termo-chave, de ler os arquivos esperados e do corpus inteiro; grep feito em processo (portável) | `src/bench/baselines.rs` |
-| `runner` | Indexa (temp), executa, cronometra, monta `BenchReport` | `src/bench/runner.rs` |
-| `report` | JSON + Markdown; economia por `kind`; custo fixo separado; formato comparável ao `graphify benchmark` | `src/bench/report.rs` |
-| `nexspec bench` | `--corpus --repo --k 5,10 --index-dir --format json\|md --check --update-baseline` | `src/bin/nexspec.rs` |
-| Corpora | `bench/self.toml` (este repo, ~20 perguntas) e corpus do projeto real, mantido **fora** deste repo | `bench/`, repo-alvo |
-| `bench/baseline.json` | Último resultado aceito; base do portão de regressão | `bench/baseline.json` |
-| CI job | `bench --check` sobre `bench/self.toml` | `.github/workflows/ci.yml` |
+| Component                                    | Responsibility                                                                                                           | Location                                             |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| `Corpus`, `Query`, `Kind`                    | Parse/validação do TOML (REQ-801)                                                                                        | `src/bench/corpus.rs`                                |
+| `locations_of_hit` / `Engine::hit_locations` | Hit → arquivos (+ marcadores) para comparar com `expect`                                                                 | `src/engine.rs` (método novo), `src/bench/locate.rs` |
+| `metrics`                                    | `recall@k`, `MRR`, agregação por `kind` (funções puras)                                                                  | `src/bench/metrics.rs`                               |
+| `baselines`                                  | Tokens de `grep -rn` do termo-chave, de ler os arquivos esperados e do corpus inteiro; grep feito em processo (portável) | `src/bench/baselines.rs`                             |
+| `runner`                                     | Indexa (temp), executa, cronometra, monta `BenchReport`                                                                  | `src/bench/runner.rs`                                |
+| `report`                                     | JSON + Markdown; economia por `kind`; custo fixo separado; formato comparável ao `graphify benchmark`                    | `src/bench/report.rs`                                |
+| `nexspec bench`                              | `--corpus --repo --k 5,10 --index-dir --format json\|md --check --update-baseline`                                       | `src/bin/nexspec.rs`                                 |
+| Corpora                                      | `bench/self.toml` (este repo, ~20 perguntas) e corpus do projeto real, mantido **fora** deste repo                       | `bench/`, repo-alvo                                  |
+| `bench/baseline.json`                        | Último resultado aceito; base do portão de regressão                                                                     | `bench/baseline.json`                                |
+| CI job                                       | `bench --check` sobre `bench/self.toml`                                                                                  | `.github/workflows/ci.yml`                           |
 
 ## Modified Components
 
-| Component | Change | Risk |
-|---|---|---|
-| `Engine` | `hit_locations(&SearchHit) -> Vec<Location>`; eventualmente `search_with(SearchOptions)` para o runner variar pesos sem API paralela | Engine é ponto de raio alto; só adições |
-| `Cargo.toml` | dependência `toml` (Q1: TOML) | dependência leve, sem rede |
-| `TantivySchema`/`describe` (T-808) | tokenização ciente de identificadores; campos `name`, `path` separados com boost | Muda o índice → sobe `INDEX_FORMAT` (mecanismo da Fase 9, reconstrução automática) |
-| `seed_discovery` (T-808) | pesos BM25×vetor | Só com o benchmark mostrando ganho |
+| Component                          | Change                                                                                                                               | Risk                                                                               |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `Engine`                           | `hit_locations(&SearchHit) -> Vec<Location>`; eventualmente `search_with(SearchOptions)` para o runner variar pesos sem API paralela | Engine é ponto de raio alto; só adições                                            |
+| `Cargo.toml`                       | dependência `toml` (Q1: TOML)                                                                                                        | dependência leve, sem rede                                                         |
+| `TantivySchema`/`describe` (T-808) | tokenização ciente de identificadores; campos `name`, `path` separados com boost                                                     | Muda o índice → sobe `INDEX_FORMAT` (mecanismo da Fase 9, reconstrução automática) |
+| `seed_discovery` (T-808)           | pesos BM25×vetor                                                                                                                     | Só com o benchmark mostrando ganho                                                 |
 
 ## Formato do corpus (REQ-801)
 
@@ -95,13 +95,13 @@ notes = "caso real que falhou em 2026-09-29"
 
 Todas as medições: `nexspec bench --no-vector` (BM25) salvo onde dito; recall@5 / MRR por `kind`. Corpora: `bench/self.toml` (22 perguntas) e o corpus do condominium-management-system (24 perguntas, clone local @ `83fdcd3`). O repo próprio muda enquanto é editado, então a MRR de `locate` no corpus próprio oscila (0,71–0,91) entre execuções; os deltas abaixo são lidos sobre recall, que é o que o portão usa.
 
-| Etapa | self locate r5 | condo locate r5 | condo traceability r5 | Observação |
-|---|---:|---:|---:|---|
-| Ponto de partida (BM25) | 0,87 | 0,94 | **0,00** | `outbox` já estava em 1º lugar: a falha de 2026-09-29 foi corrigida pelos ajustes de ids da sessão anterior |
-| (f) formatos reais de requisito em Markdown | 0,87 | 0,94 | **1,00** | `### REQ-x:`, `- **REQ-x (Rótulo)**:`, bullets aninhados como corpo. Custo: respostas maiores (+65% de tokens no condominium) |
-| (a) tokenizador ciente de identificadores | **0,93** | **1,00** | 1,00 | `CsrDelta` ⇄ "csr delta". Subiu `INDEX_FORMAT` para 3 |
-| (g) sem nós `File` para binários/lockfiles | 0,93 | 1,00 | 1,00 | MRR de locate 0,81 → 0,91 (um PNG aparecia nos resultados). `INDEX_FORMAT` 4 |
-| (d) peso do vetor no RRF | 0,93 | 1,00 | 1,00 | ver abaixo |
+| Etapa                                       | self locate r5 | condo locate r5 | condo traceability r5 | Observação                                                                                                                    |
+| ------------------------------------------- | -------------: | --------------: | --------------------: | ----------------------------------------------------------------------------------------------------------------------------- |
+| Ponto de partida (BM25)                     |           0,87 |            0,94 |              **0,00** | `outbox` já estava em 1º lugar: a falha de 2026-09-29 foi corrigida pelos ajustes de ids da sessão anterior                   |
+| (f) formatos reais de requisito em Markdown |           0,87 |            0,94 |              **1,00** | `### REQ-x:`, `- **REQ-x (Rótulo)**:`, bullets aninhados como corpo. Custo: respostas maiores (+65% de tokens no condominium) |
+| (a) tokenizador ciente de identificadores   |       **0,93** |        **1,00** |                  1,00 | `CsrDelta` ⇄ "csr delta". Subiu `INDEX_FORMAT` para 3                                                                         |
+| (g) sem nós `File` para binários/lockfiles  |           0,93 |            1,00 |                  1,00 | MRR de locate 0,81 → 0,91 (um PNG aparecia nos resultados). `INDEX_FORMAT` 4                                                  |
+| (d) peso do vetor no RRF                    |           0,93 |            1,00 |                  1,00 | ver abaixo                                                                                                                    |
 
 **(d) Peso BM25 × vetor** (com o modelo ONNX presente, recall@5 locate self/condo e MRR condo): peso 1,0 (o default antigo) → 0,93/0,94, MRR condo **0,64**; 0,5 → 0,93/1,00, 0,84; 0,25 → 0,93/1,00, 0,84; 0,1 → 0,93/1,00, **0,87**; sem vetor → 0,93/1,00, 0,87. O embedding (MiniLM) ordena mal texto cheio de identificadores; o vetor com peso igual *piorava* a ordem. Default novo: **0,1** (assistente de baixo peso: não passa um acerto lexical forte, mas ainda traz o que o BM25 não alcança). Ganho do vetor **não demonstrado** por este corpus; ele só aparece em paráfrases (`locate-wal`: "write ahead log" não contém "wal"), que o corpus quase não cobre. Reavaliar com mais perguntas semânticas.
 

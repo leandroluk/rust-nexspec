@@ -35,14 +35,14 @@ Lidos no código:
 
 ## Vocabulário de arestas (REQ-709/710)
 
-| Tipo | De → Para | Quando |
-|---|---|---|
-| `Imports` | arquivo → arquivo | `import`/`require`/`import()` resolvido |
-| `ReExports` | arquivo → arquivo | `export … from`, `export * from` |
-| `Calls` | símbolo → símbolo/arquivo | `f()` para nome importado ou do mesmo arquivo |
-| `Instantiates` | símbolo → símbolo | `new X()` |
-| `Extends` | símbolo → símbolo | `extends` / `implements` |
-| `References` | símbolo → símbolo | tipo de parâmetro/propriedade, decorator, demais usos |
+| Tipo           | De → Para                 | Quando                                                |
+| -------------- | ------------------------- | ----------------------------------------------------- |
+| `Imports`      | arquivo → arquivo         | `import`/`require`/`import()` resolvido               |
+| `ReExports`    | arquivo → arquivo         | `export … from`, `export * from`                      |
+| `Calls`        | símbolo → símbolo/arquivo | `f()` para nome importado ou do mesmo arquivo         |
+| `Instantiates` | símbolo → símbolo         | `new X()`                                             |
+| `Extends`      | símbolo → símbolo         | `extends` / `implements`                              |
+| `References`   | símbolo → símbolo         | tipo de parâmetro/propriedade, decorator, demais usos |
 
 `DependsOn` **deixa de ser emitido** e vira o agregado de consulta (`EdgeType::is_dependency()` = qualquer um dos seis acima + o próprio `DependsOn` para índices antigos/sintéticos). As chamadas do mesmo arquivo passam a ser `Calls`.
 
@@ -63,25 +63,25 @@ Limite conhecido (D5): um import que não resolvia e passa a resolver porque *ou
 
 ## New Components
 
-| Component | Responsibility | Location |
-|---|---|---|
-| `EdgeMeta`, `Confidence`, `EdgeContext` | bits de confiança/contexto | `src/graph/edge.rs` |
-| `symbol_node_id(path, name, ordinal)` | id estável de símbolo | `src/graph/node.rs` |
-| `FileFacts` + extração de imports/exports/usos | fatos de um arquivo TS/JS | `src/code/facts.rs` |
-| `SpecifierResolver` | especificador → caminho rastreado | `src/code/resolve.rs` |
-| `dependency_edges` | fatos + resolver → `EdgeMutation`s | `src/code/deps.rs` |
-| Reconciliação incremental | arestas/símbolos antigos → `Remove` | `src/sync_orchestrator.rs` |
-| Fixture `ts_workspace` | alias `paths`, barrel, re-export, type-only, ciclo, não resolvido | `tests/fixtures/` |
+| Component                                      | Responsibility                                                    | Location                   |
+| ---------------------------------------------- | ----------------------------------------------------------------- | -------------------------- |
+| `EdgeMeta`, `Confidence`, `EdgeContext`        | bits de confiança/contexto                                        | `src/graph/edge.rs`        |
+| `symbol_node_id(path, name, ordinal)`          | id estável de símbolo                                             | `src/graph/node.rs`        |
+| `FileFacts` + extração de imports/exports/usos | fatos de um arquivo TS/JS                                         | `src/code/facts.rs`        |
+| `SpecifierResolver`                            | especificador → caminho rastreado                                 | `src/code/resolve.rs`      |
+| `dependency_edges`                             | fatos + resolver → `EdgeMutation`s                                | `src/code/deps.rs`         |
+| Reconciliação incremental                      | arestas/símbolos antigos → `Remove`                               | `src/sync_orchestrator.rs` |
+| Fixture `ts_workspace`                         | alias `paths`, barrel, re-export, type-only, ciclo, não resolvido | `tests/fixtures/`          |
 
 ## Modified Components
 
-| Component | Change | Risk |
-|---|---|---|
-| `EdgeType` | seis tipos novos; `is_dependency()` | códigos novos no fim (5–10); índices antigos continuam legíveis |
-| `Edge` (CSR) | campo `meta` | toca 16 construções; `INDEX_FORMAT` → 5 |
-| `code::extract` | ids de símbolo estáveis; chamadas do mesmo arquivo viram `Calls`; aceita contexto do arquivo | God node do pipeline de código; testes existentes mudam de `DependsOn` para `Calls` |
-| `SyncOrchestrator::run_once` | resolver + reconciliação por arquivo | God node de escrita |
-| `Engine::trace/search/diff_staged` | usam `is_dependency()`; teto por hop com "+N omitidos" | muda saída do `trace` |
+| Component                          | Change                                                                                       | Risk                                                                                |
+| ---------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `EdgeType`                         | seis tipos novos; `is_dependency()`                                                          | códigos novos no fim (5–10); índices antigos continuam legíveis                     |
+| `Edge` (CSR)                       | campo `meta`                                                                                 | toca 16 construções; `INDEX_FORMAT` → 5                                             |
+| `code::extract`                    | ids de símbolo estáveis; chamadas do mesmo arquivo viram `Calls`; aceita contexto do arquivo | God node do pipeline de código; testes existentes mudam de `DependsOn` para `Calls` |
+| `SyncOrchestrator::run_once`       | resolver + reconciliação por arquivo                                                         | God node de escrita                                                                 |
+| `Engine::trace/search/diff_staged` | usam `is_dependency()`; teto por hop com "+N omitidos"                                       | muda saída do `trace`                                                               |
 
 ## Decision Log
 

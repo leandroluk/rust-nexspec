@@ -70,22 +70,22 @@ model-specific one) without touching `Budget`.
 
 ## New Components
 
-| Component | Responsibility | Location |
-|---|---|---|
-| `token::pruner::prune_symbol` | Strip a symbol's body, keep signature/header | `src/token/pruner.rs` |
-| `token::budget::Tokenizer` (trait) | `estimate(&self, text: &str) -> u32` | `src/token/budget.rs` |
-| `token::budget::TiktokenTokenizer` | BPE estimate via `tiktoken-rs` | `src/token/budget.rs` |
-| `token::budget::CharHeuristicTokenizer` | Offline fallback (`char_count / 3.5`) | `src/token/budget.rs` |
-| `token::budget::Budget` | Safety margin + priority-ordered `fit()` | `src/token/budget.rs` |
-| `token::budget::Tier`/`TieredItem` | Priority tagging for REQ-504 | `src/token/budget.rs` |
-| `token::serializer::serialize` | Dense Markdown output | `src/token/serializer.rs` |
+| Component                               | Responsibility                               | Location                  |
+| --------------------------------------- | -------------------------------------------- | ------------------------- |
+| `token::pruner::prune_symbol`           | Strip a symbol's body, keep signature/header | `src/token/pruner.rs`     |
+| `token::budget::Tokenizer` (trait)      | `estimate(&self, text: &str) -> u32`         | `src/token/budget.rs`     |
+| `token::budget::TiktokenTokenizer`      | BPE estimate via `tiktoken-rs`               | `src/token/budget.rs`     |
+| `token::budget::CharHeuristicTokenizer` | Offline fallback (`char_count / 3.5`)        | `src/token/budget.rs`     |
+| `token::budget::Budget`                 | Safety margin + priority-ordered `fit()`     | `src/token/budget.rs`     |
+| `token::budget::Tier`/`TieredItem`      | Priority tagging for REQ-504                 | `src/token/budget.rs`     |
+| `token::serializer::serialize`          | Dense Markdown output                        | `src/token/serializer.rs` |
 
 ## Modified Components
 
-| Component | Change | Risk |
-|---|---|---|
-| `Cargo.toml` | New dependency `tiktoken-rs` (not optional — REQ-502's trait needs a default impl available in every build, `lean` or `full`; `tiktoken-rs` itself is lightweight, no ONNX-scale footprint) | Low |
-| `src/lib.rs` | Export `token::{Tokenizer, TiktokenTokenizer, CharHeuristicTokenizer, Budget, Tier, TieredItem, prune_symbol, serialize}` | None |
+| Component    | Change                                                                                                                                                                                      | Risk |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| `Cargo.toml` | New dependency `tiktoken-rs` (not optional — REQ-502's trait needs a default impl available in every build, `lean` or `full`; `tiktoken-rs` itself is lightweight, no ONNX-scale footprint) | Low  |
+| `src/lib.rs` | Export `token::{Tokenizer, TiktokenTokenizer, CharHeuristicTokenizer, Budget, Tier, TieredItem, prune_symbol, serialize}`                                                                   | None |
 
 ## Risks
 

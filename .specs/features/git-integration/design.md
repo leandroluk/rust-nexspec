@@ -76,22 +76,22 @@ writes to the stores; it changes who decides *what* gets staged.
 
 ## New Components
 
-| Component | Responsibility | Location |
-|---|---|---|
-| `GitSource` | Wraps `gix::Repository`; diff since last index, dirty-path detection | `src/git/source.rs` |
-| `TreeDiff` | `{ added: Vec<PathBuf>, modified: Vec<PathBuf>, deleted: Vec<PathBuf> }` | `src/git/source.rs` |
-| `DirtyCache` | In-memory Blake3-per-path cache for working-tree changes | `src/git/dirty_cache.rs` |
-| `CoChangeWindow` | `{ max_commits: usize, max_age: Duration }`, default 500/6mo | `src/git/cochange.rs` |
-| `co_change_edges` | Computes `EdgeType::CoChanges` edges over a bounded commit window | `src/git/cochange.rs` |
-| `extract_commit_links` | Parses commit messages for `REQ-`/`TASK-`/`ADR-` mentions | `src/git/spec_link.rs` |
-| `SyncOrchestrator` | Ties `GitSource` diff → `markdown::extract` → `Coordinator::stage()` → advance | `src/sync_orchestrator.rs` |
+| Component              | Responsibility                                                                 | Location                   |
+| ---------------------- | ------------------------------------------------------------------------------ | -------------------------- |
+| `GitSource`            | Wraps `gix::Repository`; diff since last index, dirty-path detection           | `src/git/source.rs`        |
+| `TreeDiff`             | `{ added: Vec<PathBuf>, modified: Vec<PathBuf>, deleted: Vec<PathBuf> }`       | `src/git/source.rs`        |
+| `DirtyCache`           | In-memory Blake3-per-path cache for working-tree changes                       | `src/git/dirty_cache.rs`   |
+| `CoChangeWindow`       | `{ max_commits: usize, max_age: Duration }`, default 500/6mo                   | `src/git/cochange.rs`      |
+| `co_change_edges`      | Computes `EdgeType::CoChanges` edges over a bounded commit window              | `src/git/cochange.rs`      |
+| `extract_commit_links` | Parses commit messages for `REQ-`/`TASK-`/`ADR-` mentions                      | `src/git/spec_link.rs`     |
+| `SyncOrchestrator`     | Ties `GitSource` diff → `markdown::extract` → `Coordinator::stage()` → advance | `src/sync_orchestrator.rs` |
 
 ## Modified Components
 
-| Component | Change | Risk |
-|---|---|---|
-| `sync::version::VersionPointer` | New key `last_indexed_commit` in the same `meta` table | Low — additive, same transactional path already tested in Fase 0 |
-| `graph::edge::EdgeType` | New variant `CoChanges`; `to_code`/`from_code` extended | Low — additive; any code matching `EdgeType` exhaustively (none does outside this crate yet) needs a new arm |
+| Component                       | Change                                                  | Risk                                                                                                         |
+| ------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `sync::version::VersionPointer` | New key `last_indexed_commit` in the same `meta` table  | Low — additive, same transactional path already tested in Fase 0                                             |
+| `graph::edge::EdgeType`         | New variant `CoChanges`; `to_code`/`from_code` extended | Low — additive; any code matching `EdgeType` exhaustively (none does outside this crate yet) needs a new arm |
 
 ## Risks
 

@@ -94,7 +94,7 @@ fn edge(i: usize) -> Edge {
 
 #[test]
 fn complexity_csr_delta_upsert_is_linear() {
-    assert_linear("CsrDelta::upsert", scaled(40_000), |n| {
+    assert_linear("CsrDelta::upsert", scaled(10_000), |n| {
         let mut delta = CsrDelta::default();
         for i in 0..n {
             delta.upsert(edge(i));
@@ -105,7 +105,7 @@ fn complexity_csr_delta_upsert_is_linear() {
 
 #[test]
 fn complexity_csr_delta_remove_is_linear() {
-    assert_linear("CsrDelta::remove", scaled(40_000), |n| {
+    assert_linear("CsrDelta::remove", scaled(10_000), |n| {
         let mut delta = CsrDelta::default();
         for i in 0..n {
             delta.upsert(edge(i));

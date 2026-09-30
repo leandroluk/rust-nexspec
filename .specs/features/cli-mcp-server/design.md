@@ -136,19 +136,19 @@ pattern becomes a *product* composition root instead of a test fixture.
 
 ## New Components
 
-| Component | Responsibility | Location |
-|---|---|---|
-| `Engine` | Composition root: opens/creates `.specs/.index/`, owns `Database`+`Arc<Csr>`, exposes sync/compact/search/trace/blame/diff_staged | `src/engine.rs` |
-| `git::blame::blame_symbol` | AST-aware blame via `gix_blame`, scoped to a line range | `src/git/blame.rs` |
-| `NexSpecMcp` | `rmcp` tool router — 6 tools wrapping `Engine` | `src/mcp.rs` |
-| `nexspec` (binary) | `clap` CLI: `init/sync/compact/search/trace/blame/diff/mcp` | `src/bin/nexspec.rs` |
+| Component                  | Responsibility                                                                                                                    | Location             |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `Engine`                   | Composition root: opens/creates `.specs/.index/`, owns `Database`+`Arc<Csr>`, exposes sync/compact/search/trace/blame/diff_staged | `src/engine.rs`      |
+| `git::blame::blame_symbol` | AST-aware blame via `gix_blame`, scoped to a line range                                                                           | `src/git/blame.rs`   |
+| `NexSpecMcp`               | `rmcp` tool router — 6 tools wrapping `Engine`                                                                                    | `src/mcp.rs`         |
+| `nexspec` (binary)         | `clap` CLI: `init/sync/compact/search/trace/blame/diff/mcp`                                                                       | `src/bin/nexspec.rs` |
 
 ## Modified Components
 
-| Component | Change | Risk |
-|---|---|---|
-| `CsrParticipant` | New `pub fn compact_now()` wrapping the existing private `compact()` | None — additive, no behavior change to existing callers |
-| `Cargo.toml` | New deps: `clap` (derive), `tokio` (rt-multi-thread/macros/io-std), `rmcp` (server/macros/transport-io), `serde`/`serde_json`/`schemars` (direct, for MCP tool arg/result types) — all non-optional (CLI is the crate's primary deliverable at this point, not an add-on) | Low — no native/binary weight comparable to `ort`; doesn't interact with the `lean`/`full` split |
+| Component        | Change                                                                                                                                                                                                                                                                    | Risk                                                                                             |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `CsrParticipant` | New `pub fn compact_now()` wrapping the existing private `compact()`                                                                                                                                                                                                      | None — additive, no behavior change to existing callers                                          |
+| `Cargo.toml`     | New deps: `clap` (derive), `tokio` (rt-multi-thread/macros/io-std), `rmcp` (server/macros/transport-io), `serde`/`serde_json`/`schemars` (direct, for MCP tool arg/result types) — all non-optional (CLI is the crate's primary deliverable at this point, not an add-on) | Low — no native/binary weight comparable to `ort`; doesn't interact with the `lean`/`full` split |
 
 ## Risks
 

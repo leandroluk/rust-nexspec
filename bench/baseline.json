@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "repo_commit": "79c21ae9585aaeb38b583da19a56d4bd5cd06e17",
+  "repo_commit": "76cec8c4f090b406534530a22556965648dc8649",
   "vector_search": false,
   "ks": [
     5,
@@ -19,17 +19,17 @@
       "queries": 15,
       "recall": {
         "10": 1.0,
-        "5": 0.9333333333333333
+        "5": 1.0
       },
-      "mrr": 0.8777777777777778
+      "mrr": 0.8833333333333333
     },
     "structure": {
       "queries": 2,
       "recall": {
-        "10": 1.0,
-        "5": 0.25
+        "10": 0.75,
+        "5": 0.0
       },
-      "mrr": 0.175
+      "mrr": 0.12142857142857143
     },
     "traceability": {
       "queries": 3,

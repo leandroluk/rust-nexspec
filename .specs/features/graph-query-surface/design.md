@@ -42,21 +42,21 @@ Engine ──view()──► GraphView { snapshot, fwd, rev } ──┬─► af
 
 ## New Components
 
-| Component | Responsibility | Location |
-|---|---|---|
-| `GraphView` | snapshot + adjacência direta/reversa | `src/query/view.rs` |
-| `TargetResolver` | um resolvedor para todas as consultas | `src/query/target.rs` |
-| `EdgeFilter`, `Relation` | filtros e nomes estáveis | `src/query/filter.rs` |
-| `affected`, `find_path`, `explain`, `query_graph` | as quatro consultas | `src/query/{affected,path,explain,query}.rs` |
-| `fit_lines` | orçamento uniforme | `src/query/budget.rs` |
-| CLI + MCP | `query`/`path`/`explain`/`affected`; `query_graph`/`find_path`/`explain_node`/`find_affected` | `src/bin/nexspec.rs`, `src/mcp.rs` |
+| Component                                         | Responsibility                                                                                | Location                                     |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `GraphView`                                       | snapshot + adjacência direta/reversa                                                          | `src/query/view.rs`                          |
+| `TargetResolver`                                  | um resolvedor para todas as consultas                                                         | `src/query/target.rs`                        |
+| `EdgeFilter`, `Relation`                          | filtros e nomes estáveis                                                                      | `src/query/filter.rs`                        |
+| `affected`, `find_path`, `explain`, `query_graph` | as quatro consultas                                                                           | `src/query/{affected,path,explain,query}.rs` |
+| `fit_lines`                                       | orçamento uniforme                                                                            | `src/query/budget.rs`                        |
+| CLI + MCP                                         | `query`/`path`/`explain`/`affected`; `query_graph`/`find_path`/`explain_node`/`find_affected` | `src/bin/nexspec.rs`, `src/mcp.rs`           |
 
 ## Modified Components
 
-| Component | Change | Risk |
-|---|---|---|
-| `Engine` | `view()`, `resolve_target()`, `signature_of()` (extrai de `prune_symbol_source`) | God node; só adições e uma extração |
-| `trace` (CLI) | aceita `--max-tokens`, `--depth`, filtros | compatível: sem flags, igual a hoje |
+| Component     | Change                                                                           | Risk                                |
+| ------------- | -------------------------------------------------------------------------------- | ----------------------------------- |
+| `Engine`      | `view()`, `resolve_target()`, `signature_of()` (extrai de `prune_symbol_source`) | God node; só adições e uma extração |
+| `trace` (CLI) | aceita `--max-tokens`, `--depth`, filtros                                        | compatível: sem flags, igual a hoje |
 
 ## Decision Log
 
@@ -77,13 +77,13 @@ Engine ──view()──► GraphView { snapshot, fwd, rev } ──┬─► af
 
 Clone local do condominium-management-system, `--release`, índice pronto:
 
-| Consulta | Tempo | Tamanho (~tokens) |
-|---|---:|---:|
-| `affected CachePort` (profundidade 2, 25 por nível) | 114 ms | ~1.150 |
-| `affected AccessUserPersonaReader` | 118 ms | ~1.200 |
-| `explain CachePort` | 189 ms | ~300 |
-| `path CacheRedisAdapter IdempotentInterceptor` | 77 ms | ~140 |
-| `query "what uses CachePort"` (orçamento padrão de 2.000) | 55 ms | dentro do orçamento |
+| Consulta                                                  |  Tempo |   Tamanho (~tokens) |
+| --------------------------------------------------------- | -----: | ------------------: |
+| `affected CachePort` (profundidade 2, 25 por nível)       | 114 ms |              ~1.150 |
+| `affected AccessUserPersonaReader`                        | 118 ms |              ~1.200 |
+| `explain CachePort`                                       | 189 ms |                ~300 |
+| `path CacheRedisAdapter IdempotentInterceptor`            |  77 ms |                ~140 |
+| `query "what uses CachePort"` (orçamento padrão de 2.000) |  55 ms | dentro do orçamento |
 
 Nenhuma saída padrão passou de 2.000 tokens. `affected CachePort` lista os mesmos usuários do `trace` (interceptors, `CacheRedisAdapter` por `extends`, specs marcados `[spec]`), agrupados por arquivo e comunidade.
 

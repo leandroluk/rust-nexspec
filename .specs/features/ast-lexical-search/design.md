@@ -65,21 +65,21 @@ parallel, staging is not (matches REQ-205/REQ-007's "one atomic cycle").
 
 ## New Components
 
-| Component | Responsibility | Location |
-|---|---|---|
-| `Language` | Enum (TypeScript, JavaScript, Python, Go, Rust) + `from_extension(&Path) -> Option<Language>` | `src/code/parser.rs` |
-| `code::extract` | Parse one file's source, return `MutationSet` (Symbol nodes + DefinedIn/DependsOn/Satisfies edges) | `src/code/parser.rs` |
-| `code::batch::extract_all` | Parallel (`rayon`) multi-file wrapper around `extract`, merges results | `src/code/batch.rs` |
-| `TantivySchema` | Field definitions: `id` (stored, fast-path exact match), `kind`, `text` (BM25-tokenized), `path` | `src/search/schema.rs` |
-| `TantivyParticipant` | `SyncParticipant` impl: owns one long-lived `tantivy::IndexWriter`, stage/commit/abort map directly onto Tantivy's own buffer/commit/rollback | `src/search/tantivy_participant.rs` |
-| `search::query` | Thin wrapper over `tantivy::collector::TopDocs` for exact-id fast path and BM25 free-text | `src/search/query.rs` |
+| Component                  | Responsibility                                                                                                                                | Location                            |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `Language`                 | Enum (TypeScript, JavaScript, Python, Go, Rust) + `from_extension(&Path) -> Option<Language>`                                                 | `src/code/parser.rs`                |
+| `code::extract`            | Parse one file's source, return `MutationSet` (Symbol nodes + DefinedIn/DependsOn/Satisfies edges)                                            | `src/code/parser.rs`                |
+| `code::batch::extract_all` | Parallel (`rayon`) multi-file wrapper around `extract`, merges results                                                                        | `src/code/batch.rs`                 |
+| `TantivySchema`            | Field definitions: `id` (stored, fast-path exact match), `kind`, `text` (BM25-tokenized), `path`                                              | `src/search/schema.rs`              |
+| `TantivyParticipant`       | `SyncParticipant` impl: owns one long-lived `tantivy::IndexWriter`, stage/commit/abort map directly onto Tantivy's own buffer/commit/rollback | `src/search/tantivy_participant.rs` |
+| `search::query`            | Thin wrapper over `tantivy::collector::TopDocs` for exact-id fast path and BM25 free-text                                                     | `src/search/query.rs`               |
 
 ## Modified Components
 
-| Component | Change | Risk |
-|---|---|---|
-| `sync_orchestrator::SyncOrchestrator` | New routing branch for code file extensions, alongside the existing Markdown branch | Low — additive, same pattern already proven for `.md` |
-| `sync::coordinator::Coordinator` (construction sites) | Callers now pass 3 participants instead of 2 | None — `Coordinator::new` already takes a `Vec<Box<dyn SyncParticipant>>`, no signature change |
+| Component                                             | Change                                                                              | Risk                                                                                           |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `sync_orchestrator::SyncOrchestrator`                 | New routing branch for code file extensions, alongside the existing Markdown branch | Low — additive, same pattern already proven for `.md`                                          |
+| `sync::coordinator::Coordinator` (construction sites) | Callers now pass 3 participants instead of 2                                        | None — `Coordinator::new` already takes a `Vec<Box<dyn SyncParticipant>>`, no signature change |
 
 ## Risks
 

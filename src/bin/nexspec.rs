@@ -206,7 +206,23 @@ enum Command {
         staged: bool,
     },
     /// Run the embedded MCP server over stdio.
-    Mcp,
+    Mcp {
+        /// Also keep the index fresh: sync after changes in the working tree.
+        #[arg(long)]
+        watch: bool,
+        /// Quiet time (ms) after the last change before `--watch` syncs.
+        #[arg(long, default_value_t = 500)]
+        debounce: u64,
+    },
+    /// Watch the working tree and sync after each burst of changes (one watcher per repository).
+    Watch {
+        /// Quiet time (ms) after the last change before syncing.
+        #[arg(long, default_value_t = 500)]
+        debounce: u64,
+        /// Do not sync once at start-up.
+        #[arg(long)]
+        no_initial_sync: bool,
+    },
     /// Structural report: God nodes, communities, requirement coverage,
     /// surprising connections, import cycles and suggested questions.
     Report {
@@ -387,9 +403,73 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 );
             }
         }
-        Command::Mcp => {
-            let engine = Engine::open(&index_dir, &repo)?;
-            run_mcp(engine)?;
+        Command::Mcp { watch, debounce } => {
+            let engine = Arc::new(Engine::open(&index_dir, &repo)?);
+            let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let watcher = watch.then(|| {
+                let (engine, stop, repo) = (Arc::clone(&engine), Arc::clone(&stop), repo.clone());
+                std::thread::spawn(move || {
+                    let options = nexspec::workflow::watch::WatchOptions {
+                        debounce: std::time::Duration::from_millis(debounce),
+                        ..Default::default()
+                    };
+                    let result = nexspec::workflow::watch::run(
+                        &repo,
+                        &options,
+                        &stop,
+                        || engine.sync().map(|_| ()).map_err(|e| e.to_string()),
+                        |message| eprintln!("nexspec watch: sync failed: {message}"),
+                    );
+                    if let Err(e) = result {
+                        eprintln!("nexspec watch: {e}");
+                    }
+                })
+            });
+            let served = run_mcp(Arc::clone(&engine));
+            stop.store(true, std::sync::atomic::Ordering::SeqCst);
+            if let Some(handle) = watcher {
+                let _ = handle.join();
+            }
+            served?;
+        }
+        Command::Watch { debounce, no_initial_sync } => {
+            std::fs::create_dir_all(&index_dir)?;
+            let _watch_lock = nexspec::sync::SyncLock::acquire_named(&index_dir, "watch.lock", std::time::Duration::ZERO).map_err(|e| match e {
+                nexspec::sync::LockError::Timeout { holder, .. } => {
+                    format!("another `nexspec watch` is already running for this repository{holder}")
+                }
+                other => other.to_string(),
+            })?;
+            let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            {
+                let stop = Arc::clone(&stop);
+                ctrlc::set_handler(move || stop.store(true, std::sync::atomic::Ordering::SeqCst))?;
+            }
+            // The index is opened only for the length of a cycle, so hooks and manual
+            // syncs are never kept waiting behind the watcher.
+            let cycle = || -> Result<(), String> {
+                let engine = Engine::open(&index_dir, &repo).map_err(|e| e.to_string())?;
+                let report = engine.sync().map_err(|e| e.to_string())?;
+                if report.target_version.is_some() {
+                    println!(
+                        "synced: added={} modified={} deleted={} dirty={}",
+                        report.files_added, report.files_modified, report.files_deleted, report.files_dirty
+                    );
+                }
+                Ok(())
+            };
+            eprintln!("watching {} (Ctrl+C to stop)", repo.display());
+            if !no_initial_sync && let Err(message) = cycle() {
+                eprintln!("nexspec watch: initial sync failed: {message}");
+            }
+            let options = nexspec::workflow::watch::WatchOptions {
+                debounce: std::time::Duration::from_millis(debounce),
+                ..Default::default()
+            };
+            nexspec::workflow::watch::run(&repo, &options, &stop, cycle, |message| {
+                eprintln!("nexspec watch: sync failed: {message}");
+            })?;
+            eprintln!("stopped");
         }
         Command::Report { format, max_tokens, top, fail_on_cycle, diff } => {
             if !matches!(format.as_str(), "md" | "json") {
@@ -490,10 +570,10 @@ fn describe_payload(payload: &nexspec::NodePayload) -> String {
     }
 }
 
-fn run_mcp(engine: Engine) -> Result<(), Box<dyn std::error::Error>> {
+fn run_mcp(engine: Arc<Engine>) -> Result<(), Box<dyn std::error::Error>> {
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     runtime.block_on(async {
-        let mcp = NexSpecMcp::new(Arc::new(engine));
+        let mcp = NexSpecMcp::new(engine);
         let service = rmcp::ServiceExt::serve(mcp, rmcp::transport::stdio()).await?;
         service.waiting().await?;
         Ok::<(), Box<dyn std::error::Error>>(())

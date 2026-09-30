@@ -41,7 +41,14 @@ pub struct SyncLock {
 impl SyncLock {
     /// Waits up to `timeout` for exclusive ownership of `index_dir`.
     pub fn acquire(index_dir: &Path, timeout: Duration) -> Result<Self, LockError> {
-        let path = index_dir.join(LOCK_FILE_NAME);
+        Self::acquire_named(index_dir, LOCK_FILE_NAME, timeout)
+    }
+
+    /// Same lock, on another file of the directory (`watch.lock`: one watcher
+    /// per repository, independent of the index lock).
+    pub fn acquire_named(dir: &Path, file_name: &str, timeout: Duration) -> Result<Self, LockError> {
+        let index_dir = dir;
+        let path = dir.join(file_name);
         let mut file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -140,5 +147,14 @@ mod tests {
         unsafe { std::env::set_var("NEXSPEC_LOCK_TIMEOUT_S", "nope") };
         assert_eq!(SyncLock::timeout_from_env(), DEFAULT_LOCK_TIMEOUT);
         unsafe { std::env::remove_var("NEXSPEC_LOCK_TIMEOUT_S") };
+    }
+
+    #[test]
+    fn named_locks_are_independent_of_the_index_lock() {
+        let dir = TempDir::new().unwrap();
+        let _index = SyncLock::acquire(dir.path(), Duration::from_secs(1)).unwrap();
+        let _watch = SyncLock::acquire_named(dir.path(), "watch.lock", Duration::from_secs(1)).expect("different file, different lock");
+        let second = SyncLock::acquire_named(dir.path(), "watch.lock", Duration::from_millis(100));
+        assert!(matches!(second, Err(LockError::Timeout { .. })), "the same named lock is exclusive");
     }
 }
