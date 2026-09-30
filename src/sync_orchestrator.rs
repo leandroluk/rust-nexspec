@@ -109,7 +109,7 @@ impl<'a> SyncOrchestrator<'a> {
         if self.git.is_dirty()?
             && let Some(root) = self.git.work_dir()
         {
-            let tracked = self.git.tracked_paths_at_head()?;
+            let tracked = self.git.dirty_paths()?;
             dirty_paths = self.dirty_cache.scan(root, &tracked);
             for path in &dirty_paths {
                 if is_markdown(path)

@@ -62,6 +62,28 @@ impl GitSource {
         self.repo.is_dirty().map_err(op_err)
     }
 
+    /// Paths git itself reports as modified or untracked (non-ignored) in the
+    /// working tree — honours `.gitignore`, autocrlf and stat caching, so an
+    /// unchanged tracked file is never listed. Feed this (not the full
+    /// tracked set) to the dirty-content scan.
+    pub fn dirty_paths(&self) -> Result<Vec<PathBuf>, GitError> {
+        let iter = self
+            .repo
+            .status(gix::progress::Discard)
+            .map_err(op_err)?
+            .untracked_files(gix::status::UntrackedFiles::Files)
+            .into_index_worktree_iter(Vec::<gix::bstr::BString>::new())
+            .map_err(op_err)?;
+        let mut paths = Vec::new();
+        for item in iter {
+            let item = item.map_err(op_err)?;
+            paths.push(PathBuf::from(item.rela_path().to_string()));
+        }
+        paths.sort();
+        paths.dedup();
+        Ok(paths)
+    }
+
     /// The working tree root, if this repo isn't bare.
     pub fn work_dir(&self) -> Option<&Path> {
         self.repo.workdir()
