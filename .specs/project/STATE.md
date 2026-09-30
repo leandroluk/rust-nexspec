@@ -29,6 +29,7 @@ pooling + normalização L2, confirmado determinístico e semanticamente
 coerente (frases parecidas rankeiam mais perto que não-relacionadas).
 
 ## Todos
+- [ ] Plano "aposentar o graphify" (2026-09-29): Fases 11-18 especificadas (`.specs/features/{graphify-parity,graph-query-surface,graph-export,multi-repo-graph,domain-extractors,work-memory,workflow-integration,llm-enrichment,semantic-annotations}`); medicao: graphify AST-only 15,4 s a frio / 7,0 s sem mudancas vs nexspec 27 s / 0,9-1,6 s. Proximo: Fase 9 (medir e corrigir cold start), depois 7.
 - [ ] Fase 9 (performance-guard), Fase 8 (retrieval-benchmark), Fase 7 (dependency-edges), Fase 10 (report-command): specificadas em `.specs/features/*/spec.md` (2026-09-29); Design/Tasks pendentes. Ordem sugerida 9 -> 8 -> 7 -> 10 (ver ROADMAP).
 - [x] T-601..T-612: Fase 6 completa (ver Feature "cli-mcp-server" abaixo)
 

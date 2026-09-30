@@ -27,6 +27,7 @@ começar a ser trabalhada.
 | 15 | Work Memory | `save-result` + `reflect` determinísticos (lições, becos sem saída) e boost leve no ranking | **Planejado** (`.specs/features/work-memory/`) |
 | 16 | Workflow Integration | `watch`, `hook install`, `check-update`, `install --platform` (MCP), `doctor` | **Planejado** (`.specs/features/workflow-integration/`) |
 | 17 | LLM Enrichment (opt-in) | provedor plugável, rótulos de comunidade e extração semântica de docs — **atrás de portão de decisão** | **Condicional** (`.specs/features/llm-enrichment/`) |
+| 18 | Semantic Annotations | `annotate`/`annotate_node` (anotações do agente com proveniência e confiança `INFERRED`, arquivo como fonte da verdade), rótulos de comunidade, `SimilarTo` por embeddings locais; alternativa à Fase 17 sem provedor de LLM | **Planejado** (`.specs/features/semantic-annotations/`) — depende das Fases 11 e 15 |
 
 ### Nota — por que a Fase 0 existe e vem antes de tudo
 
@@ -97,8 +98,8 @@ do `graphifyy 0.9.61`, critério objetivo de saída e teste das 10 perguntas). R
 
 - **P0 (bloqueiam a troca):** Fases 7, 8, 9, 10 e 11.
 - **P1 (fluxo diário):** Fase 16 (watch/hooks/MCP), Fase 14 (SQL/Liquibase e manifestos), Fase 12 (JSON + HTML + wiki).
-- **P2:** Fase 13 (multi-repo), Fase 15 (memória de trabalho).
-- **P3 / condicional:** Fase 17 (LLM) — só se a Fase 8 e o teste das 10 perguntas provarem que a falta de semântica dói.
+- **P2:** Fase 13 (multi-repo), Fase 15 (memória de trabalho), Fase 18 (anotações do agente + similaridade por embeddings — a camada semântica **sem** LLM próprio).
+- **P3 / condicional:** Fase 17 (LLM próprio; a Fase 18 é o caminho preferido) — só se a Fase 8 e o teste das 10 perguntas provarem que a falta de semântica dói.
 - **Fora de escopo:** áudio/vídeo, PDFs/Office, Google Workspace, `add <url>`/`clone`, painel de PRs.
 
 Critério para o graphify sair da skill: linhas P0 entregues + `recall@5 ≥ 0,8` (Fase 8) + teste das 10 perguntas aprovado +

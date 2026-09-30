@@ -10,6 +10,8 @@ O diferencial do `nexspec` é ser determinístico, barato e offline. A camada se
 projeto, já se mostrou frágil (rebuild recusado pela *shrink guard* porque o LLM omitiu mais de 50 documentos). Esta fase só existe para
 quem quiser opt-in explícito, e só deve ser construída se a Fase 8 provar que a ausência de semântica reduz a precisão das respostas.
 
+> **Ordem preferida (2026-09-29):** primeiro a Fase 18 (`semantic-annotations`) — anotações feitas pelo próprio agente e similaridade por embeddings locais. Um provedor de LLM dentro do `nexspec` só se justifica para execuções sem agente (CI gerando wiki com rótulos) ou para grandes corpora de texto livre.
+
 ## Portão de decisão (antes de qualquer implementação)
 
 - Executar a Fase 8 e o teste das 10 perguntas (`graphify-parity`, REQ-P03). Construir esta fase **somente se** ≥ 3 perguntas P0 forem

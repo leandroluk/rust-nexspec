@@ -38,7 +38,7 @@ Legenda de prioridade: **P0** bloqueia a troca · **P1** desejável logo após �
 | Exportadores: Obsidian, SVG, GraphML, Neo4j/FalkorDB | ausentes | **Fase 12** (adiados) | P3 |
 | `merge-graphs`, grafo global, chamadas entre repositórios, merge driver do git | ausentes | **Fase 13** | P2 |
 | Memória de trabalho: `save-result` + `reflect` | ausente | **Fase 15** | P2 |
-| Extração semântica por LLM (docs, papers, imagens), rótulos de comunidade por LLM, `dedup` semântico | ausente (por design: determinístico) | **Fase 17** — opt-in, atrás de portão de decisão | P3 |
+| Extração semântica por LLM (docs, papers, imagens), rótulos de comunidade por LLM, `dedup` semântico | ausente (por design: determinístico) | **Fase 18** (anotações do agente + `SimilarTo` por embeddings) como caminho preferido; **Fase 17** (LLM próprio) opt-in atrás de portão de decisão | P2 / P3 |
 | Transcrição de áudio/vídeo, Google Workspace, PDFs/Office, `add <url>`, `clone`, `prs` | ausentes | **Fora** — não pertencem a um índice de código+specs; existem ferramentas próprias | Fora |
 | *Shrink guard* (recusa reescrever grafo com menos nós) | n/a | **Fora** — o sync é transacional/incremental (WAL); não há rebuild destrutivo | Fora |
 
