@@ -31,7 +31,7 @@ impl GitSource {
     /// Commits reachable from `HEAD`, newest first, stopping *before*
     /// `since` (exclusive) if given — `None` walks the full history.
     pub fn commits_since(&self, since: Option<[u8; 20]>) -> Result<Vec<CommitInfo>, GitError> {
-        let head_id = self.repo.head_id().map_err(op_err)?;
+        let head_id = self.head_id_attached()?;
         let mut commits = Vec::new();
 
         let walk = head_id.ancestors().all().map_err(op_err)?;

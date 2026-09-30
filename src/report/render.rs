@@ -338,7 +338,7 @@ mod tests {
                 })
                 .collect(),
             communities: Communities {
-                listed: vec![Community { id: 1, label: "src/app".into(), size: 9, cohesion: 0.2, fragile: true, top_files: vec!["src/app/a.ts".into()] }],
+                listed: vec![Community { id: 1, label: "src/app".into(), size: 9, cohesion: 0.2, fragile: true, top_files: vec!["src/app/a.ts".into()], files: vec![] }],
                 small_groups: 2,
                 small_group_files: 4,
                 isolated_files: 7,

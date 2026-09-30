@@ -3,6 +3,7 @@
 
 pub mod analysis;
 pub mod communities;
+pub mod diff;
 pub mod questions;
 pub mod render;
 pub mod snapshot;

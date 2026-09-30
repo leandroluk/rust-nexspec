@@ -33,6 +33,10 @@ pub struct Community {
     pub fragile: bool,
     /// The most connected files of the group.
     pub top_files: Vec<String>,
+    /// Every file of the group, sorted (kept out of the output; `report --diff`
+    /// uses it to tell merged and split communities apart).
+    #[serde(skip)]
+    pub files: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -238,6 +242,11 @@ pub fn communities(snapshot: &GraphSnapshot, top_files: usize, top_surprises: us
             cohesion: (cohesion * 100.0).round() / 100.0,
             fragile: cohesion < FRAGILE_COHESION,
             top_files: degree.iter().take(top_files).map(|(_, n)| graph.paths[*n].clone()).collect(),
+            files: {
+                let mut all: Vec<String> = group.iter().map(|&n| graph.paths[n].clone()).collect();
+                all.sort();
+                all
+            },
         });
     }
     result.surprising = surprising_connections(snapshot, &graph, &community_of, top_surprises, &result.listed);

@@ -192,17 +192,20 @@ pub fn asks_for_dependents(query: &str) -> bool {
 }
 
 /// Knobs for [`Engine::open_with`].
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct EngineOptions {
     /// Use the vector half of hybrid search when its model is present.
     /// Turning it off makes results independent of the machine's `.models/`
     /// (what a reproducible benchmark needs).
     pub vector_search: bool,
+    /// Index this revision (branch, tag, sha, `HEAD~3`...) instead of `HEAD` plus
+    /// the working tree: a read-only view, for comparing graphs across commits.
+    pub revision: Option<String>,
 }
 
 impl Default for EngineOptions {
     fn default() -> Self {
-        Self { vector_search: true }
+        Self { vector_search: true, revision: None }
     }
 }
 
@@ -218,6 +221,7 @@ pub struct Engine {
     #[cfg(feature = "full")]
     hnsw_cache: std::sync::Mutex<Option<(u64, Arc<HnswParticipant>)>>,
     vector_enabled: bool,
+    revision: Option<String>,
     /// Declared last so it is released after everything above is dropped
     /// (the database file must be closed before another process may open it).
     _lock: Option<SyncLock>,
@@ -271,6 +275,7 @@ impl Engine {
             #[cfg(feature = "full")]
             hnsw_cache: std::sync::Mutex::new(None),
             vector_enabled: options.vector_search,
+            revision: options.revision.clone(),
             _lock: Some(lock),
         })
     }
@@ -350,7 +355,10 @@ impl Engine {
 
     /// REQ-603: one incremental sync cycle via [`SyncOrchestrator`].
     pub fn sync(&self) -> Result<SyncReport, EngineError> {
-        let git = GitSource::open(&self.repo_root)?;
+        let git = match &self.revision {
+            Some(rev) => GitSource::at_revision(&self.repo_root, rev)?,
+            None => GitSource::open(&self.repo_root)?,
+        };
         let wal = Wal::open(self.wal_path())?;
         let coordinator = Coordinator::new(wal, VersionPointer::new(&self.db), self.participants()?);
         let mut orchestrator =
@@ -1108,6 +1116,7 @@ mod tests {
             #[cfg(feature = "full")]
             hnsw_cache: std::sync::Mutex::new(None),
             vector_enabled: true,
+            revision: None,
             _lock: None,
         };
         let result = engine.trace(&id_hex(&symbol_id)).unwrap();

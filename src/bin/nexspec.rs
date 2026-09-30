@@ -117,6 +117,10 @@ enum Command {
         /// Exit with status 2 when an import cycle exists (for CI).
         #[arg(long)]
         fail_on_cycle: bool,
+        /// Compare the current graph with this revision (branch, tag, sha, `HEAD~3`...)
+        /// instead of printing the report.
+        #[arg(long)]
+        diff: Option<String>,
     },
     /// Measure retrieval quality and token cost against a question corpus
     /// (never writes into the repository: the index is built in a temp dir).
@@ -251,12 +255,31 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let engine = Engine::open(&index_dir, &repo)?;
             run_mcp(engine)?;
         }
-        Command::Report { format, max_tokens, top, fail_on_cycle } => {
+        Command::Report { format, max_tokens, top, fail_on_cycle, diff } => {
             if !matches!(format.as_str(), "md" | "json") {
                 return Err(format!("unknown format {format:?} (expected md or json)").into());
             }
             let engine = Engine::open(&index_dir, &repo)?;
             let options = nexspec::report::ReportOptions { top: top.max(1), ..Default::default() };
+            if let Some(revision) = diff {
+                use nexspec::report::diff as report_diff;
+                // The current graph is whatever the index holds; bring it up to date first.
+                engine.sync()?;
+                let snapshot = engine.snapshot()?;
+                let current = nexspec::report::build(&snapshot, engine.index_info()?, options);
+                let (base, base_files) = report_diff::report_at_revision(&repo, &revision, options)?;
+                let result = report_diff::compare(&revision, &base, &base_files, &current, &report_diff::file_paths(&snapshot));
+                if format == "json" {
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                } else {
+                    print!("{}", report_diff::to_markdown(&result));
+                }
+                if fail_on_cycle && !result.import_cycles.new.is_empty() {
+                    eprintln!("error: {} new import cycle(s) since {revision}", result.import_cycles.new.len());
+                    std::process::exit(2);
+                }
+                return Ok(());
+            }
             let report = engine.report(options)?;
             if format == "json" {
                 println!("{}", nexspec::report::render::to_json(&report));

@@ -76,7 +76,7 @@ mod tests {
     fn sample() -> (Vec<GodNode>, Communities, Coverage, Vec<CycleReport>) {
         let gods = vec![god("Hub (a.ts)", 12, false), god("Known (b.ts)", 9, true)];
         let communities = Communities {
-            listed: vec![Community { id: 1, label: "pkgs/x".into(), size: 7, cohesion: 0.12, fragile: true, top_files: vec![] }],
+            listed: vec![Community { id: 1, label: "pkgs/x".into(), size: 7, cohesion: 0.12, fragile: true, top_files: vec![], files: vec![] }],
             surprising: vec![Surprise {
                 from: "ui/a.ts".into(),
                 to: "db/b.ts".into(),

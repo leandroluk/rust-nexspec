@@ -83,7 +83,7 @@ impl GitSource {
     /// so no lookup table is needed and any caller (including
     /// `sync_orchestrator`) derives the same id independently.
     pub fn co_change_edges(&self, window: &CoChangeWindow) -> Result<Vec<EdgeMutation>, GitError> {
-        let head_id = self.repo.head_id().map_err(op_err)?;
+        let head_id = self.head_id_attached()?;
         let cutoff_seconds = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)

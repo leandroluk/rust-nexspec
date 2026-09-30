@@ -185,7 +185,7 @@ pub fn run(corpus: &Corpus, options: &BenchOptions) -> Result<BenchReport, Bench
         .unwrap_or_else(|| temp.as_ref().expect("temp dir exists when no index dir is given").path().to_path_buf());
 
     let started = Instant::now();
-    let engine = Engine::open_with(&index_dir, &repo, EngineOptions { vector_search: options.vector_search })?;
+    let engine = Engine::open_with(&index_dir, &repo, EngineOptions { vector_search: options.vector_search, ..EngineOptions::default() })?;
     engine.sync()?;
     let index_seconds = started.elapsed().as_secs_f64();
 
