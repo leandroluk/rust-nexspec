@@ -37,6 +37,12 @@ fn collect_text<'a>(node: &'a AstNode<'a>) -> String {
             NodeValue::Text(t) => out.push_str(t),
             NodeValue::Code(c) => out.push_str(&c.literal),
             NodeValue::SoftBreak | NodeValue::LineBreak => out.push(' '),
+            NodeValue::Paragraph | NodeValue::List(_) | NodeValue::Item(_) | NodeValue::BlockQuote => {
+                // Block children (a bullet's paragraph and its nested list)
+                // must not run words together.
+                out.push_str(&collect_text(child));
+                out.push(' ');
+            }
             _ => out.push_str(&collect_text(child)),
         }
     }
@@ -81,12 +87,68 @@ fn parse_marker(text: &str, marker: &str) -> Option<(String, String)> {
     let text = text.trim();
     let rest = text.strip_prefix(marker)?;
     let tail_len = id_tail_len(rest)?;
-    let after_tail = &rest[tail_len..];
-    let after_colon = after_tail.strip_prefix(':')?;
-    Some((
-        format!("{marker}{}", &rest[..tail_len]),
-        after_colon.trim().to_string(),
-    ))
+    let mut after_tail = rest[tail_len..].trim_start();
+    // `REQ-CTC-001 (Cadastro de Contrato): ...` -- a short label in
+    // parentheses between the id and the colon is part of the title.
+    let mut label = String::new();
+    if let Some(inner) = after_tail.strip_prefix('(')
+        && let Some(close) = inner.find(')')
+    {
+        label = inner[..close].trim().to_string();
+        after_tail = inner[close + 1..].trim_start();
+    }
+    let after_colon = after_tail.strip_prefix(':')?.trim();
+    let body = match (label.is_empty(), after_colon.is_empty()) {
+        (true, _) => after_colon.to_string(),
+        (false, true) => label,
+        (false, false) => format!("{label}. {after_colon}"),
+    };
+    Some((format!("{marker}{}", &rest[..tail_len]), body))
+}
+
+/// Longest body kept per requirement/task/ADR: enough to be searchable,
+/// small enough not to bloat the index with whole sections.
+const MAX_BODY_CHARS: usize = 800;
+
+fn append_body(body: &mut String, extra: &str) {
+    let extra = extra.split_whitespace().collect::<Vec<_>>().join(" ");
+    if extra.is_empty() || body.chars().count() >= MAX_BODY_CHARS {
+        return;
+    }
+    if !body.is_empty() {
+        body.push(' ');
+    }
+    body.push_str(&extra);
+    if let Some((cut, _)) = body.char_indices().nth(MAX_BODY_CHARS) {
+        body.truncate(cut);
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MarkerKind {
+    Requirement,
+    Task,
+    Adr,
+}
+
+/// A requirement/task/ADR whose body is still collecting the text that
+/// follows its heading.
+struct Pending {
+    kind: MarkerKind,
+    marker: String,
+    id: StableId,
+    body: String,
+}
+
+impl Pending {
+    fn into_node(self) -> NodeMutation {
+        let payload = match self.kind {
+            MarkerKind::Requirement => NodePayload::Requirement { title: self.marker, source_hash: self.id, body: self.body },
+            MarkerKind::Task => NodePayload::Task { title: self.marker, source_hash: self.id, body: self.body },
+            MarkerKind::Adr => NodePayload::Adr { title: self.marker, source_hash: self.id, body: self.body },
+        };
+        NodeMutation::Upsert { id: self.id, payload: rkyv_bytes(&payload) }
+    }
 }
 
 /// Every `marker`-prefixed id (`marker` + digits) found anywhere in `text`.
@@ -135,40 +197,34 @@ pub fn extract(markdown: &str) -> MutationSet {
 
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
-    let mut known_ids: HashMap<String, StableId> = HashMap::new();
+    // Task/ADR section currently open: its paragraphs and bullets link to
+    // the requirements they mention.
     let mut open: Option<StableId> = None;
+    // Whatever heading-defined marker is collecting body text.
+    let mut pending: Option<Pending> = None;
 
     for child in root.children() {
         let value = child.data.borrow().value.clone();
         match value {
             NodeValue::Heading(_) => {
+                if let Some(done) = pending.take() {
+                    nodes.push(done.into_node());
+                }
+                open = None;
                 let text = collect_text(child);
-                if let Some((marker_id, body)) = parse_marker(&text, "TASK-") {
-                    let id = marker_node_id(&marker_id);
-                    known_ids.insert(marker_id.clone(), id);
-                    nodes.push(NodeMutation::Upsert {
-                        id,
-                        payload: rkyv_bytes(&NodePayload::Task {
-                            title: marker_id,
-                            source_hash: id,
-                            body,
-                        }),
-                    });
-                    open = Some(id);
-                } else if let Some((marker_id, body)) = parse_marker(&text, "ADR-") {
-                    let id = marker_node_id(&marker_id);
-                    known_ids.insert(marker_id.clone(), id);
-                    nodes.push(NodeMutation::Upsert {
-                        id,
-                        payload: rkyv_bytes(&NodePayload::Adr {
-                            title: marker_id,
-                            source_hash: id,
-                            body,
-                        }),
-                    });
-                    open = Some(id);
-                } else {
-                    open = None;
+                for (prefix, kind) in [
+                    ("TASK-", MarkerKind::Task),
+                    ("ADR-", MarkerKind::Adr),
+                    ("REQ-", MarkerKind::Requirement),
+                ] {
+                    if let Some((marker, body)) = parse_marker(&text, prefix) {
+                        let id = marker_node_id(&marker);
+                        if kind != MarkerKind::Requirement {
+                            open = Some(id);
+                        }
+                        pending = Some(Pending { kind, marker, id, body });
+                        break;
+                    }
                 }
             }
             NodeValue::List(_) if open.is_some() => {
@@ -176,36 +232,44 @@ pub fn extract(markdown: &str) -> MutationSet {
                 // are body text: link them like a paragraph would.
                 if let Some(open_id) = open {
                     for item in child.children() {
-                        push_satisfies(&mut edges, open_id, &collect_text(item));
+                        let text = collect_text(item);
+                        push_satisfies(&mut edges, open_id, &text);
+                        if let Some(p) = pending.as_mut() {
+                            append_body(&mut p.body, &text);
+                        }
                     }
                 }
             }
             NodeValue::List(_) => {
                 for item in child.children() {
                     let text = collect_text(item);
-                    if let Some((marker_id, body)) = parse_marker(&text, "REQ-") {
-                        let id = marker_node_id(&marker_id);
-                        known_ids.insert(marker_id.clone(), id);
-                        nodes.push(NodeMutation::Upsert {
-                            id,
-                            payload: rkyv_bytes(&NodePayload::Requirement {
-                                title: marker_id,
-                                source_hash: id,
-                                body,
-                            }),
-                        });
+                    if let Some((marker, body)) = parse_marker(&text, "REQ-") {
+                        if let Some(done) = pending.take() {
+                            nodes.push(done.into_node());
+                        }
+                        nodes.push(
+                            Pending { kind: MarkerKind::Requirement, id: marker_node_id(&marker), marker, body }.into_node(),
+                        );
+                    } else if let Some(p) = pending.as_mut() {
+                        // Plain bullets under a `### REQ-x:` heading describe it.
+                        append_body(&mut p.body, &text);
                     }
                 }
-                open = None;
             }
             NodeValue::Paragraph => {
+                let text = collect_text(child);
                 if let Some(open_id) = open {
-                    let text = collect_text(child);
                     push_satisfies(&mut edges, open_id, &text);
+                }
+                if let Some(p) = pending.as_mut() {
+                    append_body(&mut p.body, &text);
                 }
             }
             _ => {}
         }
+    }
+    if let Some(done) = pending.take() {
+        nodes.push(done.into_node());
     }
 
     MutationSet {
@@ -316,5 +380,72 @@ We chose Y for this project.
             })
             .collect();
         assert_eq!(defined, vec![marker_node_id("REQ-CTR-001")]);
+    }
+
+    fn requirement_bodies(set: &MutationSet) -> Vec<(String, String)> {
+        set.nodes
+            .iter()
+            .filter_map(|n| match n {
+                NodeMutation::Upsert { payload, .. } => {
+                    let mut aligned = rkyv::util::AlignedVec::<16>::new();
+                    aligned.extend_from_slice(payload);
+                    match rkyv::from_bytes::<NodePayload, rkyv::rancor::Error>(&aligned).unwrap() {
+                        NodePayload::Requirement { title, body, .. } => Some((title, body)),
+                        _ => None,
+                    }
+                }
+                NodeMutation::Remove { .. } => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn bold_requirement_with_parenthesised_label_and_nested_bullets() {
+        let set = extract(
+            "### 1. Contrato\n\n\
+             - **REQ-CTC-001 (Cadastro de Contrato)**:\n  \
+               - `POST /tenant/contract` (persona sindico):\n    \
+                 - Payload: `title` (max 200)\n\
+             - **REQ-CTC-002 (Regra de Recorrencia)**:\n",
+        );
+        let reqs = requirement_bodies(&set);
+        assert_eq!(reqs.len(), 2, "{reqs:?}");
+        assert_eq!(reqs[0].0, "REQ-CTC-001");
+        assert!(reqs[0].1.contains("Cadastro de Contrato"), "label is part of the body: {:?}", reqs[0].1);
+        assert!(reqs[0].1.contains("POST /tenant/contract"), "nested bullets describe it: {:?}", reqs[0].1);
+        assert!(reqs[0].1.contains("Payload: title"), "words are not glued together: {:?}", reqs[0].1);
+        assert_eq!(reqs[1].0, "REQ-CTC-002");
+        assert_eq!(reqs[1].1, "Regra de Recorrencia");
+    }
+
+    #[test]
+    fn requirement_heading_collects_following_text_as_its_body() {
+        let set = extract(
+            "### REQ-WAI-001: Condominium Service Live Integration\n\n\
+             The web app must call the live API.\n\n\
+             - retries on 5xx\n- surfaces errors\n\n\
+             ### Something else\n\nnot part of it\n",
+        );
+        let reqs = requirement_bodies(&set);
+        assert_eq!(reqs.len(), 1);
+        assert_eq!(reqs[0].0, "REQ-WAI-001");
+        for expected in ["Condominium Service Live Integration", "must call the live API", "retries on 5xx", "surfaces errors"] {
+            assert!(reqs[0].1.contains(expected), "{expected:?} missing from {:?}", reqs[0].1);
+        }
+        assert!(!reqs[0].1.contains("not part of it"), "the next heading closes the requirement");
+    }
+
+    #[test]
+    fn long_bodies_are_capped() {
+        let long = "word ".repeat(1000);
+        let set = extract(&format!("### REQ-9: big\n\n{long}\n"));
+        let reqs = requirement_bodies(&set);
+        assert!(reqs[0].1.chars().count() <= MAX_BODY_CHARS, "{}", reqs[0].1.chars().count());
+    }
+
+    #[test]
+    fn plain_format_is_unchanged() {
+        let set = extract("## Requirements\n- REQ-001: The system must do X\n");
+        assert_eq!(requirement_bodies(&set), vec![("REQ-001".to_string(), "The system must do X".to_string())]);
     }
 }
