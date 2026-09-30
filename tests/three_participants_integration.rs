@@ -61,7 +61,7 @@ fn markdown_and_code_stay_consistent_across_all_three_stores() {
     assert_eq!(report.files_added, 2);
     assert!(report.target_version.is_some());
 
-    let req_id = *blake3::hash(b"REQ-901:Greeters must be discoverable").as_bytes();
+    let req_id = *blake3::hash(b"marker:REQ-901").as_bytes();
     let symbol_id = *blake3::hash(b"greet@1").as_bytes();
 
     // 1. redb: both nodes committed.

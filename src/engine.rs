@@ -111,6 +111,10 @@ pub struct TraceHop {
     pub payload: NodePayload,
     pub depth: u8,
     pub edge_type: EdgeType,
+    /// `true` when this hop was reached against the edge direction (the
+    /// node points *at* the one being traced, e.g. the code or task that
+    /// `Satisfies` a requirement).
+    pub incoming: bool,
 }
 
 #[derive(Default)]
@@ -363,6 +367,16 @@ impl Engine {
         let mut visited: std::collections::HashSet<StableId> = [root_id].into_iter().collect();
         let mut frontier = vec![root_id];
         let edge_types = [EdgeType::Satisfies, EdgeType::DependsOn, EdgeType::DefinedIn, EdgeType::Implements];
+        // Reverse index (target -> sources) for the semantic edge types only:
+        // "what satisfies / depends on / implements this". `DefinedIn` is not
+        // reversed (a file would fan out to every symbol it contains).
+        let mut incoming: std::collections::HashMap<StableId, Vec<(StableId, EdgeType)>> =
+            std::collections::HashMap::new();
+        for edge in self.csr.all_edges() {
+            if matches!(edge.edge_type, EdgeType::Satisfies | EdgeType::DependsOn | EdgeType::Implements) {
+                incoming.entry(edge.to).or_default().push((edge.from, edge.edge_type));
+            }
+        }
 
         for depth in 1..=8u8 {
             if frontier.is_empty() {
@@ -375,10 +389,19 @@ impl Engine {
                         if visited.insert(edge.to) {
                             if let Some(bytes) = redb.get_node(&edge.to)? {
                                 let payload = decode_node_payload(&bytes)?;
-                                hops.push(TraceHop { id: edge.to, payload, depth, edge_type });
+                                hops.push(TraceHop { id: edge.to, payload, depth, edge_type, incoming: false });
                             }
                             next_frontier.push(edge.to);
                         }
+                    }
+                }
+                for (from, edge_type) in incoming.get(node).into_iter().flatten() {
+                    if visited.insert(*from) {
+                        if let Some(bytes) = redb.get_node(from)? {
+                            let payload = decode_node_payload(&bytes)?;
+                            hops.push(TraceHop { id: *from, payload, depth, edge_type: *edge_type, incoming: true });
+                        }
+                        next_frontier.push(*from);
                     }
                 }
             }
@@ -663,6 +686,13 @@ mod tests {
         assert_eq!(result.hops.len(), 1);
         assert_eq!(result.hops[0].id, req_id);
         assert_eq!(result.hops[0].edge_type, EdgeType::Satisfies);
+        assert!(!result.hops[0].incoming);
+
+        // Tracing the requirement finds what satisfies it (against the edge).
+        let reverse = engine.trace(&id_hex(&req_id)).unwrap();
+        assert_eq!(reverse.hops.len(), 1);
+        assert_eq!(reverse.hops[0].id, symbol_id);
+        assert!(reverse.hops[0].incoming);
     }
 
     #[test]

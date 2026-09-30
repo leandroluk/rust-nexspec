@@ -116,8 +116,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let result = engine.trace(&target)?;
             for hop in &result.hops {
                 println!(
-                    "depth={} {:?} {} {}",
+                    "depth={} {}{:?} {} {}",
                     hop.depth,
+                    if hop.incoming { "<-" } else { "" },
                     hop.edge_type,
                     nexspec::engine::id_hex(&hop.id),
                     describe_payload(&hop.payload)

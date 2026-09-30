@@ -64,6 +64,7 @@ struct TraceHopDto {
     node: NodeDto,
     depth: u8,
     edge_type: String,
+    incoming: bool,
 }
 
 #[derive(Serialize)]
@@ -80,6 +81,7 @@ fn trace_response(result: TraceResult) -> TraceResponse {
                 node: node_dto(&hop.id, &hop.payload),
                 depth: hop.depth,
                 edge_type: format!("{:?}", hop.edge_type),
+                incoming: hop.incoming,
             })
             .collect(),
     }

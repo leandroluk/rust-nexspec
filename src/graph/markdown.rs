@@ -18,6 +18,14 @@ use crate::graph::edge::EdgeType;
 use crate::graph::node::NodePayload;
 use crate::sync::mutation::{DocMutation, EdgeMutation, MutationSet, NodeMutation, StableId};
 
+/// Deterministic node id for a `REQ-`/`TASK-`/`ADR-` marker, independent of
+/// its body text or of which file it is written in. A task in `tasks.md`
+/// and a `@spec` comment in code can therefore point at a requirement
+/// defined in `spec.md` without any lookup table (cross-document links).
+pub(crate) fn marker_node_id(marker: &str) -> StableId {
+    stable_id(format!("marker:{marker}").as_bytes())
+}
+
 fn stable_id(bytes: &[u8]) -> StableId {
     *blake3::hash(bytes).as_bytes()
 }
@@ -101,6 +109,23 @@ pub(crate) fn find_markers(text: &str, marker: &str) -> Vec<String> {
     found
 }
 
+/// `Satisfies` edge from `from` to every `REQ-` marker mentioned in `text`.
+/// The target id is derived from the marker alone, so the requirement may
+/// live in another file (it simply dangles until that file is indexed).
+fn push_satisfies(edges: &mut Vec<EdgeMutation>, from: StableId, text: &str) {
+    for req_marker in find_markers(text, "REQ-") {
+        let to = marker_node_id(&req_marker);
+        let edge_id = stable_id(format!("satisfies:{req_marker}:{from:?}").as_bytes());
+        edges.push(EdgeMutation::Upsert {
+            id: edge_id,
+            from,
+            to,
+            edge_type: EdgeType::Satisfies.to_code(),
+            payload: vec![],
+        });
+    }
+}
+
 /// Parse `markdown` (the contents of one `.md` file) into a [`MutationSet`]:
 /// one node per `REQ-\d+`/`TASK-\d+`/`ADR-\d+` found, plus a `Satisfies`
 /// edge from a task/ADR to any requirement its body text references.
@@ -119,7 +144,7 @@ pub fn extract(markdown: &str) -> MutationSet {
             NodeValue::Heading(_) => {
                 let text = collect_text(child);
                 if let Some((marker_id, body)) = parse_marker(&text, "TASK-") {
-                    let id = stable_id(format!("{marker_id}:{body}").as_bytes());
+                    let id = marker_node_id(&marker_id);
                     known_ids.insert(marker_id.clone(), id);
                     nodes.push(NodeMutation::Upsert {
                         id,
@@ -131,7 +156,7 @@ pub fn extract(markdown: &str) -> MutationSet {
                     });
                     open = Some(id);
                 } else if let Some((marker_id, body)) = parse_marker(&text, "ADR-") {
-                    let id = stable_id(format!("{marker_id}:{body}").as_bytes());
+                    let id = marker_node_id(&marker_id);
                     known_ids.insert(marker_id.clone(), id);
                     nodes.push(NodeMutation::Upsert {
                         id,
@@ -146,11 +171,20 @@ pub fn extract(markdown: &str) -> MutationSet {
                     open = None;
                 }
             }
+            NodeValue::List(_) if open.is_some() => {
+                // Bullet lists inside a TASK-/ADR- section (`- **REQ**: REQ-001`)
+                // are body text: link them like a paragraph would.
+                if let Some(open_id) = open {
+                    for item in child.children() {
+                        push_satisfies(&mut edges, open_id, &collect_text(item));
+                    }
+                }
+            }
             NodeValue::List(_) => {
                 for item in child.children() {
                     let text = collect_text(item);
                     if let Some((marker_id, body)) = parse_marker(&text, "REQ-") {
-                        let id = stable_id(format!("{marker_id}:{body}").as_bytes());
+                        let id = marker_node_id(&marker_id);
                         known_ids.insert(marker_id.clone(), id);
                         nodes.push(NodeMutation::Upsert {
                             id,
@@ -167,19 +201,7 @@ pub fn extract(markdown: &str) -> MutationSet {
             NodeValue::Paragraph => {
                 if let Some(open_id) = open {
                     let text = collect_text(child);
-                    for req_marker in find_markers(&text, "REQ-") {
-                        if let Some(&req_id) = known_ids.get(&req_marker) {
-                            let edge_id =
-                                stable_id(format!("satisfies:{req_marker}:{open_id:?}").as_bytes());
-                            edges.push(EdgeMutation::Upsert {
-                                id: edge_id,
-                                from: open_id,
-                                to: req_id,
-                                edge_type: EdgeType::Satisfies.to_code(),
-                                payload: vec![],
-                            });
-                        }
-                    }
+                    push_satisfies(&mut edges, open_id, &text);
                 }
             }
             _ => {}
@@ -266,5 +288,33 @@ We chose Y for this project.
 - REQ-CTR-001: cadastrar contrato
 ");
         assert_eq!(set.nodes.len(), 1, "namespaced REQ list item becomes a node");
+    }
+
+    #[test]
+    fn task_list_items_link_to_requirement_defined_in_another_file() {
+        // `tasks.md` alone: REQ-CTR-001 is not defined here.
+        let tasks = extract("### TASK-CTR-001: Do it\n\n- **REQ**: REQ-CTR-001, REQ-CTR-002\n- **What**: x\n");
+        let task_id = marker_node_id("TASK-CTR-001");
+        let targets: Vec<StableId> = tasks
+            .edges
+            .iter()
+            .filter_map(|e| match e {
+                EdgeMutation::Upsert { from, to, .. } if *from == task_id => Some(*to),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(targets, vec![marker_node_id("REQ-CTR-001"), marker_node_id("REQ-CTR-002")]);
+
+        // `spec.md` defines the requirement under the same deterministic id.
+        let spec = extract("## Requirements\n- REQ-CTR-001: cadastrar\n");
+        let defined: Vec<StableId> = spec
+            .nodes
+            .iter()
+            .filter_map(|n| match n {
+                NodeMutation::Upsert { id, .. } => Some(*id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(defined, vec![marker_node_id("REQ-CTR-001")]);
     }
 }

@@ -8,7 +8,7 @@ use std::path::Path;
 use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
 
 use crate::graph::edge::EdgeType;
-use crate::graph::markdown::find_markers;
+use crate::graph::markdown::{find_markers, marker_node_id};
 use crate::graph::node::{NodePayload, file_node_id};
 use crate::sync::mutation::{EdgeMutation, MutationSet, NodeMutation, StableId};
 
@@ -212,15 +212,19 @@ pub fn extract(
                     let mut markers = find_markers(comment_text, "REQ-");
                     markers.extend(find_markers(comment_text, "ADR-"));
                     for marker in markers {
-                        if let Some(&target) = known_markers.get(&marker) {
-                            edges.push(EdgeMutation::Upsert {
-                                id: edge_id("satisfies", &id, &target),
-                                from: id,
-                                to: target,
-                                edge_type: EdgeType::Satisfies.to_code(),
-                                payload: Vec::new(),
-                            });
-                        }
+                        // Known in this sync cycle, or resolved by its
+                        // deterministic marker id (spec indexed earlier).
+                        let target = known_markers
+                            .get(&marker)
+                            .copied()
+                            .unwrap_or_else(|| marker_node_id(&marker));
+                        edges.push(EdgeMutation::Upsert {
+                            id: edge_id("satisfies", &id, &target),
+                            from: id,
+                            to: target,
+                            edge_type: EdgeType::Satisfies.to_code(),
+                            payload: Vec::new(),
+                        });
                     }
                 }
 
@@ -413,11 +417,12 @@ export type Id = string;
     }
 
     #[test]
-    fn satisfies_edge_absent_when_marker_unknown() {
+    fn satisfies_edge_resolves_unknown_marker_by_deterministic_id() {
+        // The spec defining REQ-999 was indexed in an earlier sync cycle, so
+        // it is not in `known_markers`: the edge still lands on its stable id.
         let source = "// @spec REQ-999\nfn f() {}\n";
         let set = extract_at(source, Language::Rust);
-        assert!(set.edges.iter().all(|e| !matches!(e,
-            EdgeMutation::Upsert { edge_type, .. } if *edge_type == EdgeType::Satisfies.to_code()
-        )));
+        let f = symbol_id(&set, "f");
+        assert!(has_edge(&set, f, marker_node_id("REQ-999"), EdgeType::Satisfies));
     }
 }

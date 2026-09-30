@@ -55,7 +55,7 @@ fn markdown_and_code_nodes_both_appear_and_satisfies_resolves() {
     // Find the requirement's and the symbol's stable ids by scanning redb's
     // committed nodes -- simplest way to assert on real ids without
     // duplicating extract()'s internal hashing here.
-    let req_id = *blake3::hash(b"REQ-801:Widgets must be greetable").as_bytes();
+    let req_id = *blake3::hash(b"marker:REQ-801").as_bytes();
     let redb = RedbParticipant::new(&db);
     assert!(redb.get_node(&req_id).unwrap().is_some(), "REQ-801 node committed");
 

@@ -44,7 +44,7 @@ fn run_once_twice_only_processes_new_commits() {
     assert!(first_report.target_version.is_some());
 
     let redb = RedbParticipant::new(&db);
-    let req_id = *blake3::hash(b"REQ-401:first requirement").as_bytes();
+    let req_id = *blake3::hash(b"marker:REQ-401").as_bytes();
     assert!(
         redb.get_node(&req_id).unwrap().is_some(),
         "REQ-401 must be committed after the first run"
