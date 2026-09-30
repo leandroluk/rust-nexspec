@@ -30,7 +30,7 @@ coerente (frases parecidas rankeiam mais perto que não-relacionadas).
 
 ## Todos
 - [ ] Plano "aposentar o graphify" (2026-09-29): Fases 11-18 especificadas (`.specs/features/{graphify-parity,graph-query-surface,graph-export,multi-repo-graph,domain-extractors,work-memory,workflow-integration,llm-enrichment,semantic-annotations}`); medicao: graphify AST-only 15,4 s a frio / 7,0 s sem mudancas vs nexspec 27 s / 0,9-1,6 s. Proximo: Fase 9 (medir e corrigir cold start), depois 7.
-- [x] Fase 9 (performance-guard): COMPLETA em 2026-09-30 (T-901..T-912; CI verde nos 6 jobs, run 36666438491). Proximo: Fase 8 (retrieval-benchmark), depois 7 -> 10 -> 11.
+- [x] Fase 9 (performance-guard): COMPLETA em 2026-09-30 (T-901..T-912; CI verde nos 6 jobs, run 36666438491). Proximo: Fase 8 (retrieval-benchmark): Design + Tasks escritos em 2026-09-30 (`.specs/features/retrieval-benchmark/{design,tasks}.md`, T-801..T-810); aguardando 2 decisoes do usuario (indexar este repo via indice temporario; onde guardar o corpus do condominium). Depois 7 -> 10 -> 11.
 - [ ] Fase 8 (retrieval-benchmark), Fase 7 (dependency-edges), Fase 10 (report-command): specificadas em `.specs/features/*/spec.md` (2026-09-29); Design/Tasks pendentes (exceto Fase 9). Ordem sugerida 9 -> 8 -> 7 -> 10 (ver ROADMAP).
 
 ## Active Blockers
