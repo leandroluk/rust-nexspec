@@ -270,8 +270,13 @@ fn surprising_connections(
     let index: HashMap<StableId, usize> = graph.files.iter().enumerate().map(|(i, id)| (*id, i)).collect();
     // Directed runtime dependency links between files, aggregated.
     let mut links: BTreeMap<(usize, usize), usize> = BTreeMap::new();
-    for edge in snapshot.edges.iter().filter(|e| e.edge_type.is_dependency()) {
+    // Barrels exist to re-export: what they point at is wiring, not design.
+    let barrels = crate::report::analysis::barrel_files(snapshot);
+    for edge in snapshot.edges.iter().filter(|e| e.edge_type.is_dependency() && e.edge_type != EdgeType::ReExports) {
         let (Some(a), Some(b)) = (snapshot.file_id_of(&edge.from), snapshot.file_id_of(&edge.to)) else { continue };
+        if barrels.contains(&a) {
+            continue;
+        }
         let (Some(&i), Some(&j)) = (index.get(&a), index.get(&b)) else { continue };
         if i == j || community_of[i] == usize::MAX || community_of[j] == usize::MAX || community_of[i] == community_of[j] {
             continue;
@@ -287,14 +292,40 @@ fn surprising_connections(
         let key = (community_of[i].min(community_of[j]), community_of[i].max(community_of[j]));
         *between.entry(key).or_default() += count;
     }
+    // How common each direction between top-level directories is across *all*
+    // file dependencies: `apps/ -> pkgs/` is the normal flow of a monorepo,
+    // `pkgs/ -> apps/` would be an inverted layer.
+    let mut direction: HashMap<(&str, &str), usize> = HashMap::new();
+    for edge in snapshot.edges.iter().filter(|e| e.edge_type.is_dependency()) {
+        let (Some(a), Some(b)) = (snapshot.file_id_of(&edge.from), snapshot.file_id_of(&edge.to)) else { continue };
+        let (Some(pa), Some(pb)) = (snapshot.path_of(&a), snapshot.path_of(&b)) else { continue };
+        if top_dir(pa) != top_dir(pb) {
+            *direction.entry((top_dir(pa), top_dir(pb))).or_default() += 1;
+        }
+    }
     let label_of = |community: usize| listed.iter().find(|c| c.id == community).map(|c| c.label.clone()).unwrap_or_default();
+    // A direction between top-level directories that dominates its reverse
+    // (`apps/ -> pkgs/`, 200 vs 0) is the architecture, not a surprise.
+    let is_normal_flow = |from: &str, to: &str| {
+        let forward = direction.get(&(from, to)).copied().unwrap_or(0);
+        let reverse = direction.get(&(to, from)).copied().unwrap_or(0);
+        from != to && forward >= 10 && forward > 3 * reverse
+    };
     let mut surprises: Vec<Surprise> = links
         .keys()
+        .filter(|&&(i, j)| !is_normal_flow(top_dir(&graph.paths[i]), top_dir(&graph.paths[j])))
         .map(|&(i, j)| {
             let (ci, cj) = (community_of[i], community_of[j]);
             let crossing = between[&(ci.min(cj), ci.max(cj))];
-            let different_top = top_dir(&graph.paths[i]) != top_dir(&graph.paths[j]);
-            let score = 1.0 / (1.0 + crossing as f64) + if different_top { 0.5 } else { 0.0 };
+            let (top_i, top_j) = (top_dir(&graph.paths[i]), top_dir(&graph.paths[j]));
+            // Rare links between communities, and rare directions between
+            // top-level directories, are the surprising ones.
+            let direction_rarity = if top_i == top_j {
+                0.0
+            } else {
+                1.0 / (1.0 + direction.get(&(top_i, top_j)).copied().unwrap_or(0) as f64)
+            };
+            let score = 1.0 / (1.0 + crossing as f64) + direction_rarity;
             Surprise {
                 from: graph.paths[i].clone(),
                 to: graph.paths[j].clone(),
@@ -355,7 +386,7 @@ mod tests {
         assert_eq!(result.surprising.len(), 1);
         let s = &result.surprising[0];
         assert_eq!((s.from.as_str(), s.to.as_str()), ("app/c.ts", "infra/d.ts"));
-        assert!((s.score - 1.0).abs() < 1e-9, "1/(1+1) + 0.5 for different top directories: {}", s.score);
+        assert!((s.score - 1.0).abs() < 1e-9, "1/(1+1) + 1/(1+1) for a direction seen once: {}", s.score);
         assert!(s.explanation.contains("only 1 link connect"), "{}", s.explanation);
         assert!(s.explanation.contains("app") && s.explanation.contains("infra"));
     }
@@ -435,5 +466,37 @@ mod tests {
         let a = communities(&two_clusters(), 3, 5);
         let b = communities(&two_clusters(), 3, 5);
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn a_dominant_direction_is_not_surprising_but_its_inversion_is() {
+        // Two 8-file cliques, `apps/` and `pkgs/`. `apps -> pkgs` links are the norm
+        // (12 of them); a single `pkgs -> apps` link goes against the flow.
+        let size = 8u8;
+        let mut nodes: Vec<(u8, _)> = Vec::new();
+        for i in 0..size {
+            nodes.push((1 + i, file(&format!("apps/a{i}.ts"))));
+            nodes.push((21 + i, file(&format!("pkgs/p{i}.ts"))));
+        }
+        let mut edges = Vec::new();
+        let mut n = 0u16;
+        for base in [1u8, 21] {
+            for i in 0..size {
+                for j in (i + 1)..size {
+                    edges.push(edge(n, base + i, base + j, EdgeType::Imports));
+                    n += 1;
+                }
+            }
+        }
+        for k in 0..12u8 {
+            edges.push(edge(n, 1 + k % size, 21 + (k + 1) % size, EdgeType::Imports));
+            n += 1;
+        }
+        edges.push(edge(n, 21 + size - 1, 1 + size - 1, EdgeType::Imports)); // pkgs/p7.ts -> apps/a7.ts
+        let result = communities(&snapshot(nodes, edges), 3, 20);
+        assert_eq!(result.listed.len(), 2, "{:?}", result.listed);
+        assert_eq!(result.surprising.len(), 1, "the dominant apps -> pkgs flow is not a surprise: {:?}", result.surprising);
+        let only = &result.surprising[0];
+        assert!(only.from.starts_with("pkgs/") && only.to.starts_with("apps/"), "the inverted layer is: {only:?}");
     }
 }

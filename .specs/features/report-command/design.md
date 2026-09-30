@@ -29,7 +29,7 @@ Engine ──snapshot()──► GraphSnapshot { nodes, edges, file_of, index in
 |---|---|
 | Summary | contagem por `NodeType` e por tipo de aresta; arquivos por linguagem (extensão); último commit indexado + data; tamanho do `index_dir` |
 | God Nodes | grau = arestas de entrada + saída de `{Satisfies, Implements} ∪ dependências`; **sem** `CoChanges` (Q2) nem `DefinedIn` (ruído estrutural). Top-N (10), com grau de entrada (dependentes diretos), de saída, caminho e se tem REQ |
-| Communities | grafo **não dirigido de arquivos**, peso 1 por aresta de dependência agregada entre o par de arquivos, + 0,25 por co-change (Q2: só como peso). **Propagação de rótulos determinística** (ordem por id, empate → menor rótulo, máx. 30 rodadas), sem aleatoriedade. Coesão = peso interno ÷ (peso interno + peso que sai do grupo); < 0,3 → `fragile` |
+| Communities | grafo **não dirigido de arquivos**, peso 1 por aresta de dependência agregada entre o par de arquivos, + 0,25 por co-change (Q2: só como peso). **Modularidade local determinística** (máx. 30 rodadas), sem aleatoriedade. Coesão = peso interno ÷ (peso interno + peso que sai do grupo); < 0,3 → `fragile` |
 | Requirement Coverage | REQs sem `Satisfies` vindo de símbolo/task; tasks sem `Satisfies` para REQ; `Satisfies` cujo destino não existe (`@spec` órfão) |
 | Surprising Connections | aresta de dependência entre comunidades distintas; surpresa = `1/(1 + arestas entre as duas comunidades)` + 0,5 se os diretórios de topo diferem + 0,25 se a origem é teste/spec e o destino é runtime (ou vice-versa não); explicação de uma linha; ordenadas por surpresa, empates por id |
 | Import Cycles | SCCs de `Imports` da Fase 7 + menor conjunto **aproximado** de arestas a remover (feedback arc set guloso). Exato é NP-difícil; o relatório diz "aproximado" |
@@ -50,7 +50,7 @@ Engine ──snapshot()──► GraphSnapshot { nodes, edges, file_of, index in
 ## Decision Log
 
 - **D1 — Análise em nível de arquivo** para comunidades/surpresas (símbolos colapsam no arquivo).
-- **D2 — Propagação de rótulos, não Louvain** (Q1): determinística por construção, O(E) por rodada, poucas linhas; Louvain exige otimização de modularidade e desempates mais delicados. Reavaliar só se a qualidade for ruim nos dois repos de referência.
+- **D2 — Modularidade local (1ª fase do Louvain), não propagação de rótulos** (Q1): a propagação de rótulos foi a primeira tentativa e **fundiu dois grupos densos ligados por uma única aresta** num só (teste escrito antes de fixar o algoritmo). A movimentação local por modularidade, visitando arquivos em ordem de caminho e desempatando pelo menor id, é determinística e separa os grupos. No repo de referência (1,3 mil arquivos): 57 comunidades de 3+ arquivos em 0,19 s.
 - **D3 — Co-change fora do grau, dentro do peso das comunidades** (Q2), com peso 0,25.
 - **D4 — Contrato estável (REQ-1007):** seções `## Summary`, `## God Nodes`, `## Communities`, `## Requirement Coverage`, `## Surprising Connections`, `## Import Cycles`, `## Suggested Questions`; JSON com as mesmas chaves em `snake_case`. Documentado no README.
 - **D5 — `--max-tokens` corta por seção, por prioridade** (cabeçalhos e God Nodes primeiro; listas longas truncam com "+N omitidos"), usando o mesmo estimador da Fase 5.
@@ -62,3 +62,16 @@ Engine ──snapshot()──► GraphSnapshot { nodes, edges, file_of, index in
 - **Qualidade das comunidades** em grafos esparsos: muitos arquivos isolados viram comunidades de tamanho 1; o relatório ignora comunidades < 3 arquivos na seção principal e as conta num resumo.
 - **Determinismo** com `HashMap`: toda ordenação usa chaves explícitas (id, caminho).
 - **Custo em repos grandes:** uma varredura de `all_edges()` + uma iteração de nós; medido em T-1011.
+
+## Resultados e ajustes após rodar no repo real (T-1011, 2026-09-30)
+
+Clone local do condominium-management-system (1.263 arquivos, 4.884 nós, 63 mil arestas), `--release`: `report` em **0,19 s** (Markdown) com o índice pronto.
+
+O primeiro relatório real pediu quatro correções, todas com teste:
+
+1. **Barrels dominavam os God nodes** (`index.ts` com 734 dependentes). Arquivos cuja maioria das saídas é `ReExports` (≥ 2) ficam fora do ranking; o Markdown diz quantos (86 aqui).
+2. **Toda REQ aparecia como "não implementada"** (o projeto não usa `@spec` nem `TASK-`), em uma lista de 83 linhas. O texto agora diz "não ligada a código ou task" e cada lista é cortada em 10 itens com "… e N mais" (o JSON mantém tudo); comunidades: 15 maiores.
+3. **Conexões inesperadas viravam fiação de composição** (`app.module.ts` → pacotes). A surpresa passou a incluir a raridade da *direção* entre diretórios de topo (`apps → pkgs` domina o inverso e deixa de contar; `pkgs → apps` seria inesperado), e arestas de re-export e de arquivos barrel saem da lista.
+4. **Índice vazio** gerava um relatório todo zerado sem explicação: agora o resumo manda rodar `nexspec sync`.
+
+Limites: sem `@spec` no código (caso deste projeto) a cobertura de requisitos mede só o que está ligado; o ranking de God nodes em nível de arquivo e de símbolo convive na mesma lista (um arquivo de alto fan-in e seu símbolo principal podem aparecer juntos).

@@ -1,0 +1,40 @@
+---
+title: "Phase 10 · Graph Report"
+description: God nodes, communities, requirement coverage, cycles and a diff between revisions.
+---
+
+`nexspec report` turns the graph into a short, stable summary that people and agents can read instead of browsing code.
+
+Source: `.specs/features/report-command/`
+
+## Sections (the contract)
+
+| Markdown | JSON key | Content |
+| --- | --- | --- |
+| `## Summary` | `summary` | Node/edge counts by type, files by language, last indexed commit and date, index size. An empty index says to run `sync`. |
+| `## God Nodes` | `god_nodes` | Most connected files and symbols (imports, calls, extends, `Satisfies`…; never co-change), with dependents, dependencies and whether a requirement is linked. Barrel files are left out. |
+| `## Communities` | `communities` | Files grouped by modularity (deterministic), each with a **cohesion** score; below 0.3 is *fragile*. Groups under three files are summarised. |
+| `## Requirement Coverage` | `requirement_coverage` | Requirements not linked to code or a task, tasks without a requirement, `@spec` references to requirements that do not exist. |
+| `## Surprising Connections` | `communities.surprising` | Dependencies that cross communities in an unexpected way: rare links, and directions between top-level directories that go against the normal flow. Tests and barrels are ignored. |
+| `## Import Cycles` | `import_cycles` | Cycles among files and an approximate set of imports to cut. |
+| `## Suggested Questions` | `suggested_questions` | Questions generated from the findings, in a fixed order. |
+
+## Options
+
+```bash
+nexspec report                          # Markdown
+nexspec report --format json --top 20
+nexspec report --max-tokens 1500        # shrinks the least important sections first
+nexspec report --fail-on-cycle          # exit 2 when an import cycle exists (CI)
+nexspec report --diff main              # what changed since a branch, tag or commit
+```
+
+The MCP tool `graph_report` returns the same report (`format`, `max_tokens`, `top`).
+
+## Diff between revisions
+
+`--diff REV` indexes `REV` read-only in a temporary directory and compares it with the current graph: nodes and edges added or removed, files added or removed, God nodes that entered, left or changed degree, communities that merged or split, cycles and requirements whose state changed. With `--fail-on-cycle` it fails only for cycles introduced since `REV`.
+
+## How communities are found
+
+Symbols count as the file that defines them. Files are visited in path order and move to the neighbouring group that raises modularity the most, so the result never depends on a random seed. Plain label propagation was tried first and merged two dense groups joined by a single edge into one; modularity keeps them apart.

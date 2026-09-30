@@ -6,6 +6,7 @@
     "git-integration",
     "ast-lexical-search",
     "dependency-edges",
+    "report-command",
     "vector-engine",
     "token-budgeting",
     "cli-mcp-server"

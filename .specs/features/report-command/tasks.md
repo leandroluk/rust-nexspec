@@ -48,13 +48,13 @@
 - **Depends on**: T-1008
 - **Gate**: `cargo test --test report_cli`
 
-## T-1010: `report --diff <rev>` (REQ-1011) [ ]
+## T-1010: `report --diff <rev>` (REQ-1011) [x]
 - **What**: `GitSource::at_revision`; indexar a revisão em diretório temporário; comparar (nós/arestas, God nodes, comunidades).
 - **Where**: `src/git/source.rs`, `src/report/diff.rs`
 - **Depends on**: T-1009
 - **Gate**: `cargo test --test report_diff`
 
-## T-1011: Aceite e fechamento [ ]
+## T-1011: Aceite e fechamento [x]
 - **What**: rodar nos dois repos de referência; tempo; docs; ROADMAP/STATE; CI verde.
 - **Depends on**: T-1001..T-1010
 - **Gate**: `cargo test && cargo test --no-default-features --features lean && cargo clippy --all-targets -- -D warnings`

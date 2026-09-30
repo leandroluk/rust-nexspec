@@ -77,6 +77,9 @@ fn sections(report: &Report) -> Vec<Section> {
 
     let mut summary = Section::new("Summary", 0);
     let s = &report.summary;
+    if s.total_nodes == 0 {
+        summary.preface.push("**The index is empty**: run `nexspec sync` first, then ask for the report again.".to_string());
+    }
     let by = |m: &std::collections::BTreeMap<String, usize>| m.iter().map(|(k, v)| format!("{k} {v}")).collect::<Vec<_>>().join(", ");
     summary.preface.push(format!("- Nodes: {} ({})", s.total_nodes, by(&s.nodes_by_type)));
     summary.preface.push(format!("- Edges: {} ({})", s.total_edges, by(&s.edges_by_type)));
@@ -418,6 +421,14 @@ mod tests {
         let tiny = to_markdown(&sample(40), Some(40));
         assert!(tiny.contains("## Summary"), "{tiny}");
         assert!(!tiny.contains("## Suggested Questions"), "{tiny}");
+    }
+
+    #[test]
+    fn an_empty_index_says_to_sync_first() {
+        let mut r = sample(0);
+        r.summary.total_nodes = 0;
+        assert!(to_markdown(&r, None).contains("run `nexspec sync` first"));
+        assert!(!to_markdown(&sample(1), None).contains("index is empty"));
     }
 
     #[test]

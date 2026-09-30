@@ -383,3 +383,13 @@ contra specs do mesmo ciclo.
 - [x] Fase 7 (dependency-edges): COMPLETA em 2026-09-30 (T-701..T-710). Vocabulario de arestas com `meta` (confianca/contexto), ids de simbolo estaveis `(path,nome,ordinal)`, fatos TS/JS + resolvedor (relativo, tsconfig, `#/*`, workspace, barrels), Rust/Python/Go arquivo->arquivo, reconciliacao incremental, `trace` com teto por hop, `search` com dependentes so quando a pergunta pede, ciclos de import. INDEX_FORMAT 5. Medido (condominium): `trace CachePort`/`AccessUserPersonaReader` completos e sem falso positivo na amostra; structure recall@5 0,00 -> 1,00; 1o sync 1,30 -> 1,18 s.
 
 ---
+
+## Archive — 2026-09-30 (compaction 6)
+
+### Lesson
+- (2026-09-30) O gargalo do cold start NAO era o co-change (hipotese do relatorio): era `Query::new` do tree-sitter recompilada por arquivo (11,9 s de 18 s) + extracao sequencial. Medir por fase (`sync --verbose`) antes de otimizar; co-change so pesava no stage/WAL/redb.
+
+### Todo (completed)
+- [x] Fase 10 (report-command): COMPLETA em 2026-09-30 (T-1001..T-1011). `nexspec report` (secoes estaveis Summary/God Nodes/Communities/Requirement Coverage/Surprising Connections/Import Cycles/Suggested Questions; JSON equivalente), `--max-tokens`, `--fail-on-cycle` (saida 2), `--diff REV` (revisao lida sem git externo via `GitSource::at_revision`, indexada em dir temporario), MCP `graph_report`. Comunidades: modularidade local (Louvain fase 1) — a propagacao de rotulos fundia dois grupos densos ligados por uma aresta. Proximo: Fase 11 (graph-query-surface); ver `.specs/features/graphify-parity/spec.md` para a ordem dos P0 restantes.
+
+---
