@@ -17,6 +17,8 @@ use crate::bench::runner::BenchReport;
 
 /// Largest tolerated drop of any recall value (absolute, 0.05 = 5 points).
 pub const MAX_REGRESSION: f64 = 0.05;
+/// A kind with fewer queries than this is tracked, not gated.
+pub const MIN_QUERIES_TO_GATE: usize = 5;
 /// Default absolute floor for `locate` recall@5.
 pub const DEFAULT_MIN_LOCATE_RECALL: f64 = 0.8;
 
@@ -130,7 +132,10 @@ pub fn check(report: &BenchReport, baseline: Option<&Baseline>, min_locate_recal
         for (k, &before) in &recorded.recall {
             let Some(&now) = current.recall.get(k) else { continue };
             let drop = before - now;
-            if drop > MAX_REGRESSION + 1e-9 {
+            if drop > MAX_REGRESSION + 1e-9 && recorded.queries < MIN_QUERIES_TO_GATE {
+                // Two queries move recall in steps of 25 points: drift in the repository alone would trip the gate.
+                outcome.warnings.push(format!("{kind} recall@{k} fell from {before:.2} to {now:.2}, not gated: only {} queries", recorded.queries));
+            } else if drop > MAX_REGRESSION + 1e-9 {
                 outcome.failures.push(format!(
                     "{kind} recall@{k} fell from {before:.2} to {now:.2} ({:+.0} points, limit -{:.0})",
                     (now - before) * 100.0,
@@ -194,6 +199,16 @@ mod tests {
         assert!(check(&report(0.80, 1.0), None, 0.8).passed());
         let failed = check(&report(0.5, 1.0), None, 0.8);
         assert!(failed.failures[0].contains("locate recall@5 is 0.50"), "{failed:?}");
+    }
+
+    #[test]
+    fn a_kind_with_very_few_queries_is_tracked_not_gated() {
+        let mut few = report(0.9, 0.9);
+        few.by_kind.get_mut("structure").unwrap().queries = 2;
+        let baseline = Baseline::from_report(&few);
+        let outcome = check(&report(0.90, 0.40), Some(&baseline), 0.0);
+        assert!(outcome.passed(), "{outcome:?}");
+        assert!(outcome.warnings.iter().any(|w| w.contains("not gated: only 2 queries")), "{outcome:?}");
     }
 
     #[test]
