@@ -17,7 +17,7 @@ use crate::bench::runner::BenchReport;
 
 /// Largest tolerated drop of any recall value (absolute, 0.05 = 5 points).
 pub const MAX_REGRESSION: f64 = 0.05;
-/// A kind with fewer queries than this is tracked, not gated.
+/// A kind other than `locate` with fewer queries than this is tracked, not gated (`locate` is the headline metric and always is).
 pub const MIN_QUERIES_TO_GATE: usize = 5;
 /// Default absolute floor for `locate` recall@5.
 pub const DEFAULT_MIN_LOCATE_RECALL: f64 = 0.8;
@@ -132,7 +132,7 @@ pub fn check(report: &BenchReport, baseline: Option<&Baseline>, min_locate_recal
         for (k, &before) in &recorded.recall {
             let Some(&now) = current.recall.get(k) else { continue };
             let drop = before - now;
-            if drop > MAX_REGRESSION + 1e-9 && recorded.queries < MIN_QUERIES_TO_GATE {
+            if drop > MAX_REGRESSION + 1e-9 && kind != "locate" && recorded.queries < MIN_QUERIES_TO_GATE {
                 // Two queries move recall in steps of 25 points: drift in the repository alone would trip the gate.
                 outcome.warnings.push(format!("{kind} recall@{k} fell from {before:.2} to {now:.2}, not gated: only {} queries", recorded.queries));
             } else if drop > MAX_REGRESSION + 1e-9 {
