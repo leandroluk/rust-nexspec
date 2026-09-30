@@ -22,6 +22,9 @@ pub struct DomainInput {
     pub entity_files: Vec<(String, String)>,
     /// Tracked repository paths, to keep edges to files that exist.
     pub tracked: HashSet<String>,
+    /// What `extract --postgres` last read from a live database (REQ-1405): objects that exist only
+    /// there are added to the graph.
+    pub live: Option<Schema>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -67,6 +70,10 @@ pub fn build(input: &DomainInput) -> DomainGraph {
     schema_files.sort_by(|a, b| a.0.cmp(&b.0));
     for (path, content) in schema_files {
         liquibase::apply_file(&mut schema, path, content);
+    }
+
+    if let Some(live) = &input.live {
+        schema.merge_missing(live);
     }
 
     let mut nodes: BTreeMap<StableId, NodeMutation> = BTreeMap::new();
@@ -224,6 +231,7 @@ mod tests {
             ],
             entity_files: vec![("src/reminder.entity.ts".into(), "@Entity({name: 'tb_contract_reminder'})\nexport class ContractReminderEntity {}\n".into())],
             tracked: ["db/changeset/001.xml", "apps/web/package.json", "pkgs/ui/package.json", "apps/web/tsconfig.json", "tsconfig.base.json", "src/reminder.entity.ts"].iter().map(|s| s.to_string()).collect(),
+            live: None,
         }
     }
 
@@ -260,6 +268,21 @@ mod tests {
         assert!(edges.contains(&(EdgeType::DependsOn.to_code(), package_node_id("web"), package_node_id("ui"))), "workspace dependency");
         assert!(edges.contains(&(EdgeType::DependsOn.to_code(), file_node_id("apps/web/tsconfig.json"), file_node_id("tsconfig.base.json"))), "extends chain");
         assert_eq!(graph.stats.entity_links, 1);
+    }
+
+    #[test]
+    fn objects_that_exist_only_in_the_live_database_join_the_graph() {
+        use crate::domain::schema::{Column, Table};
+        let mut live = Schema::default();
+        let mut only_live = Table::new("public", "tb_only_live", false, "");
+        only_live.columns.push(Column { name: "id".into(), sql_type: "uuid".into(), nullable: false });
+        live.upsert_table(only_live);
+        let mut i = input();
+        i.live = Some(live);
+        let graph = build(&i);
+        assert_eq!(graph.stats.tables, 3, "the two from the changesets and the live-only one");
+        assert!(graph.nodes.iter().any(|n| matches!(n, NodeMutation::Upsert { id, .. } if *id == table_node_id("public", "tb_only_live"))));
+        assert!(!edge_set(&graph).iter().any(|(t, from, _)| *t == EdgeType::DefinedIn.to_code() && *from == table_node_id("public", "tb_only_live")), "no file defines it");
     }
 
     #[test]

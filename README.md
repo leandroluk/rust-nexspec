@@ -69,6 +69,7 @@ Use `--repo <path>` to operate on another repository.
 | `report [--format md\|json] [--max-tokens N] [--top N] [--fail-on-cycle] [--diff REV]` | Structural report of the graph (see below).                                                     |
 | `bench [--corpus FILE] [--check] [--update-baseline] [--compare-enrich]` | Retrieval quality and token cost against a question corpus; `--compare-enrich` runs it without and with the `enrich` summaries. |
 | `enrich [--lang en,pt] [--top 20%] [--dry-run] [--status] [--clear] [--yes]` | Opt-in: an LLM writes a short summary per file so prose questions find code (see below). |
+| `extract --postgres DSN [--dry-run]` | Opt-in, read-only: compare the changesets with a live PostgreSQL database (`drift: …` first line) and add the objects that exist only there to the graph. |
 | `watch [--debounce MS]`                                                                | Sync after each burst of file changes (one watcher per repository; Ctrl+C stops it).            |
 | `hook install\|uninstall\|status`                                                      | Git hooks (`post-commit`, `post-merge`, `post-checkout`) that run `sync` in the background.     |
 | `check-update`                                                                         | `up-to-date`, `stale: <reason>` or `no-index` on the first line; never writes.                  |
@@ -102,6 +103,10 @@ nexspec bench --compare-enrich            # with vs without, judged against the 
 ```
 
 Files that look like they hold a secret, `.env*`, keys and generated code are never sent; only the first 2500 characters of each file leave the machine. Summaries live in `.specs/.cache/enrichment.jsonl` (git-ignored, outside the index, so rebuilding the index does not cost again). A file that changed since its summary was written is *stale* and leaves the ranking until it is enriched again. See [the docs page](docs/content/docs/features/retrieval-enrichment.mdx).
+
+## Database and package nodes
+
+`sync` also reads the database schema and the workspace packages (see [the docs page](docs/content/docs/features/domain-extractors.mdx)): tables, views, columns and named constraints from `*.sql` and Liquibase XML/YAML changesets, `Package` nodes from `package.json` and `Cargo.toml`, and entity-to-table links for TypeORM, sequelize-typescript, SQLAlchemy and Prisma when the table name is literal. `nexspec affected tb_contract_reminder` then reaches the entity, the repository and the use cases. `nexspec extract --postgres DSN` (opt-in, read-only) reports the drift between the changesets and a live database.
 
 ## MCP
 

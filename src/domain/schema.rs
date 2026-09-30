@@ -4,16 +4,18 @@
 
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Serialize};
+
 pub const DEFAULT_SCHEMA: &str = "public";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Column {
     pub name: String,
     pub sql_type: String,
     pub nullable: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ConstraintKind {
     PrimaryKey,
     Unique,
@@ -36,7 +38,7 @@ impl ConstraintKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Constraint {
     pub name: String,
     pub kind: ConstraintKind,
@@ -45,7 +47,7 @@ pub struct Constraint {
     pub references: Option<(String, String)>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Table {
     pub schema: String,
     pub name: String,
@@ -65,7 +67,26 @@ pub struct Schema {
     pub skipped: usize,
 }
 
+#[derive(Serialize, Deserialize)]
+struct SchemaFile {
+    tables: Vec<Table>,
+}
+
 impl Schema {
+    /// JSON form, for the live-schema cache (`tables` in a stable order).
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(&SchemaFile { tables: self.tables.values().cloned().collect() }).expect("schema serialises")
+    }
+
+    pub fn from_json(text: &str) -> Result<Self, serde_json::Error> {
+        let file: SchemaFile = serde_json::from_str(text)?;
+        let mut schema = Schema::default();
+        for table in file.tables {
+            schema.upsert_table(table);
+        }
+        Ok(schema)
+    }
+
     pub fn tables(&self) -> impl Iterator<Item = &Table> {
         self.tables.values()
     }
@@ -85,6 +106,28 @@ impl Schema {
 
     pub fn len(&self) -> usize {
         self.tables.len()
+    }
+
+    /// Adds what `other` has and this schema lacks: whole tables, and columns or constraints of
+    /// tables both know. Nothing this schema already says is overwritten (the changesets win).
+    pub fn merge_missing(&mut self, other: &Schema) {
+        for theirs in other.tables() {
+            match self.table_mut(&theirs.schema, &theirs.name) {
+                None => self.upsert_table(theirs.clone()),
+                Some(ours) => {
+                    for column in &theirs.columns {
+                        if !ours.columns.iter().any(|c| c.name == column.name) {
+                            ours.columns.push(column.clone());
+                        }
+                    }
+                    for constraint in &theirs.constraints {
+                        if !ours.constraints.iter().any(|c| c.name == constraint.name) {
+                            ours.constraints.push(constraint.clone());
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub(crate) fn upsert_table(&mut self, table: Table) {

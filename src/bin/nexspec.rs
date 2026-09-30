@@ -166,6 +166,19 @@ struct EnrichArgs {
     yes: bool,
 }
 
+#[derive(clap::Args)]
+struct ExtractArgs {
+    /// Connection string of the database to read (`postgres://user:pass@host/db`). Read-only; never stored.
+    #[arg(long, conflicts_with = "live_file")]
+    postgres: Option<String>,
+    /// A schema previously saved as JSON (`.specs/.cache/live-schema.json` format) instead of a connection.
+    #[arg(long)]
+    live_file: Option<PathBuf>,
+    /// Only report the drift: do not save the live schema or touch the index.
+    #[arg(long)]
+    dry_run: bool,
+}
+
 #[derive(Subcommand)]
 enum HookAction {
     /// Append the nexspec block to post-commit, post-merge and post-checkout (idempotent).
@@ -306,6 +319,9 @@ enum Command {
     /// Ask an LLM for a short summary of each file, so prose questions can find code (opt-in; sends code
     /// to the provider; never runs from a hook). `--dry-run` and `--status` make no request.
     Enrich(EnrichArgs),
+    /// Compare the changesets with a live PostgreSQL database (read-only, opt-in) and add the objects that
+    /// exist only there to the graph. Prints `drift: none` or `drift: N difference(s)` first.
+    Extract(ExtractArgs),
     /// Say whether the index is in step with HEAD and the working tree. First stdout line:
     /// `up-to-date` (exit 0), `stale: <reason>` (exit 3) or `no-index` (exit 4). Never writes.
     CheckUpdate,
@@ -575,6 +591,23 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         println!("{name}: {}", if state == HookState::Installed { "installed" } else { "not installed" });
                     }
                 }
+            }
+        }
+        Command::Extract(args) => {
+            use nexspec::domain::live;
+            let dsn = args.postgres.clone().or_else(|| std::env::var("NEXSPEC_POSTGRES_DSN").ok().filter(|v| !v.trim().is_empty()));
+            let schema = match (&dsn, &args.live_file) {
+                (_, Some(path)) => live::read_file(path)?,
+                (Some(dsn), None) => live::read_database(dsn)?,
+                _ => return Err("pass --postgres <DSN> (or set NEXSPEC_POSTGRES_DSN) or --live-file <FILE>".into()),
+            };
+            let engine = Engine::open(&index_dir, &repo)?;
+            let drift = live::compare(&engine.changeset_schema()?, &schema);
+            print!("{}", drift.render());
+            if !args.dry_run {
+                live::save(&repo, &schema)?;
+                let report = engine.sync_domain()?;
+                println!("live schema: {} object(s) saved to {}; graph updated (version {:?})", schema.len(), live::cache_path(&repo).display(), report.target_version);
             }
         }
         Command::Enrich(args) => {

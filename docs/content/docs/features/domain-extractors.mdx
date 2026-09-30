@@ -1,0 +1,47 @@
+---
+title: "Phase 14 · Domain Extractors"
+description: Database schema (SQL and Liquibase), ORM entities and package manifests as nodes in the graph.
+---
+
+The graph used to know code and Markdown. Phase 14 adds what sits around the code: the database schema, the entities that map to it and the packages of the workspace, so `affected tb_contract_reminder` reaches the entity, the repository and the use cases.
+
+Source: `.specs/features/domain-extractors/`
+
+## What becomes a node
+
+| Node | Comes from | Edges |
+| --- | --- | --- |
+| `Table` (also views) | `CREATE TABLE/VIEW` in `*.sql`, Liquibase XML/YAML changesets (`<sql>` blocks and `createTable`, `addColumn`, `createIndex`, `addForeignKeyConstraint`, …) | `DefinedIn` the file that created it; foreign keys and the tables a view reads: `References` |
+| `Column` | column definitions, `ALTER TABLE … ADD/DROP/ALTER COLUMN` | `DefinedIn` its table (name, type, nullability) |
+| `Constraint` | primary key, unique, foreign key, check, `CREATE [UNIQUE] INDEX`, with the names the database uses (`ix_tb_…`, `uq_tb_…`, `fk_tb_…`) | `DefinedIn` its table |
+| `Package` | `package.json`, `Cargo.toml` | `DefinedIn` the manifest; `DependsOn` between packages of the repository; `tsconfig*.json` `extends` between the files |
+| entity → table | TypeORM `@Entity`, sequelize-typescript `@Table`, SQLAlchemy `__tablename__`, Prisma `@@map` | `Implements`, extracted (only literal names are linked) |
+
+The schema is **cumulative**: files are read in path order, so the tables a migration folder adds up to are what the graph shows. `<rollback>` blocks are skipped. Statements the small PostgreSQL reader does not understand (functions, triggers, extensions) are skipped and counted, never fatal.
+
+## In practice
+
+```bash
+nexspec search "contract reminder"          # finds tb_contract_reminder, its columns and constraints
+nexspec explain tb_contract_reminder        # what it references
+nexspec affected tb_contract_reminder       # entity, repository, use cases
+nexspec affected @acme/ui                   # packages that depend on it
+```
+
+Tables, `public.tb_x`, columns (`tb_x.col`), constraints and packages resolve by name like any other target.
+
+The domain pass runs when a schema file, a manifest, a `.prisma` file or a code file that mentions an entity marker changes (and on the first sync); it rebuilds the whole domain part of the graph and removes what disappeared. On the reference repository (130 changesets, 1267 files) it adds about 60 ms to a sync that takes about 1.3 s.
+
+## Live database (opt-in)
+
+```bash
+nexspec extract --postgres postgres://user:pass@host/db   # or NEXSPEC_POSTGRES_DSN
+nexspec extract --postgres … --dry-run                    # only the drift
+nexspec extract --live-file schema.json                   # a saved schema instead of a connection
+```
+
+The connection is read-only (the session is set read-only and only catalogs are queried; no DDL is ever sent) and the DSN is never stored or printed. The first line of the output is `drift: none` or `drift: N difference(s)`, followed by what is in the changesets only, in the database only, or different (type, nullability, constraints). Unless `--dry-run`, the schema read is saved in `.specs/.cache/live-schema.json` and the objects that exist only in the database join the graph; the next syncs keep them.
+
+## Languages
+
+Adding a language stays demand-driven: `code::Language` holds extensions, grammars and queries in one place, and the orchestrator does not change. None is added until a real project asks for it.

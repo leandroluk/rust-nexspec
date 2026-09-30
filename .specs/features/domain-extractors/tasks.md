@@ -28,12 +28,12 @@
 - **Depends on**: T-1402..T-1404
 - **Gate**: `cargo test --test domain_sync`
 
-## T-1406: Banco vivo e drift (REQ-1405) [ ]
+## T-1406: Banco vivo e drift (REQ-1405) [x]
 - **What**: `extract --postgres DSN` somente leitura, comparação com o esquema dos changesets, relatório de divergência; teste vivo `#[ignore]`.
 - **Where**: `Cargo.toml`, `src/domain/postgres.rs`, `src/bin/nexspec.rs`
 - **Depends on**: T-1402
 - **Gate**: `cargo test domain::postgres`
 
-## T-1407: Fechamento [ ]
+## T-1407: Fechamento [x]
 - **What**: README/docs/ROADMAP/STATE; REQ-1406 registrado como sob demanda; CI verde.
 - **Gate**: `cargo test && cargo test --no-default-features --features lean && cargo clippy --all-targets -- -D warnings`

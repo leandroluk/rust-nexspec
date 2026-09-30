@@ -10,6 +10,7 @@
     "graph-query-surface",
     "workflow-integration",
     "retrieval-enrichment",
+    "domain-extractors",
     "vector-engine",
     "token-budgeting",
     "cli-mcp-server"

@@ -369,6 +369,16 @@ impl Engine {
 
     /// REQ-603: one incremental sync cycle via [`SyncOrchestrator`].
     pub fn sync(&self) -> Result<SyncReport, EngineError> {
+        self.sync_with(false)
+    }
+
+    /// A sync cycle that also rebuilds the domain subgraph (Fase 14) even if git shows no change it
+    /// depends on: what `extract --postgres` needs after saving the live schema.
+    pub fn sync_domain(&self) -> Result<SyncReport, EngineError> {
+        self.sync_with(true)
+    }
+
+    fn sync_with(&self, force_domain: bool) -> Result<SyncReport, EngineError> {
         let git = match &self.revision {
             Some(rev) => GitSource::at_revision(&self.repo_root, rev)?,
             None => GitSource::open(&self.repo_root)?,
@@ -378,7 +388,21 @@ impl Engine {
         let mut orchestrator = SyncOrchestrator::new(git, coordinator, VersionPointer::new(&self.db))
             .with_csr(Arc::clone(&self.csr))
             .with_domain_state(|| self.domain_node_ids());
+        if force_domain {
+            orchestrator = orchestrator.force_domain_pass();
+        }
         Ok(orchestrator.run_once()?)
+    }
+
+    /// The schema the changesets add up to, without anything read from a live database.
+    pub fn changeset_schema(&self) -> Result<crate::domain::schema::Schema, EngineError> {
+        let git = match &self.revision {
+            Some(rev) => GitSource::at_revision(&self.repo_root, rev)?,
+            None => GitSource::open(&self.repo_root)?,
+        };
+        let mut input = crate::sync_orchestrator::collect_domain_input(&git, &[])?;
+        input.live = None;
+        Ok(crate::domain::graph::build(&input).schema)
     }
 
     /// Ids of the table, column, constraint and package nodes in the index (what the domain pass owns).

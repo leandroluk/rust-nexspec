@@ -78,6 +78,8 @@ pub struct SyncOrchestrator<'a> {
     csr: Option<Arc<Csr>>,
     /// Ids of the domain nodes already indexed (Fase 14), asked for only when the domain pass runs.
     domain_state: Option<DomainState<'a>>,
+    /// Run the domain pass even when nothing it reads changed in git (after `extract --postgres`).
+    force_domain: bool,
 }
 
 type DomainState<'a> = Box<dyn Fn() -> HashSet<StableId> + 'a>;
@@ -91,7 +93,14 @@ impl<'a> SyncOrchestrator<'a> {
             dirty_cache: DirtyCache::new(),
             csr: None,
             domain_state: None,
+            force_domain: false,
         }
+    }
+
+    /// Runs the domain pass on the next cycle whatever changed.
+    pub fn force_domain_pass(mut self) -> Self {
+        self.force_domain = true;
+        self
     }
 
     /// Lets the domain pass remove tables, columns and packages that disappeared: `existing` returns
@@ -281,7 +290,7 @@ impl<'a> SyncOrchestrator<'a> {
             .collect();
         let entity_marker_changed = code_files.iter().any(|(_, text, _)| domain::orm::has_marker(text))
             || diff.deleted.iter().any(|p| is_entity_candidate(&p.to_string_lossy()));
-        if since.is_none() || entity_marker_changed || touched.iter().any(|p| is_domain_path(p)) {
+        if since.is_none() || self.force_domain || entity_marker_changed || touched.iter().any(|p| is_domain_path(p)) {
             let input = self.domain_input(&dirty_paths)?;
             let graph = domain::graph::build(&input);
             let (existing_nodes, existing_edges) = match (&self.domain_state, &self.csr) {
@@ -346,9 +355,16 @@ fn is_domain_path(path: &str) -> bool {
 }
 
 impl SyncOrchestrator<'_> {
-    /// Reads every file the domain pass needs: schema candidates, manifests and entity-looking code.
     fn domain_input(&self, dirty_paths: &[PathBuf]) -> Result<DomainInput, SyncOrchestratorError> {
-        let mut tracked: Vec<String> = self.git.tracked_paths_at_head()?.iter().map(|p| p.to_string_lossy().replace('\\', "/")).collect();
+        collect_domain_input(&self.git, dirty_paths)
+    }
+}
+
+/// Reads every file the domain pass needs: schema candidates, manifests and entity-looking code,
+/// plus what the last `extract --postgres` saved.
+pub fn collect_domain_input(git: &GitSource, dirty_paths: &[PathBuf]) -> Result<DomainInput, SyncOrchestratorError> {
+    {
+        let mut tracked: Vec<String> = git.tracked_paths_at_head()?.iter().map(|p| p.to_string_lossy().replace('\\', "/")).collect();
         tracked.extend(dirty_paths.iter().map(|p| p.to_string_lossy().replace('\\', "/")));
         tracked.sort();
         tracked.dedup();
@@ -358,21 +374,22 @@ impl SyncOrchestrator<'_> {
                 continue;
             }
             if domain::liquibase::is_candidate(path) {
-                if let Some(text) = read_repo_text(&self.git, path) {
+                if let Some(text) = read_repo_text(git, path) {
                     input.schema_files.push((path.clone(), text));
                 }
             } else if domain::manifest::is_manifest(path) {
-                if let Some(text) = read_repo_text(&self.git, path) {
+                if let Some(text) = read_repo_text(git, path) {
                     input.manifests.push((path.clone(), text));
                 }
             } else if is_entity_candidate(path)
-                && let Some(text) = read_repo_text(&self.git, path)
+                && let Some(text) = read_repo_text(git, path)
                 && (path.ends_with(".prisma") || domain::orm::has_marker(&text))
             {
                 input.entity_files.push((path.clone(), text));
             }
         }
         input.tracked = tracked.into_iter().collect();
+        input.live = git.work_dir().and_then(domain::live::load);
         Ok(input)
     }
 }
