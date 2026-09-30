@@ -59,7 +59,7 @@ Primeiro corte = T-901…T-906 incluindo T-903b, T-904b, T-904c (aprovado em 202
 - **Done when**: testes: (a) índice novo grava o formato; (b) índice com formato antigo é apagado e `sync` seguinte o reconstrói com o mesmo resultado de um índice novo; (c) arquivos fora de `index_dir` (ex.: `.specs/graph/x`) permanecem intactos.
 - **Gate**: `cargo test engine && cargo test --test cli_integration`
 
-## T-905: Regressões nomeadas (REQ-905) [ ]
+## T-905: Regressões nomeadas (REQ-905) [x]
 - **REQ**: REQ-905
 - **What**: `tests/regressions.rs` com: `regression_csr_upsert_bulk_is_linear` (a; 200k upserts < 2 s e razão 2N/N < 2,5), `regression_noop_sync_stages_nothing` (b; segundo `sync` → `target_version == None`, WAL não cresce), `regression_untracked_only_tree_is_indexed` (c), `regression_dirty_respects_git_status_with_autocrlf` (d; `core.autocrlf=true`, arquivos CRLF não tocados não aparecem), `regression_abstract_class_enum_type_alias_are_symbols` (e), `regression_prefixed_and_suffixed_requirement_ids` (f; `REQ-CTR-001`, `REQ-021b`), `regression_task_links_to_requirement_across_files` (g; `trace REQ-…` devolve o implementador). Cada um falha se a correção correspondente for revertida (verificar revertendo localmente uma vez por teste).
 - **Where**: `tests/regressions.rs`

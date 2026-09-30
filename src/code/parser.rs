@@ -240,7 +240,13 @@ pub fn extract(
                     payload: Vec::new(),
                 });
 
-                if let Some(comment) = def_node
+                // `/** @spec REQ-1 */ export function f() {}`: the comment is a
+                // sibling of the `export_statement`, not of the declaration.
+                let comment_anchor = def_node
+                    .parent()
+                    .filter(|p| p.kind() == "export_statement")
+                    .unwrap_or(def_node);
+                if let Some(comment) = comment_anchor
                     .prev_sibling()
                     .filter(|s| s.kind().contains("comment"))
                     && let Ok(comment_text) = comment.utf8_text(source_bytes)
@@ -471,5 +477,18 @@ export type Id = string;
         let set = extract_at(source, Language::Rust);
         let f = symbol_id(&set, "f");
         assert!(has_edge(&set, f, marker_node_id("REQ-999"), EdgeType::Satisfies));
+    }
+
+    #[test]
+    fn spec_annotation_above_an_exported_declaration_is_honoured() {
+        let source = "/** @spec REQ-888 */
+export function exported() {}
+
+// @spec REQ-889
+function local() {}
+";
+        let set = extract_at(source, Language::TypeScript);
+        assert!(has_edge(&set, symbol_id(&set, "exported"), marker_node_id("REQ-888"), EdgeType::Satisfies));
+        assert!(has_edge(&set, symbol_id(&set, "local"), marker_node_id("REQ-889"), EdgeType::Satisfies));
     }
 }
