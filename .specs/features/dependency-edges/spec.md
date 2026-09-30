@@ -18,6 +18,10 @@ Hoje o grafo tem `DefinedIn` (símbolo → arquivo), `Satisfies` (símbolo/task 
 - REQ-706: **Incrementalidade** — arestas são chaveadas pelo caminho de origem: alterar/renomear/apagar um arquivo remove as arestas antigas que partem dele (`EdgeMutation::Remove`) e reavalia dependentes cujo destino deixou de resolver. Renomeações e deleções não deixam arestas órfãs.
 - REQ-707: **Consulta** — `trace <símbolo|arquivo>` lista dependentes (`<-DependsOn`) e dependências; `diff --staged` usa as novas arestas para o raio de impacto; profundidade e volume limitados (teto de nós por hop, com contagem "+N omitidos") para não explodir em God nodes.
 - REQ-708: **Custo** — extração paralela (rayon) e ≤ 20% de aumento no tempo do primeiro `sync` do repositório de referência (ver Fase 9); sync sem mudanças continua < 2 s.
+- REQ-709: **Vocabulário de arestas** — além de `DependsOn` genérico, tipos específicos (derivados do levantamento do graphify: `imports`, `imports_from`, `re_exports`, `calls`, `instantiates`, `extends`/`implements`, `references`, `uses`): `Imports` (arquivo→arquivo), `ReExports`, `Calls`, `Instantiates`, `Extends`, `References`. `DependsOn` permanece como agregado consultável. Tipos novos entram no enum `EdgeType` sem quebrar índices existentes (reindexar é aceitável).
+- REQ-710: **Confiança e contexto por aresta** — cada aresta grava `confidence` (`EXTRACTED` quando resolvida sem ambiguidade; `INFERRED` quando por nome/fallback) e `context` (`runtime`, `type-only`, `test`, `spec`). Consultas da Fase 11 filtram por eles.
+- REQ-711: **Fatos de resolução de símbolo** — o extrator coleta declarações, exports, imports, aliases (`import {A as B}`), `export * from`, `export * as ns`, namespaces (`import * as ns`) e usos, e resolve em uma segunda etapa de forma **conservadora** (só liga quando o destino é único; ambíguo → `INFERRED` ou nenhuma aresta), no mesmo modelo do `symbol_resolution.py` do graphify.
+- REQ-712: **Ciclos de import** — o grafo de `Imports` expõe detecção de ciclos (consumida pelo `report`, Fase 10).
 
 ## Acceptance
 

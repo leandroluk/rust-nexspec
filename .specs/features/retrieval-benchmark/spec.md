@@ -17,6 +17,7 @@ Um benchmark reprodutível que mede (a) **qualidade** do ranking (o arquivo/sím
 - REQ-805: **Portões de qualidade** — `recall@5 ≥ 0,8` em `locate` no corpus próprio; regressão > 5 pontos vs. o último resultado gravado em `bench/baseline.json` falha o CI.
 - REQ-806: **Melhorias de ranking rastreadas pelo benchmark** — tokenização ciente de identificadores (camelCase/snake_case/PascalCase), boost por nome de símbolo e por caminho (`outbox.decorator.ts`), penalização de arquivos genéricos de mesmo padrão, e revisão do peso BM25 × vetor (RRF). Cada mudança de ranking apresenta delta no benchmark.
 - REQ-807: **Relatório honesto** — separa economia "de localização" de custo fixo do fluxo (ex.: contexto carregado por sessão pela skill), para não superestimar o ganho total.
+- REQ-808: **Paridade com o `benchmark` do graphify** — inclui o baseline "corpus inteiro" (tokens de ler todos os arquivos indexados) e reporta a razão de redução no mesmo formato do `graphify benchmark`, para comparação direta entre as duas ferramentas sobre as mesmas perguntas (`graphify-parity`, REQ-P03).
 
 ## Out of Scope
 

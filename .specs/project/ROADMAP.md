@@ -20,6 +20,13 @@ começar a ser trabalhada.
 | 8 | Retrieval Benchmark | Corpus de perguntas + `nexspec bench`: recall@k/MRR, tokens vs. baselines (grep, leitura de arquivos), portão de qualidade e ranking ciente de identificadores | **Planejado** (`.specs/features/retrieval-benchmark/`) |
 | 9 | Performance & Scale Guard | Repositório sintético determinístico, orçamentos de tempo em CI (Windows+Linux), teto de co-change, micro-benchmarks, regressões nomeadas dos bugs reais, espera de lock do redb, higiene do WAL | **Planejado** (`.specs/features/performance-guard/`) |
 | 10 | Report Command | `nexspec report`: God nodes, comunidades + coesão, cobertura de requisitos (REQ órfãos/sem implementação), saída com orçamento de tokens e tool MCP | **Planejado** (`.specs/features/report-command/`) — depende da Fase 7 |
+| 11 | Graph Query Surface | `query` (BFS/DFS com orçamento e filtro de contexto), `path A B`, `explain X`, `affected X` (reverso por relação/profundidade), confiança `EXTRACTED`/`INFERRED` nas saídas, tools MCP equivalentes | **Planejado** (`.specs/features/graph-query-surface/`) — depende da Fase 7 |
+| 12 | Graph Export | `export` JSON portátil versionado, HTML autocontido, árvore colapsável e wiki por comunidade (GraphML/SVG/Obsidian/Neo4j adiados) | **Planejado** (`.specs/features/graph-export/`) |
+| 13 | Multi-Repo Graph | grafo global, `merge-graphs`, ligação entre repositórios (pacotes, rotas), consultas `--global`, merge driver do Git | **Planejado** (`.specs/features/multi-repo-graph/`) |
+| 14 | Domain Extractors | mecanismo de *language pack*; DDL/Liquibase (tabelas, views, FKs, ponte tabela↔entidade), manifestos (`package.json`/`tsconfig`/`Cargo.toml`), introspecção Postgres opt-in | **Planejado** (`.specs/features/domain-extractors/`) |
+| 15 | Work Memory | `save-result` + `reflect` determinísticos (lições, becos sem saída) e boost leve no ranking | **Planejado** (`.specs/features/work-memory/`) |
+| 16 | Workflow Integration | `watch`, `hook install`, `check-update`, `install --platform` (MCP), `doctor` | **Planejado** (`.specs/features/workflow-integration/`) |
+| 17 | LLM Enrichment (opt-in) | provedor plugável, rótulos de comunidade e extração semântica de docs — **atrás de portão de decisão** | **Condicional** (`.specs/features/llm-enrichment/`) |
 
 ### Nota — por que a Fase 0 existe e vem antes de tudo
 
@@ -82,3 +89,17 @@ Os critérios para substituir o graphify de vez: Fase 8 com `recall@5 ≥ 0,8` e
 - **Alinhar promessas ao que existe:** remover "God Node (degree N)"/coesão dos templates de `specify.md` e `design.md`
   até a Fase 10 existir; depois trocar por `nexspec report`.
 - **Adotar ids com prefixo de feature** (`REQ-CTR-001`) — já suportado pelo `nexspec` desde 2026-09-29.
+
+## Plano "aposentar o graphify" (registrado em 2026-09-29)
+
+Guarda-chuva: `.specs/features/graphify-parity/spec.md` (matriz de paridade capacidade a capacidade, levantada lendo o código
+do `graphifyy 0.9.61`, critério objetivo de saída e teste das 10 perguntas). Resumo das prioridades:
+
+- **P0 (bloqueiam a troca):** Fases 7, 8, 9, 10 e 11.
+- **P1 (fluxo diário):** Fase 16 (watch/hooks/MCP), Fase 14 (SQL/Liquibase e manifestos), Fase 12 (JSON + HTML + wiki).
+- **P2:** Fase 13 (multi-repo), Fase 15 (memória de trabalho).
+- **P3 / condicional:** Fase 17 (LLM) — só se a Fase 8 e o teste das 10 perguntas provarem que a falta de semântica dói.
+- **Fora de escopo:** áudio/vídeo, PDFs/Office, Google Workspace, `add <url>`/`clone`, painel de PRs.
+
+Critério para o graphify sair da skill: linhas P0 entregues + `recall@5 ≥ 0,8` (Fase 8) + teste das 10 perguntas aprovado +
+2 semanas de uso diário sem recorrer a ele. Até lá, permanece congelado como fallback.
