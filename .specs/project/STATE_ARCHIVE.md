@@ -349,3 +349,16 @@ contra specs do mesmo ciclo.
 - [x] T-601..T-612: Fase 6 completa (ver Feature "cli-mcp-server" abaixo)
 
 ---
+
+## Archive — 2026-09-30 (compaction 3)
+
+### Lesson
+- [2026-09-29] Testes unitarios passavam com todos esses bugs presentes: so o dogfooding em repositorio real (1,3 mil arquivos, 160 commits, commit de 800 arquivos) os expos. Escala e plataforma precisam de teste com orcamento de tempo (Fase 9).
+- 2026-09-28 Um trait genérico (`SyncParticipant`) desenhado antes de seus
+  consumidores reais existirem tende a forçar pelo menos um refino de
+  assinatura/tipo quando o primeiro consumidor real chega (`Csr::base` →
+  `ArcSwap`, `CsrParticipant` → `Arc<Csr>`). Não é falha de design — é o
+  próprio propósito de validar cedo — mas vale orçar esse retrabalho ao
+  planejar a fase seguinte que reusa um trait ainda jovem.
+
+---

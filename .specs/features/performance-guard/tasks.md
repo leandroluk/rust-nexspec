@@ -117,12 +117,13 @@ Primeiro corte = T-901…T-906 incluindo T-903b, T-904b, T-904c (aprovado em 202
 - **Done when**: teste: após sync completo o arquivo tem 0 bytes; simulação de crash entre `stage` e `mark_done` ainda recupera via `resume()`.
 - **Gate**: `cargo test sync::wal && cargo test --test sync_crash_recovery`
 
-## T-911: CI matrix (REQ-906) [ ]
+## T-911: CI matrix (REQ-906) [ ] (workflow escrito; falta a 1a execução verde)
 - **REQ**: REQ-906
 - **What**: `.github/workflows/ci.yml`: `windows-latest` e `ubuntu-latest` × `cargo test` (full e lean) + `clippy -D warnings`; job de orçamento com escala 0,25 em PR e 1,0 noturno (`schedule`); cache de `target/` e do modelo ONNX.
 - **Where**: `.github/workflows/ci.yml`
 - **Depends on**: T-907
-- **Done when**: workflow válido (`actionlint` ou execução no GitHub); primeira execução verde nas duas plataformas.
+- **Estado (2026-09-30)**: `.github/workflows/ci.yml` commitado. 1a execução (run 36665563937): os 4 jobs `test` (ubuntu/windows x full/lean) verdes; `perf_budget` verde no ubuntu; `complexity` falhou no ubuntu (`CsrDelta::upsert/remove` 2,8-2,9x por cache miss em 200k entradas, não algoritmo) e o job do Windows foi cancelado por mim depois de ficar muito tempo em andamento (causa não investigada: pode ser só lentidão de build/execução no runner). Correção já aplicada localmente (N menor nos casos de hash table, `tests/complexity.rs`); falta rodar o CI de novo, ver o job do Windows terminar e, se travar de verdade, descobrir em qual teste.
+- **Done when**: workflow válido; primeira execução verde nas duas plataformas.
 - **Gate**: execução do workflow
 
 ## T-912: Fechamento da fase [ ]

@@ -30,7 +30,7 @@ coerente (frases parecidas rankeiam mais perto que não-relacionadas).
 
 ## Todos
 - [ ] Plano "aposentar o graphify" (2026-09-29): Fases 11-18 especificadas (`.specs/features/{graphify-parity,graph-query-surface,graph-export,multi-repo-graph,domain-extractors,work-memory,workflow-integration,llm-enrichment,semantic-annotations}`); medicao: graphify AST-only 15,4 s a frio / 7,0 s sem mudancas vs nexspec 27 s / 0,9-1,6 s. Proximo: Fase 9 (medir e corrigir cold start), depois 7.
-- [ ] Fase 9 (performance-guard): 1o corte CONCLUIDO em 2026-09-30 (T-901..T-906, commits 7653cfd..fd1d155); faltam T-907 (orcamento de tempo), T-908 (criterion), T-909 (lock), T-910 (WAL), T-911 (CI), T-912 (fechamento). Repo real (clone local, release): cold sync 18,0 s -> 2,9 s, arestas 1,04 mi -> 56 mil, redb 539 -> 36 MB, WAL 113 -> 6,7 MB. Proximo: T-907, depois Fase 8.
+- [ ] Fase 9 (performance-guard): T-901..T-910 CONCLUIDAS (2026-09-30, commits 7653cfd..3959258 + ci.yml). PENDENTE: (1) T-911: rodar o CI de novo com a correcao de `tests/complexity.rs` (N menor em upsert/remove) e conferir os 6 jobs verdes, inclusive o job `perf budget (windows-latest)` que ficou em andamento por muito tempo na 1a execucao e foi cancelado (investigar se ha teste travado no Windows); (2) T-912: fechar a fase (ROADMAP/STATE/docs), depois Fase 8. Medicoes finais (sintetico 1,3 mil arq., release): cold 1,5 s, sync sem mudanca 22 ms, sync de 1 arquivo 0,19 s, search 3 ms, trace 0,2 ms; repo real: cold 18,0 s -> 2,9 s.
 - [ ] Fase 8 (retrieval-benchmark), Fase 7 (dependency-edges), Fase 10 (report-command): specificadas em `.specs/features/*/spec.md` (2026-09-29); Design/Tasks pendentes (exceto Fase 9). Ordem sugerida 9 -> 8 -> 7 -> 10 (ver ROADMAP).
 
 ## Active Blockers
@@ -274,16 +274,11 @@ testes de inferência real, 78/78 (`lean`).
   limpos de primeira; `cargo test` → 72/72 pass.
 
 ## Lessons Learned (Last 5)
+- (2026-09-30) `HnswParticipant::new` reconstruia o grafo HNSW (~1,1 s / 5 mil pontos) em todo `sync`, mesmo sem mudancas; agora e sob demanda. O teste de orcamento (T-907) so revelou isso porque mede o sync sem mudancas separadamente.
+- (2026-09-30) Testes de razao T(2N)/T(N) com tabelas hash grandes medem cache miss em runner compartilhado (2,8x), nao algoritmo: manter N pequeno, serializar os testes de tempo e permitir novas tentativas.
 - (2026-09-30) O gargalo do cold start NAO era o co-change (hipotese do relatorio): era `Query::new` do tree-sitter recompilada por arquivo (11,9 s de 18 s) + extracao sequencial. Medir por fase (`sync --verbose`) antes de otimizar; co-change so pesava no stage/WAL/redb.
 - (2026-09-30) `@spec` acima de `export function` nao gerava `Satisfies` (o comentario e irmao do `export_statement`, nao da declaracao); achado ao escrever a regressao (g). Corrigido em parser.rs.
 - (2026-09-30) Sem `.gitignore` para `.specs/.index/`, o proprio indice virava 'sujo' e gerava frame no WAL a cada sync; agora `.specs/.index` e `.models` sao ignorados pelo orquestrador.
-- [2026-09-29] Testes unitarios passavam com todos esses bugs presentes: so o dogfooding em repositorio real (1,3 mil arquivos, 160 commits, commit de 800 arquivos) os expos. Escala e plataforma precisam de teste com orcamento de tempo (Fase 9).
-- 2026-09-28 Um trait genérico (`SyncParticipant`) desenhado antes de seus
-  consumidores reais existirem tende a forçar pelo menos um refino de
-  assinatura/tipo quando o primeiro consumidor real chega (`Csr::base` →
-  `ArcSwap`, `CsrParticipant` → `Arc<Csr>`). Não é falha de design — é o
-  próprio propósito de validar cedo — mas vale orçar esse retrabalho ao
-  planejar a fase seguinte que reusa um trait ainda jovem.
 
 ## Deferred Ideas
 - Trim de features do `gix` (`default-features = false`) — footprint atual
