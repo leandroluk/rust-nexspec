@@ -182,6 +182,9 @@ mod tests {
             overall: summary(0.0, 0.0),
             by_kind,
             reduction_ratio: 0.0,
+            avg_query_tokens: 0.0,
+            fixed_cost: None,
+            break_even: None,
         }
     }
 

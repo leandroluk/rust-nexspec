@@ -56,6 +56,10 @@ struct BenchArgs {
     /// Absolute floor for `locate` recall@5 used by `--check`.
     #[arg(long, default_value_t = 0.8)]
     min_locate_recall: f64,
+    /// A file an agent loads every session regardless of the question (repeatable);
+    /// reported as a fixed cost with its break-even point.
+    #[arg(long = "fixed-cost-file")]
+    fixed_cost_files: Vec<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -212,7 +216,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             run_mcp(engine)?;
         }
         Command::Bench(args) => {
-            let BenchArgs { corpus, ks, index_dir, format, tokenizer, budget, output, no_vector, check, update_baseline, min_locate_recall } = *args;
+            let BenchArgs { corpus, ks, index_dir, format, tokenizer, budget, output, no_vector, check, update_baseline, min_locate_recall, fixed_cost_files } = *args;
             use nexspec::bench::{report, runner};
             let corpus_path = corpus.unwrap_or_else(|| runner::default_corpus_path(&repo));
             let corpus = nexspec::bench::Corpus::load(&corpus_path)?;
@@ -230,6 +234,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             options.budget_tokens = budget;
             options.tokenizer = tokenizer;
             options.vector_search = !no_vector;
+            options.fixed_cost_files = fixed_cost_files;
             let result = runner::run(&corpus, &options)?;
             let text = if format == "json" { report::to_json(&result) } else { report::to_markdown(&result) };
             match output {

@@ -64,6 +64,10 @@ pub struct BenchOptions {
     /// Use the vector half of hybrid search when a model is present. `false`
     /// makes the run reproducible across machines (BM25 only).
     pub vector_search: bool,
+    /// Files an agent loads at the start of every session regardless of the
+    /// question (e.g. STATE.md, the skill): their tokens are reported as a
+    /// fixed cost, never folded into the per-question numbers.
+    pub fixed_cost_files: Vec<PathBuf>,
 }
 
 impl BenchOptions {
@@ -75,6 +79,7 @@ impl BenchOptions {
             budget_tokens: 2000,
             tokenizer: TokenizerKind::Heuristic,
             vector_search: true,
+            fixed_cost_files: Vec::new(),
         }
     }
 }
@@ -118,6 +123,24 @@ pub struct KindSummary {
     pub savings_vs_corpus: f64,
 }
 
+/// Tokens loaded once per session, outside any single question.
+#[derive(Debug, Clone, Serialize)]
+pub struct FixedCost {
+    pub files: Vec<(String, u32)>,
+    pub total_tokens: u32,
+}
+
+/// How many questions it takes for the fixed cost to pay for itself.
+#[derive(Debug, Clone, Serialize)]
+pub struct BreakEven {
+    /// Against `grep -rn` per question; `null` when nexspec's answer costs
+    /// at least as much as grep's, so the fixed cost never pays back.
+    pub vs_grep_questions: Option<f64>,
+    /// Against reading the expected files whole (only questions that have
+    /// file expectations); `null` likewise.
+    pub vs_read_questions: Option<f64>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct BenchReport {
     pub tool_version: String,
@@ -140,6 +163,11 @@ pub struct BenchReport {
     pub overall: KindSummary,
     /// `corpus_tokens / mean nexspec tokens per query` (graphify benchmark's ratio).
     pub reduction_ratio: f64,
+    /// Mean tokens of a nexspec answer per question.
+    pub avg_query_tokens: f64,
+    pub fixed_cost: Option<FixedCost>,
+    /// Present only with a fixed cost.
+    pub break_even: Option<BreakEven>,
 }
 
 pub fn run(corpus: &Corpus, options: &BenchOptions) -> Result<BenchReport, BenchError> {
@@ -217,6 +245,33 @@ pub fn run(corpus: &Corpus, options: &BenchOptions) -> Result<BenchReport, Bench
     };
     let reduction_ratio = if mean_tokens > 0.0 { corpus_tokens as f64 / mean_tokens } else { 0.0 };
 
+    let fixed_cost = if options.fixed_cost_files.is_empty() {
+        None
+    } else {
+        let mut files = Vec::new();
+        for path in &options.fixed_cost_files {
+            let text = std::fs::read_to_string(path)?;
+            files.push((path.display().to_string(), tokenizer.estimate(&text)));
+        }
+        let total_tokens = files.iter().map(|(_, t)| *t).sum();
+        Some(FixedCost { files, total_tokens })
+    };
+    let break_even = fixed_cost.as_ref().map(|fixed| {
+        let n = results.len().max(1) as f64;
+        let saving_per_question = |baseline: f64, nexspec: f64| (baseline > nexspec).then(|| fixed.total_tokens as f64 / (baseline - nexspec));
+        let grep_avg = results.iter().map(|r| r.tokens_grep as f64).sum::<f64>() / n;
+        let with_read: Vec<&QueryResult> = results.iter().filter(|r| r.tokens_read.is_some()).collect();
+        let vs_read = (!with_read.is_empty())
+            .then(|| {
+                let m = with_read.len() as f64;
+                let read_avg = with_read.iter().map(|r| r.tokens_read.unwrap_or(0) as f64).sum::<f64>() / m;
+                let nex_avg = with_read.iter().map(|r| r.tokens_nexspec as f64).sum::<f64>() / m;
+                saving_per_question(read_avg, nex_avg)
+            })
+            .flatten();
+        BreakEven { vs_grep_questions: saving_per_question(grep_avg, mean_tokens), vs_read_questions: vs_read }
+    });
+
     Ok(BenchReport {
         tool_version: env!("CARGO_PKG_VERSION").to_string(),
         repo: display_path(&repo),
@@ -233,6 +288,9 @@ pub fn run(corpus: &Corpus, options: &BenchOptions) -> Result<BenchReport, Bench
         by_kind,
         overall,
         reduction_ratio,
+        avg_query_tokens: mean_tokens,
+        fixed_cost,
+        break_even,
     })
 }
 

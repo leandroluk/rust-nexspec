@@ -91,6 +91,36 @@ pub fn to_markdown(report: &BenchReport) -> String {
         report.reduction_ratio
     );
 
+    let _ = writeln!(
+        md,
+        "graphify-style summary: naive corpus read = {} tokens, average nexspec answer = {:.0} tokens, reduction = {:.1}x\n",
+        report.corpus_tokens, report.avg_query_tokens, report.reduction_ratio
+    );
+
+    let _ = writeln!(md, "## What the saving does not include\n");
+    match (&report.fixed_cost, &report.break_even) {
+        (Some(fixed), Some(break_even)) => {
+            let _ = writeln!(md, "Fixed cost loaded at the start of every session, independent of the question: **{} tokens**.\n", fixed.total_tokens);
+            for (path, tokens) in &fixed.files {
+                let _ = writeln!(md, "- `{path}`: {tokens} tokens");
+            }
+            let describe = |questions: Option<f64>| match questions {
+                Some(n) => format!("pays for itself after ~{:.0} questions per session", n.ceil()),
+                None => "never pays for itself at this answer budget (nexspec's answer costs at least as much per question)".to_string(),
+            };
+            let _ = writeln!(md, "\nAgainst `grep -rn`: {}.", describe(break_even.vs_grep_questions));
+            let _ = writeln!(md, "Against reading the expected files: {}.\n", describe(break_even.vs_read_questions));
+        }
+        _ => {
+            let _ = writeln!(
+                md,
+                "No fixed per-session cost was given (`--fixed-cost-file`). The savings above are for *locating* code only; \
+                 context loaded every session (STATE.md, the skill) is not counted and is paid even for questions that never \
+                 touch the index.\n"
+            );
+        }
+    }
+
     let _ = writeln!(md, "## Queries\n");
     let _ = writeln!(md, "| id | kind | ranks of expected | nexspec tok | grep tok | read tok | ms |");
     let _ = writeln!(md, "|---|---|---|---:|---:|---:|---:|");

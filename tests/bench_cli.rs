@@ -137,3 +137,44 @@ fn bad_corpus_and_bad_flags_fail_with_a_readable_error() {
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("unknown format"));
 }
+
+#[test]
+fn report_without_a_fixed_cost_says_the_saving_is_for_locating_only() {
+    let repo = fixture();
+    let corpus_dir = tempfile::TempDir::new().unwrap();
+    let corpus = write_corpus(corpus_dir.path());
+    let out = bench(repo.path(), &corpus, &[]);
+    let md = String::from_utf8_lossy(&out.stdout);
+    assert!(md.contains("## What the saving does not include"), "{md}");
+    assert!(md.contains("No fixed per-session cost was given"), "{md}");
+    assert!(md.contains("graphify-style summary: naive corpus read ="), "{md}");
+    assert!(md.contains("reduction ="), "{md}");
+}
+
+#[test]
+fn fixed_cost_files_are_reported_separately_with_a_break_even() {
+    let repo = fixture();
+    let dir = tempfile::TempDir::new().unwrap();
+    let corpus = write_corpus(dir.path());
+    let state = dir.path().join("STATE.md");
+    std::fs::write(&state, "context loaded every session ".repeat(200)).unwrap();
+
+    let out = bench(repo.path(), &corpus, &["--format", "json", "--fixed-cost-file", state.to_str().unwrap()]);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+
+    let fixed = &report["fixed_cost"];
+    assert!(fixed["total_tokens"].as_u64().unwrap() > 1000, "{fixed}");
+    assert_eq!(fixed["files"].as_array().unwrap().len(), 1);
+    assert!(report["avg_query_tokens"].as_f64().unwrap() >= 0.0);
+    // Per-question numbers must not have absorbed the fixed cost.
+    let overall = report["overall"]["tokens_nexspec"].as_u64().unwrap();
+    assert!(overall < fixed["total_tokens"].as_u64().unwrap() * 4, "fixed cost stays out of the per-question totals");
+    assert!(report["break_even"].is_object());
+
+    let md_out = bench(repo.path(), &corpus, &["--fixed-cost-file", state.to_str().unwrap()]);
+    let md = String::from_utf8_lossy(&md_out.stdout);
+    assert!(md.contains("Fixed cost loaded at the start of every session"), "{md}");
+    assert!(md.contains("STATE.md"), "{md}");
+    assert!(md.contains("pays for itself") || md.contains("never pays for itself"), "{md}");
+}
