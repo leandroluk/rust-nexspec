@@ -1,0 +1,21 @@
+---
+title: "Phase 2 · Git Integration"
+description: Native gix diffing, incremental sync and commit-to-spec linking.
+---
+
+Connects NexSpec to the real Git history using `gix` (pure Rust, no subprocesses). It decides **what changed** since the last index, so a sync never reprocesses the whole repository.
+
+Source: `.specs/features/git-integration/`
+
+## Requirements
+
+| ID | Summary |
+| --- | --- |
+| REQ-201 | `gix` embedded in-process; no `git` subshell in any code path. |
+| REQ-202 | `last_indexed_commit` tracked in `metadata.redb`, versioned together with `sync_version`. |
+| REQ-203 | `diff_since_last_index()` — in-memory tree diff between `HEAD` and the last indexed commit, classifying paths as `Added`, `Modified` or `Deleted`. |
+| REQ-204 | Uncommitted changes are included through an ephemeral per-file Blake3 hash cache. |
+| REQ-205 | `SyncOrchestrator` sends changed `.md` files to the Markdown extractor and emits `Remove` mutations for deleted files, in a single `stage()` per cycle. |
+| REQ-206 | Co-change graph over a bounded window (default: last 500 commits or 6 months, whichever is smaller); an API flag opts into full history. |
+| REQ-207 | Commit messages mentioning `REQ-XXX` / `TASK-XXX` / `ADR-XXX` are linked (OID, timestamp, author) to the matching node. |
+| REQ-208 | Works on detached HEAD and dirty working trees. Submodules, `git-lfs` and sparse checkout are out of scope. |

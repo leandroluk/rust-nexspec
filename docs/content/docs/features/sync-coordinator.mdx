@@ -1,0 +1,24 @@
+---
+title: "Phase 0 · Sync Coordinator"
+description: Transactional integrity across four independent stores.
+---
+
+NexSpec persists one logical graph in four physically independent stores (`redb`, the CSR file, Tantivy and HNSW). The Sync Coordinator is the **only write path** to all of them, so a sync cycle is seen by every reader as either "everything happened" or "nothing happened".
+
+Source: `.specs/features/sync-coordinator/`
+
+## Requirements
+
+| ID | Summary |
+| --- | --- |
+| REQ-001 | Every sync cycle writes its mutation intent to `.specs/.index/sync.wal` before touching any store. |
+| REQ-002 | A monotonic `sync_version: u64` in `metadata.redb` marks the last fully committed version; readers never see data beyond it. |
+| REQ-003 | Each store writes to its own staging path and is promoted by atomic rename only after all four confirm. |
+| REQ-004 | `nexspec sync --resume` deterministically re-applies or discards unconfirmed WAL entries after a crash. |
+| REQ-005 | All mutations are idempotent — replaying a WAL entry never duplicates edges or documents. |
+| REQ-006 | A single internal API, `stage(mutations) → commit() \| abort()`, is the only way later phases write. |
+| REQ-007 | A normal sync is externally observable as one atomic transaction. |
+
+## Resume semantics
+
+On startup, any WAL frame that is not fully applied is inspected. If no store promoted the mutation, it is **re-applied**; if every store already promoted it, it is **discarded**. The index never serves partial state.

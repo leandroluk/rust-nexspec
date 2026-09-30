@@ -1,0 +1,32 @@
+---
+title: "Phase 3 · AST & Lexical Search"
+description: Tree-sitter symbol extraction and Tantivy BM25 search.
+---
+
+Extends the graph beyond Markdown: Tree-sitter extracts symbols, imports and `@spec` / `@adr` annotations from real source code, and Tantivy provides the first full-text search engine.
+
+Source: `.specs/features/ast-lexical-search/`
+
+## Requirements
+
+| ID | Summary |
+| --- | --- |
+| REQ-301 | Statically linked Tree-sitter grammars for TypeScript/JavaScript, Python, Go and Rust. |
+| REQ-302 | `code::extract(source, language) → MutationSet` produces one `Symbol` node per function/method, type/class/struct and top-level module, with name, signature and `line_start..line_end`. |
+| REQ-303 | `DefinedIn` edges (symbol → file) and `DependsOn` edges (caller → callee) when both resolve in the same file. Cross-file resolution is out of scope. |
+| REQ-304 | `@spec REQ-XXX` / `@adr ADR-XXX` annotations in adjacent comments create `Satisfies` edges to the spec node. |
+| REQ-305 | Cold-start parsing runs in parallel with `rayon`. |
+| REQ-306 | `SyncOrchestrator::run_once()` routes `.ts/.tsx/.js/.jsx/.py/.go/.rs` files to `code::extract()`, within the same single `stage()`. |
+| REQ-307 | Tantivy BM25 index over symbols, requirement IDs and file paths, with an exact-identifier fast path. |
+| REQ-308 | `TantivyParticipant` implements `SyncParticipant` and is never written outside the staging protocol. |
+
+## Annotating code
+
+```ts
+/** @spec REQ-105 */
+export function compactDelta(base: Csr, delta: Delta): Csr {
+  // ...
+}
+```
+
+The `Satisfies` edge created from that annotation is what `nexspec trace REQ-105` follows.

@@ -1,0 +1,25 @@
+---
+title: "Phase 4 · Vector Engine"
+description: Lazy ONNX embeddings, HNSW, RRF fusion and k-hop expansion.
+---
+
+Adds semantic search and fuses it with the lexical index via Reciprocal Rank Fusion. The central idea is to **isolate** the heavy, optional runtime dependency (ONNX Runtime plus a ~30 MB model) so the rest of NexSpec never pays for it unless needed.
+
+Source: `.specs/features/vector-engine/`
+
+## Requirements
+
+| ID | Summary |
+| --- | --- |
+| REQ-401 | `ort` (ONNX Runtime, CPU) is lazily initialized — nothing loads at process startup, only on the first call that needs embeddings. |
+| REQ-402 | INT8-quantized model (`all-MiniLM-L6-v2` or `bge-small-en-v1.5`) plus tokenizer. Builds and tests run without the model; its absence is a clean runtime `ModelNotAvailable`, never a build failure. |
+| REQ-403 | HNSW index (`instant-distance`) persisted in `vectors.bin` as the fourth `SyncParticipant` (`HnswParticipant`). |
+| REQ-404 | The `lean` Cargo feature excludes `ort` and HNSW entirely — no binary-size or startup cost for CI-only builds. |
+| REQ-405 | `hybrid::seed_discovery(query)` queries Tantivy (BM25) and HNSW (cosine) together and fuses rankings with RRF. |
+| REQ-406 | `hybrid::expand(seeds, csr, edge_types, max_depth)` — depth-limited (default k = 1–2) expansion over base + delta, filtered by edge type. |
+
+## Lean build
+
+```bash
+cargo build --no-default-features --features lean
+```

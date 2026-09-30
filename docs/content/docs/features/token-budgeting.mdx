@@ -1,0 +1,22 @@
+---
+title: "Phase 5 · Token Budgeting"
+description: AST pruning, pluggable tokenizers and dense Markdown serialization.
+---
+
+Turns ranked retrieval results into a dense text payload that fits an explicit token budget: prune symbol bodies down to their signatures, then serialize by priority.
+
+Source: `.specs/features/token-budgeting/`
+
+## Requirements
+
+| ID | Summary |
+| --- | --- |
+| REQ-501 | **AST signature pruner** — keeps name, parameters, return type and type headers; replaces the body with `{ ... }` (or `...` for Python). Symbols without an identifiable body come back unchanged. |
+| REQ-502 | **Pluggable `Tokenizer` trait** — `estimate(text) → u32`. Default `tiktoken-rs` (`cl100k_base`); falls back offline to `ceil(char_count / 3.5)` instead of failing. |
+| REQ-503 | **Safety margin** — `Budget` applies a configurable margin (default 90%) to absorb drift between the local BPE estimate and the consuming model's real tokenizer. |
+| REQ-504 | **Deterministic priority cut** — target spec/ADR first, then seed symbols, then direct dependencies. Nodes past the cut are omitted entirely, never truncated. |
+| REQ-505 | **High-density Markdown serializer** — short `### <type> <name>` headers, pruned body in a fenced block with the detected language, no verbose metadata. |
+
+## Cut behavior
+
+`Budget::fit` stops at the first item that would overflow the effective limit and drops everything after it. It does not try smaller later items, which keeps the output deterministic.

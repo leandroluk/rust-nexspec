@@ -1,0 +1,30 @@
+---
+title: "Phase 6 · CLI & MCP Server"
+description: The Engine composition root, the nexspec CLI and the embedded MCP server.
+---
+
+The composition phase. Earlier phases delivered libraries; this one adds the `nexspec` binary and an MCP server, both backed by a new `Engine` that opens (or creates) `.specs/.index/` and rebuilds the sync participants each operation needs.
+
+Source: `.specs/features/cli-mcp-server/`
+
+## Requirements
+
+| ID | Summary |
+| --- | --- |
+| REQ-601 | **`Engine`** — opens/creates the index, keeps a long-lived `Arc<Csr>` for reads and rebuilds Redb/Tantivy/HNSW participants on demand for writes. |
+| REQ-602 | `nexspec init` — idempotent index creation. |
+| REQ-603 | `nexspec sync [--resume]` — one incremental cycle, optionally recovering first. |
+| REQ-604 | `nexspec compact` — force CSR delta compaction. |
+| REQ-605 | `nexspec search "<query>" [--max-tokens N]` — hybrid search, degrading to BM25 when vectors are unavailable; optional pruning + budgeting. |
+| REQ-606 | `nexspec trace <ID>` — deterministic dependency tree with depth and edge type. |
+| REQ-607 | `nexspec blame <SYMBOL> [--full-history]` — AST-aware blame via native `gix` blame scoped to the symbol's lines. |
+| REQ-608 | `nexspec diff --staged` — structural analysis of the dirty tree plus direct dependants. |
+| REQ-609 | Embedded MCP server (`nexspec mcp`, stdio) with six tools, each a thin wrapper over `Engine`. |
+
+## Design notes
+
+- CLI and MCP share the same `Engine` methods, so no business logic is duplicated.
+- The MCP layer uses dedicated DTOs (IDs as hex, payloads summarized) instead of serializing internal types directly.
+- Out of scope: HTTP/SSE transport, OAuth, filesystem watch/daemon mode, and automatic model download during `init`.
+
+See the [CLI reference](/docs/cli) and [MCP server](/docs/mcp) pages for usage.

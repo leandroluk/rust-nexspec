@@ -1,0 +1,77 @@
+---
+title: Getting started
+description: Build NexSpec, index a repository and run your first query.
+---
+
+## Requirements
+
+- A recent stable Rust toolchain (the crate uses **edition 2024**).
+- A Git repository to index.
+
+## Build
+
+```bash
+git clone https://github.com/leandroluk/rust-nexspec.git
+cd rust-nexspec
+cargo build --release
+```
+
+The binary is written to `target/release/nexspec`.
+
+### Full vs. lean builds
+
+| Build | Command | Includes |
+| --- | --- | --- |
+| `full` (default) | `cargo build --release` | Everything, including the ONNX embedder and HNSW vector index. |
+| `lean` | `cargo build --release --no-default-features --features lean` | No `ort` / HNSW at all. BM25 search, `trace`, `blame` and `diff` only — ideal for CI. |
+
+`scripts/check-lean-build.sh` verifies that a lean build really excludes `ort` and `instant-distance`.
+
+## Index a repository
+
+```bash
+# 1. Create .specs/.index/ (idempotent)
+nexspec --repo /path/to/project init
+
+# 2. Run one incremental sync against Git history
+nexspec --repo /path/to/project sync
+
+# 3. Search
+nexspec --repo /path/to/project search "token budget"
+```
+
+`--repo` defaults to the current directory, so inside the project you can drop it.
+
+## Get LLM-ready output
+
+Pass `--max-tokens` to prune symbol bodies to their signatures and serialize the
+result as dense Markdown that fits the budget (with a 90% safety margin):
+
+```bash
+nexspec search "sync coordinator" --max-tokens 4000
+```
+
+## Trace a requirement to code
+
+```bash
+nexspec trace REQ-105
+```
+
+## Optional: semantic search
+
+Vector search needs the `full` build **and** an embedding model on disk
+(`all-MiniLM-L6-v2`, INT8-quantized, ~23 MB, placed in `.models/`). If either is
+missing, search silently degrades to BM25 — it never errors.
+
+## Where the index lives
+
+Everything is stored under `.specs/.index/`:
+
+```text
+.specs/.index/
+├── metadata.redb   # node metadata + sync_version (redb, zstd-compressed payloads)
+├── sync.wal        # write-ahead log of pending mutations
+├── edges.bin       # CSR base layer (rkyv, memory-mapped)
+├── tantivy/        # BM25 lexical index
+└── vectors.bin     # HNSW index (full builds only)
+```

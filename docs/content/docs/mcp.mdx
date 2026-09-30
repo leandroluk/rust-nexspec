@@ -1,0 +1,34 @@
+---
+title: MCP server
+description: Use NexSpec from Claude Code, Cursor, Windsurf and any MCP client.
+---
+
+`nexspec mcp` starts an [MCP](https://modelcontextprotocol.io) server over **stdio**, built on the official Rust SDK (`rmcp`). Each tool is a thin wrapper over the same `Engine` methods the CLI uses, so behavior is identical.
+
+## Configure a client
+
+```json title=".mcp.json"
+{
+  "mcpServers": {
+    "nexspec": {
+      "command": "nexspec",
+      "args": ["--repo", ".", "mcp"]
+    }
+  }
+}
+```
+
+## Tools
+
+| Tool | Parameters | Description |
+| --- | --- | --- |
+| `query_context` | `query`, `max_tokens?` | Hybrid search over specs, code and docs, with optional token-budgeted dense Markdown. |
+| `semantic_search` | `query` | Vector similarity search; degrades to BM25 when no embedding model is available. |
+| `trace_requirement` | `target` | Deterministic topological trace of a requirement, ADR or symbol. |
+| `find_impacted_code` | — | Changed symbols in the dirty tree and their direct dependants. |
+| `get_symbol_history` | `symbol`, `full_history?` | AST-aware blame scoped to the symbol, plus co-changing files. |
+| `sync_workspace` | `resume?` | Run one incremental sync cycle. |
+
+<Callout type="info">
+  Only stdio is supported. HTTP/SSE transports and OAuth are out of scope for a local, single-repo server.
+</Callout>

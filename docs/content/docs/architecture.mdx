@@ -1,0 +1,89 @@
+---
+title: Architecture
+description: Stores, the two-layer graph, the sync protocol and the retrieval pipeline.
+---
+
+## The graph
+
+Every entity is a typed **node** with a stable ID; relations are typed **edges**.
+
+| Nodes | Edges |
+| --- | --- |
+| `Requirement`, `Task`, `Adr`, `DocSection`, `Symbol`, `File` | `Satisfies`, `DependsOn`, `Implements`, `DefinedIn` |
+
+IDs are 32-byte **Blake3** hashes of canonical content, so they never change when
+the graph is compacted. A dense `u32` index is assigned only inside the CSR file,
+purely as an implementation detail of the memory-mapped layout.
+
+## Four stores, one truth
+
+| Store | Crate | Holds |
+| --- | --- | --- |
+| Metadata | `redb` + `zstd` | `stable_id → NodePayload`, `sync_version`, `last_indexed_commit` |
+| Topology | `rkyv` + `memmap2` | Two-layer CSR |
+| Lexical | `tantivy` | BM25 over symbols, requirement IDs and paths |
+| Vector | `ort` + `instant-distance` | Embeddings and HNSW (optional) |
+
+Each store commits independently, so none of them is the source of truth alone.
+Visibility is decided by the coordinator's atomic `sync_version`.
+
+## Sync protocol
+
+<Steps>
+<Step>
+
+### Write the intent
+
+The mutation set (nodes, edges and docs to insert, update or remove) is appended to `sync.wal` **before** any store is touched.
+
+</Step>
+<Step>
+
+### Stage
+
+Each participant (`RedbParticipant`, `CsrParticipant`, `TantivyParticipant`, `HnswParticipant`) writes to its own staging path, e.g. `edges.bin.staging`.
+
+</Step>
+<Step>
+
+### Commit
+
+Once all stores confirm, staging files are promoted with an atomic rename and `sync_version` advances. Readers only see data at or below that version.
+
+</Step>
+<Step>
+
+### Resume after a crash
+
+`nexspec sync --resume` inspects the WAL and deterministically either re-applies (never promoted anywhere) or discards (already promoted everywhere). All mutations are idempotent.
+
+</Step>
+</Steps>
+
+## Two-layer CSR
+
+- **Base** — immutable, memory-mapped `rkyv` file with O(1) neighbour lookups per edge type.
+- **Delta** — append-only additions/removals since the last compaction, published through `ArcSwap` (copy-on-write). Readers never block on a running sync and never observe a torn delta.
+- Queries merge base and delta transparently. Compaction folds the delta into a new base automatically once it exceeds a threshold (default 5% of base edges), or on demand with `nexspec compact`.
+
+## Incremental indexing
+
+`gix` computes a native tree diff between `HEAD` and `last_indexed_commit`, plus a
+Blake3 dirty cache for uncommitted files. The `SyncOrchestrator` routes each
+changed file: `.md` files go to the Comrak extractor, `.ts/.tsx/.js/.jsx/.py/.go/.rs`
+files go to the Tree-sitter extractor (in parallel with `rayon` on a cold start).
+Everything is combined into a single `Coordinator::stage()` per cycle.
+
+## Retrieval pipeline
+
+```text
+query ──► BM25 (Tantivy) ─┐
+                          ├─► RRF fusion ─► k-hop CSR expansion ─► AST pruning ─► token budget ─► dense Markdown
+query ──► HNSW (optional) ┘
+```
+
+1. **Seed discovery** fuses lexical and vector rankings with Reciprocal Rank Fusion.
+2. **Expansion** walks 1–2 hops over the CSR (base + delta) filtered by edge type.
+3. **Pruning** replaces symbol bodies with a `{ ... }` marker, keeping signatures.
+4. **Budgeting** cuts by priority — target spec/ADR, then seed symbols, then direct dependencies — and omits whole nodes rather than truncating them.
+5. **Serialization** emits compact Markdown optimized for tokens, not for humans.

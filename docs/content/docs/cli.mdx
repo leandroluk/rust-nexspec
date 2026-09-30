@@ -1,0 +1,45 @@
+---
+title: CLI reference
+description: Every nexspec command and flag.
+---
+
+```text
+nexspec [--repo <PATH>] <COMMAND>
+```
+
+`--repo` (global, default `.`) selects the repository root. The index lives in `<repo>/.specs/.index/`.
+
+## `init`
+
+Creates `.specs/.index/` if it does not exist. Idempotent — running it again never erases or corrupts anything.
+
+## `sync [--resume]`
+
+Runs one incremental sync cycle against Git history and prints how many files were added, modified, deleted or dirty. With `--resume`, any WAL frame not fully applied by every store is replayed first.
+
+## `compact`
+
+Forces compaction of the CSR delta layer, regardless of the automatic threshold.
+
+## `search <QUERY> [--max-tokens N]`
+
+Hybrid search: BM25 always, plus HNSW when the `full` build and an embedding model are both available (otherwise BM25 only). Results are fused with RRF and expanded by one hop.
+
+- Without `--max-tokens`: ranked list of nodes.
+- With `--max-tokens N`: pruned, budgeted, dense Markdown.
+
+## `trace <ID>`
+
+Deterministic dependency trace from a `REQ-XXX` / `ADR-XXX` marker or a symbol name across `Satisfies`, `DependsOn`, `DefinedIn` and `Implements` edges. Each line shows depth and edge type.
+
+## `blame <SYMBOL> [--full-history]`
+
+**AST-aware blame**: finds the symbol, resolves its line range, and runs native `gix` blame scoped to those lines. Prints, per hunk, the commit, author and line range, plus files that co-change with the symbol's file. `--full-history` replaces the default co-change window (500 commits / 6 months) with an unbounded walk.
+
+## `diff --staged`
+
+Structural change analysis for CI and review: symbols touched by the dirty/staged tree, plus their direct dependants (one hop). Purely structural — it never loads Tantivy or embeddings.
+
+## `mcp`
+
+Starts the embedded [MCP server](/docs/mcp) on stdio.

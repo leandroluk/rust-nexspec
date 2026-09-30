@@ -1,0 +1,12 @@
+{
+  "title": "Features",
+  "pages": [
+    "sync-coordinator",
+    "storage-primitives",
+    "git-integration",
+    "ast-lexical-search",
+    "vector-engine",
+    "token-budgeting",
+    "cli-mcp-server"
+  ]
+}

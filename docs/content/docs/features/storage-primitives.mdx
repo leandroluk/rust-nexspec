@@ -1,0 +1,22 @@
+---
+title: "Phase 1 · Storage Primitives"
+description: Typed graph model, stable IDs, redb metadata and the two-layer CSR.
+---
+
+The data model and graph engine everything else builds on. Every module here writes exclusively through the Sync Coordinator: the CSR and the Markdown extractor are `SyncParticipant` implementations.
+
+Source: `.specs/features/storage-primitives/`
+
+## Requirements
+
+| ID | Summary |
+| --- | --- |
+| REQ-101 | `NodeType` / `EdgeType` enums: nodes `Requirement`, `Task`, `Adr`, `DocSection`, `Symbol`, `File`; edges `Satisfies`, `DependsOn`, `Implements`, `DefinedIn`. |
+| REQ-102 | Stable IDs: 32-byte Blake3 hash of canonical content, unaffected by compaction or renumbering. |
+| REQ-103 | A dense `u32` physical index is assigned only when building/compacting the CSR — never referenced by specs, in-flight edges or the WAL. |
+| REQ-104 | `NodePayload` metadata stored in `redb` (`stable_id → payload`), compressed with `zstd`. |
+| REQ-105 | Two-layer CSR: immutable `rkyv` base (`edges.bin`, mmap, O(1) lookups) plus an append-only delta, merged transparently on query. |
+| REQ-106 | Lock-free delta published via `ArcSwap` (copy-on-write); readers never block or see a torn delta. |
+| REQ-107 | Compaction is automatic past a threshold (default 5% of base edges) or explicit via `compact()`. |
+| REQ-108 | `comrak` extracts `REQ-XXX`, `TASK-XXX`, `ADR-XXX` and document-section relations from `.specs/**/*.md`. |
+| REQ-109 | CSR and the Markdown extractor implement `SyncParticipant` — no writes outside `stage()` / `commit()` / `abort()`. |

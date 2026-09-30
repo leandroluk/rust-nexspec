@@ -1,0 +1,49 @@
+---
+title: Introduction
+description: An in-process context engine for AI coding agents, written in Rust.
+---
+
+**NexSpec** is an in-process context engine for AI coding agents. It indexes your
+source code **and** your `.specs/*.md` files into a single graph, then lets an
+agent (or you) search it, trace requirements to code, and pull back a
+token-budgeted slice of context — all from one static binary, with no daemons and
+no interpreter.
+
+## What it unifies
+
+- **AST analysis** of TypeScript/JavaScript, Python, Go and Rust (Tree-sitter) and of spec Markdown (Comrak).
+- **A two-layer CSR graph**: an immutable base file read through `mmap` plus a lock-free, append-only delta.
+- **Hybrid search**: BM25 (Tantivy) fused with vector search (HNSW, lazy-loaded) via Reciprocal Rank Fusion.
+- **Native Git integration** through `gix` — no `git` subprocesses.
+- **Deterministic token budgeting** with a pluggable tokenizer, for LLM-ready output.
+- **A central Sync Coordinator** (WAL + atomic version pointer) so every store stays consistent, even after a crash.
+
+## Core design principle
+
+Every write goes through a single **Sync Coordinator**. `redb`, the CSR file,
+Tantivy and HNSW each commit independently; what decides what is *visible* is the
+coordinator's atomic `sync_version`, not the state of any one store. A crash in the
+middle of a sync can therefore never leave the indexes disagreeing with each other.
+
+## Where to go next
+
+<Cards>
+  <Card title="Getting started" href="/docs/getting-started">
+    Build the binary, index a repository, run your first search.
+  </Card>
+  <Card title="Architecture" href="/docs/architecture">
+    Stores, the sync protocol and how a query flows through the system.
+  </Card>
+  <Card title="CLI reference" href="/docs/cli">
+    Every `nexspec` command and flag.
+  </Card>
+  <Card title="MCP server" href="/docs/mcp">
+    Expose NexSpec to Claude Code, Cursor and other MCP clients.
+  </Card>
+</Cards>
+
+<Callout title="Spec-driven" type="info">
+  NexSpec is built with the spec-driven workflow of the `graph-spec-design` skill.
+  The `.specs/` directory in the repository is the source of truth; these pages
+  summarize it. Requirement IDs (`REQ-XXX`) in the feature pages point back to the specs.
+</Callout>

@@ -1,0 +1,25 @@
+---
+title: Roadmap
+description: The seven phases that make up NexSpec v1.
+---
+
+| Phase | Name | Central deliverable | Status |
+| --- | --- | --- | --- |
+| 0 | [Sync Coordinator](/docs/features/sync-coordinator) | WAL, atomic `sync_version`, staging + rename, `--resume` | Complete |
+| 1 | [Storage Primitives](/docs/features/storage-primitives) | Typed nodes/edges, Blake3 IDs, redb + zstd, two-layer CSR, Markdown extraction | Complete |
+| 2 | [Git Integration](/docs/features/git-integration) | `gix` tree diff, incremental sync, co-change graph, commit→spec linking | Complete |
+| 3 | [AST & Lexical Search](/docs/features/ast-lexical-search) | Tree-sitter for TS/JS, Python, Go, Rust; Tantivy BM25 | Complete |
+| 4 | [Vector Engine](/docs/features/vector-engine) | Lazy ONNX embedder, HNSW, RRF, k-hop expansion, `lean` build | Complete |
+| 5 | [Token Budgeting](/docs/features/token-budgeting) | AST pruning, pluggable `Tokenizer`, budgeted fit, dense serializer | Complete |
+| 6 | [CLI & MCP Server](/docs/features/cli-mcp-server) | `nexspec` CLI and embedded MCP server | Complete |
+
+Phases 0 → 3 form a strict chain of prerequisites (consistency → storage → Git → AST).
+Phases 4 and 5 could proceed in parallel once 3 was in place; phase 6 composes everything.
+
+## Out of scope for v1
+
+- GUI or dashboard.
+- Training custom embedding models (a pre-trained quantized model is used).
+- Languages beyond TS/JS, Python, Go and Rust.
+- Multi-tenant or remote server operation — NexSpec is embedded, single-repo, single-process.
+- Drop-in replacement of `graphify` inside the `graph-spec-design` skill: tracked as a separate integration outside this repository.

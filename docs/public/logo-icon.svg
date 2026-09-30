@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 332 332" fill="none">
+  <style>
+    .bg{fill:#0a0b0e;stroke:#6b6d72}.fg{fill:#fff}
+    @media (prefers-color-scheme: light){.bg{fill:#fff;stroke:#a5a7ab}.fg{fill:#0a0b0e}}
+  </style>
+  <rect class="bg" x="2" y="2" width="328" height="328" rx="60" stroke-width="4"/>
+  <g transform="translate(-278 -260)">
+    <path d="M349 337 C400 358 442 386 475 413 V469 C430 437 392 408 349 376 Z" fill="#16dc9f"/>
+    <path class="fg" d="M349 395 L394 427 V520 Q394 528 386 528 H357 Q349 528 349 520 Z"/>
+    <path class="fg" d="M497 340 H533 Q541 340 541 348 V521 Q541 529 533 529 Q526 529 521 523 L497 494 Z"/>
+  </g>
+</svg>
