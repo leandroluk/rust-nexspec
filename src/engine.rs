@@ -30,6 +30,7 @@ use crate::sync::coordinator::Coordinator;
 use crate::sync::mutation::{NodeMutation, StableId};
 use crate::sync::participant::{SyncError, SyncParticipant};
 use crate::sync::redb_participant::RedbParticipant;
+use crate::sync::lock::{LOCK_FILE_NAME, LockError, SyncLock};
 use crate::sync::version::{VersionError, VersionPointer};
 use crate::sync::wal::{Wal, WalError};
 use crate::sync_orchestrator::{SyncOrchestrator, SyncOrchestratorError, SyncReport};
@@ -54,6 +55,8 @@ pub enum EngineError {
     Version(#[from] VersionError),
     #[error("wal error: {0}")]
     Wal(#[from] WalError),
+    #[error("{0}")]
+    Lock(#[from] LockError),
     #[error("git error: {0}")]
     Git(#[from] GitError),
     #[error("sync orchestrator error: {0}")]
@@ -154,6 +157,9 @@ pub struct Engine {
     /// O(points)); keyed by the `sync_version` it was loaded at.
     #[cfg(feature = "full")]
     hnsw_cache: std::sync::Mutex<Option<(u64, Arc<HnswParticipant>)>>,
+    /// Declared last so it is released after everything above is dropped
+    /// (the database file must be closed before another process may open it).
+    _lock: Option<SyncLock>,
 }
 
 impl Engine {
@@ -163,6 +169,9 @@ impl Engine {
     pub fn open(index_dir: &Path, repo_root: &Path) -> Result<Self, EngineError> {
         std::fs::create_dir_all(index_dir)?;
 
+        // REQ-907: wait for another process using this index instead of
+        // failing with redb's "Database already open".
+        let lock = SyncLock::acquire(index_dir, SyncLock::timeout_from_env())?;
         let db = Self::open_current_format_db(index_dir)?;
 
         let csr_path = index_dir.join("edges.bin");
@@ -191,13 +200,14 @@ impl Engine {
             embedder,
             #[cfg(feature = "full")]
             hnsw_cache: std::sync::Mutex::new(None),
+            _lock: Some(lock),
         })
     }
 
-    /// Opens `metadata.redb`, first discarding the whole derived index when
+    /// Opens `metadata.redb`, first discarding the derived index when
     /// it was written by an incompatible build (`INDEX_FORMAT`). The index is
     /// always regenerable from Git + specs, so the next `sync` rebuilds it.
-    /// Only `index_dir` is ever removed.
+    /// Only the contents of `index_dir` are ever removed.
     fn open_current_format_db(index_dir: &Path) -> Result<Database, EngineError> {
         let db_path = index_dir.join("metadata.redb");
         let db = Database::create(&db_path)?;
@@ -216,8 +226,18 @@ impl Engine {
                     index_dir.display()
                 );
                 drop(db);
-                std::fs::remove_dir_all(index_dir)?;
-                std::fs::create_dir_all(index_dir)?;
+                // Everything but the lock file we are holding.
+                for entry in std::fs::read_dir(index_dir)? {
+                    let path = entry?.path();
+                    if path.file_name().is_some_and(|n| n == LOCK_FILE_NAME) {
+                        continue;
+                    }
+                    if path.is_dir() {
+                        std::fs::remove_dir_all(&path)?;
+                    } else {
+                        std::fs::remove_file(&path)?;
+                    }
+                }
                 let db = Database::create(&db_path)?;
                 VersionPointer::new(&db).set_index_format(INDEX_FORMAT)?;
                 Ok(db)
@@ -814,6 +834,7 @@ mod tests {
             embedder: Embedder::new("nonexistent.onnx", "nonexistent.json"),
             #[cfg(feature = "full")]
             hnsw_cache: std::sync::Mutex::new(None),
+            _lock: None,
         };
         let result = engine.trace(&id_hex(&symbol_id)).unwrap();
         assert_eq!(result.hops.len(), 1);

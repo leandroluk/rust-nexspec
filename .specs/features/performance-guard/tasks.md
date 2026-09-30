@@ -101,10 +101,10 @@ Primeiro corte = T-901…T-906 incluindo T-903b, T-904b, T-904c (aprovado em 202
 - **Done when**: `cargo bench --no-run` compila; teste de razão verde; `edges_from` documentado como O(delta) com decisão (corrigir ou aceitar).
 - **Gate**: `cargo bench --no-run && cargo test complexity`
 
-## T-909: Lock de sync com espera (REQ-907) [ ]
+## T-909: Lock de sync com espera (REQ-907) [x]
 - **REQ**: REQ-907
-- **What**: `SyncLock` com lock de SO em `.specs/.index/sync.lock`, espera com timeout (`NEXSPEC_LOCK_TIMEOUT_S`, default 30) antes de `Database::create`; mensagem clara ao estourar. Ajustar hook `post-commit` da skill para não competir.
-- **Where**: `src/sync/lock.rs`, `src/engine.rs`, skill `graph-spec-design`
+- **What**: `SyncLock` com lock de SO em `.specs/.index/sync.lock`, espera com timeout (`NEXSPEC_LOCK_TIMEOUT_S`, default 30) antes de `Database::create`; mensagem clara ao estourar (inclui o PID do detentor). O hook `post-commit` da skill hoje chama o graphify, não o nexspec: a parte "hook deixa de causar corrida" do REQ-907 fica garantida por este lock + REQ-1602 (Fase 16, `hook install` chama `nexspec sync`, que agora espera). Limite conhecido: `nexspec mcp` segura o índice enquanto vive, então um `sync` externo espera o timeout e falha com mensagem que aponta o MCP.
+- **Where**: `src/sync/lock.rs`, `src/engine.rs`, `tests/sync_lock.rs`
 - **Depends on**: T-906
 - **Done when**: teste sobe dois `sync` em paralelo (processos) → ambos terminam sem "Database already open"; com timeout de 1 s e um processo segurando o lock → erro legível.
 - **Gate**: `cargo test --test sync_lock`
