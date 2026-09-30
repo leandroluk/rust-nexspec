@@ -9,7 +9,6 @@
 //! requirement mentioned before it's been parsed) is not linked — full
 //! cross-document resolution is future work, not required for Fase 1.
 
-use std::collections::HashMap;
 
 use comrak::nodes::{AstNode, NodeValue};
 use comrak::{Arena, Options, parse_document};
