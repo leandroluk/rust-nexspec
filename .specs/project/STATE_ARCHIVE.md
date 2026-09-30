@@ -362,3 +362,14 @@ contra specs do mesmo ciclo.
   planejar a fase seguinte que reusa um trait ainda jovem.
 
 ---
+
+## Archive — 2026-09-30 (compaction 4)
+
+### Lesson
+- (2026-09-30) Sem `.gitignore` para `.specs/.index/`, o proprio indice virava 'sujo' e gerava frame no WAL a cada sync; agora `.specs/.index` e `.models` sao ignorados pelo orquestrador.
+
+### Todo (completed)
+- [x] Fase 9 (performance-guard): COMPLETA em 2026-09-30 (CI verde, run 36666438491).
+- [x] Fase 8 (retrieval-benchmark): COMPLETA em 2026-09-30 (T-801..T-810). `nexspec bench` (corpus TOML, recall@k/MRR, baselines grep/leitura/corpus, custo fixo e break-even, `--check`/`--update-baseline`, `--no-vector`); corpora `bench/self.toml` (22 perguntas) e `<condominium>/.specs/bench/queries.toml` (24, arquivo criado la e NAO commitado); job `retrieval benchmark` no CI. Resultados (BM25): locate r5 self 0,93 / condominium 1,00; traceability condominium 0,00 -> 1,00; structure 0,00 nos dois (precisa da Fase 7). Decisoes: peso do vetor no RRF 0,1; co-change fora da busca; File nodes sem binarios/lockfiles; INDEX_FORMAT 4. Proximo: Fase 7 (dependency-edges), depois 10 -> 11.
+
+---

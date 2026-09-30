@@ -60,6 +60,7 @@
 
 ## T-808: Melhorias de ranking medidas (REQ-806) [x]
 - **REQ**: REQ-806
+- **Entregue (2026-09-30)**: (a) tokenizador de identificadores, (d) peso do vetor 0,1, (e) medida e descartada, mais dois itens achados pelo benchmark: (f) formatos reais de requisito em Markdown e (g) sem `File` nodes para binários/lockfiles. (b) e (c) não foram necessários (ver design.md, "Resultados da T-808").
 - **What**: em sequência, cada uma com delta no benchmark (corpus próprio + condominium) registrado no design.md: (a) tokenização ciente de identificadores (camelCase/snake/Pascal, tokenizador customizado no Tantivy); (b) campos `name` e `path` separados com boost; (c) penalização de arquivos genéricos do mesmo padrão; (d) pesos BM25×vetor no RRF; (e) variante "expansão por co-change" (resolve a Q3 herdada da Fase 9). Mudanças que alteram o índice sobem `INDEX_FORMAT`. Meta: `recall@5 ≥ 0,8` em `locate` no corpus próprio.
 - **Where**: `src/search/*`, `src/hybrid.rs`, `src/engine.rs`
 - **Depends on**: T-807
@@ -74,7 +75,7 @@
 - **Done when**: relatório de exemplo mostra as duas economias lado a lado; docs descrevem como reproduzir.
 - **Gate**: `cargo test --test bench_cli`
 
-## T-810: Fechamento da fase [ ]
+## T-810: Fechamento da fase [x]
 - **REQ**: todos
 - **What**: ROADMAP/STATE/docs; se a skill mudar, commit + push + copiar para `~/.claude/skills` e `~/.gemini/config/skills`.
 - **Depends on**: T-801…T-809
