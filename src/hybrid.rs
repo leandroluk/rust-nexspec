@@ -20,14 +20,56 @@ const RRF_K: f32 = 60.0;
 /// isn't dropped just because the other signal never saw it — but a
 /// document ranked well in *both* naturally outranks one ranked well in
 /// only one, since its score is a sum over both contributions. Results are
-/// sorted by descending fused score.
+/// sorted by descending fused score. Equal weights; see
+/// [`seed_discovery_weighted`] for the production weighting.
 pub fn seed_discovery(bm25_ranked: &[StableId], hnsw_ranked: &[StableId]) -> Vec<(StableId, f32)> {
+    seed_discovery_weighted(bm25_ranked, hnsw_ranked, FusionWeights { bm25: 1.0, vector: 1.0 })
+}
+
+/// How much each retrieval signal counts in the fusion.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FusionWeights {
+    pub bm25: f32,
+    pub vector: f32,
+}
+
+/// Production weights. Measured on the retrieval benchmark
+/// (`.specs/features/retrieval-benchmark/design.md`, T-808d): an equal-weight
+/// fusion lowered MRR on locate questions (condominium 0.87 -> 0.64) because
+/// the embedding model ranks identifier-heavy text poorly, while a weight of
+/// 0.1 kept MRR at the BM25-only level. The vector signal therefore acts as
+/// a low-weight assistant: it never outranks a strong lexical hit, but still
+/// surfaces results BM25 cannot reach.
+impl Default for FusionWeights {
+    fn default() -> Self {
+        Self { bm25: 1.0, vector: 0.1 }
+    }
+}
+
+impl FusionWeights {
+    /// Defaults, with the vector weight overridable through
+    /// `NEXSPEC_VECTOR_WEIGHT` (a non-negative number) so the benchmark can
+    /// compare settings without a rebuild.
+    pub fn from_env() -> Self {
+        let vector = std::env::var("NEXSPEC_VECTOR_WEIGHT")
+            .ok()
+            .and_then(|v| v.trim().parse::<f32>().ok())
+            .filter(|w| w.is_finite() && *w >= 0.0);
+        match vector {
+            Some(vector) => Self { vector, ..Self::default() },
+            None => Self::default(),
+        }
+    }
+}
+
+/// [`seed_discovery`] with explicit per-signal weights (`weight / (k + rank)`).
+pub fn seed_discovery_weighted(bm25_ranked: &[StableId], hnsw_ranked: &[StableId], weights: FusionWeights) -> Vec<(StableId, f32)> {
     let mut scores: HashMap<StableId, f32> = HashMap::new();
     for (rank, id) in bm25_ranked.iter().enumerate() {
-        *scores.entry(*id).or_insert(0.0) += 1.0 / (RRF_K + (rank + 1) as f32);
+        *scores.entry(*id).or_insert(0.0) += weights.bm25 / (RRF_K + (rank + 1) as f32);
     }
     for (rank, id) in hnsw_ranked.iter().enumerate() {
-        *scores.entry(*id).or_insert(0.0) += 1.0 / (RRF_K + (rank + 1) as f32);
+        *scores.entry(*id).or_insert(0.0) += weights.vector / (RRF_K + (rank + 1) as f32);
     }
 
     let mut result: Vec<(StableId, f32)> = scores.into_iter().collect();
@@ -158,5 +200,46 @@ mod tests {
 
         let fused = seed_discovery(&bm25_ranked, &hnsw_ranked);
         assert_eq!(fused[0].0, winner);
+    }
+
+    #[test]
+    fn low_vector_weight_keeps_lexical_hits_on_top_but_still_surfaces_vector_only_ones() {
+        let lexical_first = [1u8; 32];
+        let lexical_second = [2u8; 32];
+        let vector_only = [3u8; 32];
+        let bm25 = [lexical_first, lexical_second];
+        let vector = [vector_only, lexical_second];
+
+        // Equal weights: the vector's top pick ties into the lead.
+        let equal = seed_discovery(&bm25, &vector);
+        assert_eq!(equal[0].0, lexical_second, "present in both lists");
+
+        let weighted = seed_discovery_weighted(&bm25, &vector, FusionWeights { bm25: 1.0, vector: 0.1 });
+        let order: Vec<StableId> = weighted.iter().map(|(id, _)| *id).collect();
+        assert_eq!(order, vec![lexical_second, lexical_first, vector_only]);
+        // Agreement between both signals still counts a little, but the vector's
+        // own top pick stays below every lexical hit.
+        assert!(order.contains(&vector_only), "a vector-only hit is not dropped");
+    }
+
+    #[test]
+    fn zero_vector_weight_equals_bm25_only_ranking() {
+        let ids: Vec<StableId> = (1u8..=4).map(|b| [b; 32]).collect();
+        let weighted = seed_discovery_weighted(&ids, &[ids[3], ids[2]], FusionWeights { bm25: 1.0, vector: 0.0 });
+        let order: Vec<StableId> = weighted.iter().map(|(id, _)| *id).collect();
+        assert_eq!(order, ids);
+    }
+
+    #[test]
+    fn vector_weight_env_override_is_parsed_and_invalid_values_ignored() {
+        // Single test touching the environment: no other test reads this var.
+        unsafe { std::env::set_var("NEXSPEC_VECTOR_WEIGHT", "0.5") };
+        assert_eq!(FusionWeights::from_env().vector, 0.5);
+        unsafe { std::env::set_var("NEXSPEC_VECTOR_WEIGHT", "-1") };
+        assert_eq!(FusionWeights::from_env(), FusionWeights::default());
+        unsafe { std::env::set_var("NEXSPEC_VECTOR_WEIGHT", "abc") };
+        assert_eq!(FusionWeights::from_env(), FusionWeights::default());
+        unsafe { std::env::remove_var("NEXSPEC_VECTOR_WEIGHT") };
+        assert_eq!(FusionWeights::from_env().vector, 0.1);
     }
 }

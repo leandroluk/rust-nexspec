@@ -25,7 +25,7 @@ use crate::git::{BlameHunk, GitError, GitSource, blame_symbol};
 use crate::graph::csr::{Csr, CsrBase, CsrError, CsrParticipant};
 use crate::graph::edge::EdgeType;
 use crate::graph::node::{NodePayload, file_node_id};
-use crate::hybrid::{expand, seed_discovery};
+use crate::hybrid::{FusionWeights, expand, seed_discovery_weighted};
 use crate::search::{SearchError, TantivyParticipant, TantivyQueryable, hex, search_text, unhex};
 use crate::sync::coordinator::Coordinator;
 use crate::sync::mutation::{NodeMutation, StableId};
@@ -369,7 +369,7 @@ impl Engine {
         #[cfg(not(feature = "full"))]
         let hnsw_ranked: Vec<StableId> = Vec::new();
 
-        let fused = seed_discovery(&bm25_ranked, &hnsw_ranked);
+        let fused = seed_discovery_weighted(&bm25_ranked, &hnsw_ranked, FusionWeights::from_env());
         let seed_ids: Vec<StableId> = fused.iter().map(|(id, _)| *id).collect();
         let expanded = expand(
             &seed_ids,
