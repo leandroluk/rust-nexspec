@@ -81,6 +81,7 @@ notes = "caso real que falhou em 2026-09-29"
 - **D5 — Congelar o alvo (Q2): o corpus guarda `commit = "<sha>"`** e o runner avisa (não falha) quando o HEAD do alvo difere; o `baseline.json` também registra o commit. O corpus próprio é medido sobre o commit atual do repo (muda com o tempo, então o baseline é atualizado de propósito com `--update-baseline`).
 - **D6 — Portão de CI só no corpus próprio** (REQ-805): reproduzível porque o alvo é o próprio checkout. Corpus externo roda localmente.
 - **D7 — Ordem:** harness completo e baseline **antes** de qualquer mudança de ranking, para que T-808 prove cada ganho.
+- **D9 — Convenção de corpus por projeto: `<repo>/.specs/bench/queries.toml`** (decidido em 2026-09-30). É o caminho default de `nexspec bench` quando `--corpus` é omitido. O corpus do condominium-management-system é gerado lá já na fase de desenvolvimento; em produção o mesmo caminho serve a qualquer projeto que queira medir a própria busca (a skill/agente pode propor e gerar o arquivo — Fases 16/18). O corpus deste repo fica em `bench/self.toml`.
 - **D8 — Q3 (co-change):** hoje co-change não entra no ranking de `search`; em T-808 mede-se uma variante "expansão por co-change" e só então se decide usar e ajustar os tetos.
 
 ## Risks

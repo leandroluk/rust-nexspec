@@ -18,6 +18,7 @@ use std::sync::Arc;
 
 use redb::Database;
 
+use crate::bench::metrics::Location;
 use crate::code::{self, CodeError, Language};
 use crate::git::cochange::CoChangeWindow;
 use crate::git::{BlameHunk, GitError, GitSource, blame_symbol};
@@ -598,6 +599,62 @@ impl Engine {
     pub fn repo_root(&self) -> &Path {
         &self.repo_root
     }
+    /// Where a search hit lives, in terms a benchmark corpus can name
+    /// (`.specs/features/retrieval-benchmark/design.md`, T-802). The hit's
+    /// own location comes first; a requirement/ADR/task hit is followed by
+    /// the tasks and code that `Satisfies` it.
+    pub fn hit_locations(&self, hit: &SearchHit) -> Result<Vec<Location>, EngineError> {
+        self.locations_of(&hit.id, &hit.payload)
+    }
+
+    fn locations_of(&self, id: &StableId, payload: &NodePayload) -> Result<Vec<Location>, EngineError> {
+        match payload {
+            NodePayload::File { path, .. } => Ok(vec![Location {
+                path: Some(path.clone()),
+                ..Location::default()
+            }]),
+            NodePayload::Symbol { name, .. } => Ok(vec![Location {
+                path: self.file_path_of(id)?,
+                symbol: Some(name.clone()),
+                marker: None,
+            }]),
+            NodePayload::Requirement { title, .. } | NodePayload::Task { title, .. } | NodePayload::Adr { title, .. } => {
+                let mut locations = vec![Location {
+                    marker: Some(title.clone()),
+                    ..Location::default()
+                }];
+                for edge in self.csr.all_edges() {
+                    if edge.edge_type != EdgeType::Satisfies || edge.to != *id {
+                        continue;
+                    }
+                    if let Some(implementer) = self.node_payload(&edge.from)? {
+                        // One level only: who satisfies this marker, not who
+                        // satisfies *them*.
+                        match &implementer {
+                            NodePayload::Symbol { .. } | NodePayload::Task { .. } => {
+                                locations.extend(self.locations_of(&edge.from, &implementer)?);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Ok(locations)
+            }
+            NodePayload::DocSection { .. } => Ok(Vec::new()),
+        }
+    }
+
+    /// The file a symbol node is defined in, via its `DefinedIn` edge.
+    fn file_path_of(&self, symbol_id: &StableId) -> Result<Option<String>, EngineError> {
+        let Some(edge) = self.csr.edges_from(symbol_id, EdgeType::DefinedIn).into_iter().next() else {
+            return Ok(None);
+        };
+        Ok(match self.node_payload(&edge.to)? {
+            Some(NodePayload::File { path, .. }) => Some(path),
+            _ => None,
+        })
+    }
+
     /// Read-only access to the shared CSR, for callers (CLI/MCP) that need
     /// to render a node id back to a human-readable hex string, etc.
     pub fn node_payload(&self, id: &StableId) -> Result<Option<NodePayload>, EngineError> {

@@ -1,6 +1,6 @@
 # Tasks: Retrieval Benchmark (Fase 8)
 
-## T-801: Corpus TOML (REQ-801) [ ]
+## T-801: Corpus TOML (REQ-801) [x]
 - **REQ**: REQ-801
 - **What**: `cargo add toml`. `bench::corpus::{Corpus, Query, Kind}` com `serde`; validação (ids únicos, `expect` não vazio, `kind` válido, `grep` default = 1ª palavra). Campo opcional `commit`.
 - **Where**: `Cargo.toml`, `src/bench/mod.rs`, `src/bench/corpus.rs`, `src/lib.rs`
@@ -8,7 +8,7 @@
 - **Done when**: testes: arquivo válido carrega; id duplicado, `kind` desconhecido e `expect` vazio falham com mensagem que cita o id.
 - **Gate**: `cargo test bench::corpus`
 
-## T-802: Hit → localizações (`Engine::hit_locations`) [ ]
+## T-802: Hit → localizações (`Engine::hit_locations`) [x]
 - **REQ**: REQ-802
 - **What**: `Location { path: Option<String>, symbol: Option<String>, marker: Option<String> }` e `Engine::hit_locations(&SearchHit)`: `File` → path; `Symbol` → path via `DefinedIn` + nome; `Requirement/Task/Adr` → marcador + caminhos dos implementadores por `Satisfies` de entrada. `bench::locate::ranked_files(hits)` = arquivos únicos na ordem do primeiro aparecimento.
 - **Where**: `src/engine.rs`, `src/bench/locate.rs`
@@ -16,7 +16,7 @@
 - **Done when**: teste de integração com fixture (spec + `.ts` com `@spec`): busca por símbolo devolve o arquivo dele; busca por REQ devolve o arquivo implementador; duplicatas colapsam mantendo a 1ª posição.
 - **Gate**: `cargo test bench::locate && cargo test --test bench_locate`
 
-## T-803: Métricas (`recall@k`, `MRR`) [ ]
+## T-803: Métricas (`recall@k`, `MRR`) [x]
 - **REQ**: REQ-802
 - **What**: funções puras `recall_at_k(ranked, expect, k)`, `reciprocal_rank`, agregação por `kind`; casamento por sufixo de caminho, nome de símbolo e marcador.
 - **Where**: `src/bench/metrics.rs`
@@ -44,7 +44,7 @@
 
 ## T-806: Corpora (REQ-804) [ ]
 - **REQ**: REQ-804
-- **What**: `bench/self.toml` (~20 perguntas sobre este repo, 4 kinds, origem em `notes`) e um corpus para `condominium-management-system` (~20 perguntas, incluindo o caso `outbox`) guardado **no repo-alvo** (`.specs/bench/queries.toml`), só lido daqui. Verificar cada `expect` contra os arquivos reais antes de gravar.
+- **What**: `bench/self.toml` (~20 perguntas sobre este repo, 4 kinds, origem em `notes`) e um corpus para `condominium-management-system` (~20 perguntas, incluindo o caso `outbox`) guardado **no repo-alvo** (`.specs/bench/queries.toml`, convenção D9), só lido daqui pelo runner. Verificar cada `expect` contra os arquivos reais antes de gravar.
 - **Where**: `bench/self.toml`, repo externo
 - **Depends on**: T-805
 - **Done when**: `nexspec bench --corpus bench/self.toml` roda limpo; todo `expect` existe no alvo (teste que valida os caminhos de `self.toml` contra `git ls-files`).
