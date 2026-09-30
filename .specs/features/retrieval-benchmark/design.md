@@ -5,9 +5,9 @@
 O benchmark é um módulo novo (`src/bench/`) mais um subcomando (`nexspec bench`) que **só usa a API pública do `Engine`** — nada de atalhos no índice. Ele roda cada pergunta do corpus, reduz os hits a uma lista ordenada de *localizações* (arquivos), compara com o esperado e mede tokens contra três baselines sem índice.
 
 ```
-bench/self.toml ─┐                       ┌─► recall@k, MRR por kind
+bench/self.toml ─┐                      ┌──► recall@k, MRR por kind
 (corpus TOML)    ├─► corpus::load ─► runner ─┼─► tokens: nexspec | grep | ler esperados | corpus inteiro
---repo <alvo> ───┘         │            │   └─► latência por consulta
+--repo <alvo> ───┘         │            │    └─► latência por consulta
                            │            ▼
                   Engine::open(index-dir temporário) + sync  ──► Engine::search / trace
                                         │

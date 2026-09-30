@@ -7,33 +7,33 @@ Projeto greenfield — não há grafo/código pré-existente para traçar caminh
 degradado). O design abaixo é a primeira decisão estrutural real do codebase.
 
 ```
-                    ┌─────────────────────────┐
+                    ┌──────────────────────────┐
    mutation set  →  │   sync::coordinator      │
-   (nós/edges/docs)  │   stage() -> commit()/   │
+   (nós/edges/docs) │   stage() -> commit()/   │
                     │   abort()                │
                     └───────────┬──────────────┘
                                 │ 1. write intent
                                 ▼
-                    ┌─────────────────────────┐
+                    ┌──────────────────────────┐
                     │  sync::wal (sync.wal)    │  ← frame rkyv, fsync antes
                     └───────────┬──────────────┘     de tocar participants
                                 │ 2. fan-out stage()
               ┌─────────────────┼─────────────────┐
               ▼                 ▼                 ▼        (Fase 1/3/4:
-     ┌────────────────┐ ┌──────────────┐ ┌───────────────┐  CSR / Tantivy / HNSW
+     ┌─────────────────┐ ┌────────────────┐ ┌────────────────┐  CSR / Tantivy / HNSW
      │ SyncParticipant │ │ SyncParticipant│ │ SyncParticipant│  implementam esta
-     │  (redb, único   │ │  (futuro: CSR)│ │ (futuro: ...) │  trait quando suas
-     │  participante   │ │               │ │               │  fases chegarem)
-     │  real na Fase 0)│ │               │ │               │
-     └────────┬────────┘ └───────┬───────┘ └───────┬───────┘
+     │  (redb, único   │ │  (futuro: CSR) │ │ (futuro: ...)  │  trait quando suas
+     │  participante   │ │                │ │                │  fases chegarem)
+     │  real na Fase 0)│ │                │ │                │
+     └────────┬────────┘ └───────┬─────── ┘ └───────┬────────┘
               │ 3. staging + rename atômico, cada um reporta sua própria versão
-              └─────────────────┴─────────────────┘
+              └──────────────────┴──────────────────┘
                                 │ 4. todos confirmaram target_version?
                                 ▼
-                    ┌─────────────────────────┐
+                    ┌──────────────────────────┐
                     │ redb: sync_version = N   │  ← só aqui a versão N
                     │ (bump final, atômico)    │     fica "visível" p/ leitores
-                    └─────────────────────────┘
+                    └──────────────────────────┘
 ```
 
 **Invariante central:** um leitor só confia em dados na versão

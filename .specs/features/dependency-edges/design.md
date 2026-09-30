@@ -9,7 +9,7 @@ arquivo .ts/.js ──parse (tree-sitter)──► FileFacts { declarações, im
                                               │
            specifier ──► Resolver (caminhos rastreados + tsconfig/package.json) ──► caminho destino (ou nenhum)
                                               │
-        ┌─────────────────────────────────────┴───────────────────────────────┐
+        ┌─────────────────────────────────────┴────────────────────────────────┐
         ▼                                                                      ▼
  Imports / ReExports  (arquivo → arquivo)                      Calls / Instantiates / Extends / References
                                                                (símbolo → símbolo; fallback arquivo → arquivo)
