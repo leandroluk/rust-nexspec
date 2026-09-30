@@ -38,6 +38,27 @@ Método: `--verbose` (T-901) imprime tempo por fase; comparar com e sem co-chang
 
 Risco correlato descoberto na leitura: `CsrDelta::edges_from` (`src/graph/csr/delta.rs:47`) é um filtro linear sobre `added`. Com o teto de co-change o delta encolhe (~150 mil arestas em vez de 1,1 mi), mas `trace`/`search` antes da compactação continuam O(delta). Coberto por T-908 (benchmark `edges_from`); correção fica fora desta fase se o orçamento de `trace` < 1 s for cumprido.
 
+## Medições (T-903, 2026-09-29, `--release`, Windows, 1 execução, `sync` frio)
+
+Bases: sintético default (1.300 arq., 160 commits, 1 commit de 800) e clone local do condominium-management-system (1.267 arq., 164 commits).
+
+| Fase | Sintético (antes) | Real (antes) | Real (após T-903b) |
+|---|---|---|---|
+| diff (+ scan de sujos) | 0,18 s | 1,12 s | 0,08 s |
+| markdown | ~0 | ~0 | 0,04 s |
+| **code (Tree-sitter)** | **12,1 s** | **11,9 s** | **0,60 s** |
+| co-change (cálculo) | 0,32 s | 1,02 s | 0,66 s |
+| **stage (WAL + 4 participantes)** | 3,1 s | 3,7 s | 3,7 s |
+| **total (parede)** | 15,9 s | 18,0 s | 6,6 s |
+
+Arestas staged: 646 mil (sintético) / 1,04 mi (real), das quais 99,4% são co-change. Tamanhos após o sync real: `metadata.redb` 539 MB, `sync.wal` 113 MB, `edges.bin` 102 MB.
+
+**Conclusões**
+- Hipótese 1 (co-change) só se confirma para o *stage* (3,7 s, WAL e redb enormes); o cálculo em si custa < 1 s.
+- **Causa dominante do cold start era outra, não listada:** `code::extract` recompilava as duas `Query` do Tree-sitter a cada arquivo (~9 ms/arquivo) e o orquestrador não usava o `extract_all` paralelo. Correção (T-903b): cache de queries por linguagem (`OnceLock`) + `extract_all` (rayon). 11,9 s → 0,6 s.
+- O "27 s" do relatório anterior não se reproduziu: o mesmo repo dá 18 s antes da correção e 6,6 s depois (o número anterior provavelmente incluía a build/aquecimento; não investigado).
+- Achado lateral: um `sync` sem mudanças leva ~1,2 s em `stage` e reporta `dirty=24` num repo sem `.gitignore` para `.specs/.index/`: os próprios arquivos do índice contam como sujos e viram um frame novo no WAL a cada sync. Vai para T-904c.
+
 ## New Components
 
 | Component | Responsibility | Location |

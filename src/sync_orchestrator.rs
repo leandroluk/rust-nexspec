@@ -93,6 +93,7 @@ impl<'a> SyncOrchestrator<'a> {
         timings.diff = started.elapsed();
 
         let mut combined = MutationSet::default();
+        let markdown_started = Instant::now();
 
         // Pass 1: Markdown (committed diff) + a File node for every touched path.
         for path in diff.added.iter().chain(diff.modified.iter()) {
@@ -124,7 +125,6 @@ impl<'a> SyncOrchestrator<'a> {
         // REQ-204: uncommitted working-tree changes also enter the sync,
         // independent of the committed-history diff above (a repo can have
         // no new commits but a dirty tree, or vice versa). Markdown pass.
-        let markdown_started = Instant::now();
         let mut scan_time = Duration::ZERO;
         let mut files_dirty = 0usize;
         let mut dirty_paths: Vec<PathBuf> = Vec::new();
@@ -155,15 +155,15 @@ impl<'a> SyncOrchestrator<'a> {
         timings.markdown = markdown_started.elapsed().saturating_sub(scan_time);
         let code_started = Instant::now();
         let known_markers = known_markers_from(&combined.nodes);
+        // Blob reads stay sequential (`gix::Repository` is not `Sync`); the
+        // Tree-sitter parsing itself runs in parallel via `code::extract_all`.
+        let mut code_files: Vec<(PathBuf, String, code::Language)> = Vec::new();
         for path in diff.added.iter().chain(diff.modified.iter()) {
             if let Some(language) = code::Language::from_extension(path)
                 && let Some(bytes) = self.git.read_blob_at_head(path)?
             {
-                let text = String::from_utf8_lossy(&bytes);
-                let extracted = code::extract(&text, language, path, &known_markers)?;
-                combined.nodes.extend(extracted.nodes);
-                combined.edges.extend(extracted.edges);
-                combined.docs.extend(extracted.docs);
+                let text = String::from_utf8_lossy(&bytes).into_owned();
+                code_files.push((path.clone(), text, language));
             }
         }
         for path in &dirty_paths {
@@ -171,13 +171,13 @@ impl<'a> SyncOrchestrator<'a> {
                 && let Some(root) = self.git.work_dir()
                 && let Ok(text) = std::fs::read_to_string(root.join(path))
             {
-                let extracted = code::extract(&text, language, path, &known_markers)?;
-                combined.nodes.extend(extracted.nodes);
-                combined.edges.extend(extracted.edges);
-                combined.docs.extend(extracted.docs);
+                code_files.push((path.clone(), text, language));
             }
         }
-
+        let extracted = code::extract_all(&code_files, &known_markers)?;
+        combined.nodes.extend(extracted.nodes);
+        combined.edges.extend(extracted.edges);
+        combined.docs.extend(extracted.docs);
         timings.code = code_started.elapsed();
 
         // Co-change edges depend only on commit history: recompute them when

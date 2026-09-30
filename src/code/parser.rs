@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::OnceLock;
 
 use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
 
@@ -106,6 +107,47 @@ pub enum CodeError {
     Query(String),
 }
 
+/// Queries compiled once per language and shared by every `extract` call
+/// (and every rayon worker): compiling them per file dominated cold-start
+/// time (`.specs/features/performance-guard/design.md`, measurement T-903).
+struct CompiledQueries {
+    symbol: Query,
+    call: Query,
+    name_ix: u32,
+    def_ix: u32,
+    callee_ix: u32,
+}
+
+fn compiled_queries(language: Language) -> Result<&'static CompiledQueries, CodeError> {
+    static CELLS: [OnceLock<Result<CompiledQueries, String>>; 5] =
+        [const { OnceLock::new() }; 5];
+    let slot = match language {
+        Language::TypeScript => 0,
+        Language::JavaScript => 1,
+        Language::Python => 2,
+        Language::Go => 3,
+        Language::Rust => 4,
+    };
+    CELLS[slot]
+        .get_or_init(|| {
+            let ts_language = language.ts_language();
+            let symbol = Query::new(&ts_language, language.symbol_query()).map_err(|e| e.to_string())?;
+            let call = Query::new(&ts_language, language.call_query()).map_err(|e| e.to_string())?;
+            let name_ix = symbol
+                .capture_index_for_name("name")
+                .expect("every symbol_query defines a @name capture");
+            let def_ix = symbol
+                .capture_index_for_name("def")
+                .expect("every symbol_query defines a @def capture");
+            let callee_ix = call
+                .capture_index_for_name("callee")
+                .expect("every call_query defines a @callee capture");
+            Ok(CompiledQueries { symbol, call, name_ix, def_ix, callee_ix })
+        })
+        .as_ref()
+        .map_err(|e| CodeError::Query(e.clone()))
+}
+
 fn stable_id(bytes: &[u8]) -> StableId {
     *blake3::hash(bytes).as_bytes()
 }
@@ -159,14 +201,8 @@ pub fn extract(
     let source_bytes = source.as_bytes();
     let file_id = file_node_id(&path.to_string_lossy());
 
-    let symbol_query = Query::new(&ts_language, language.symbol_query())
-        .map_err(|e| CodeError::Query(e.to_string()))?;
-    let name_ix = symbol_query
-        .capture_index_for_name("name")
-        .expect("every symbol_query defines a @name capture");
-    let def_ix = symbol_query
-        .capture_index_for_name("def")
-        .expect("every symbol_query defines a @def capture");
+    let queries = compiled_queries(language)?;
+    let (name_ix, def_ix) = (queries.name_ix, queries.def_ix);
 
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
@@ -174,7 +210,7 @@ pub fn extract(
 
     {
         let mut cursor = QueryCursor::new();
-        let mut matches = cursor.matches(&symbol_query, tree.root_node(), source_bytes);
+        let mut matches = cursor.matches(&queries.symbol, tree.root_node(), source_bytes);
         while let Some(m) = matches.next() {
             let name_text = m
                 .captures()
@@ -238,13 +274,9 @@ pub fn extract(
         }
     }
 
-    let call_query = Query::new(&ts_language, language.call_query())
-        .map_err(|e| CodeError::Query(e.to_string()))?;
-    let callee_ix = call_query
-        .capture_index_for_name("callee")
-        .expect("every call_query defines a @callee capture");
+    let callee_ix = queries.callee_ix;
     let mut cursor = QueryCursor::new();
-    let mut matches = cursor.matches(&call_query, tree.root_node(), source_bytes);
+    let mut matches = cursor.matches(&queries.call, tree.root_node(), source_bytes);
     while let Some(m) = matches.next() {
         let Some(callee_cap) = m.captures().iter().find(|c| c.index == callee_ix) else {
             continue;
@@ -298,6 +330,21 @@ mod tests {
                 NodeMutation::Remove { .. } => panic!("extract() only upserts"),
             })
             .collect()
+    }
+
+    #[test]
+    fn compiled_queries_are_built_once_per_language() {
+        for language in [
+            Language::TypeScript,
+            Language::JavaScript,
+            Language::Python,
+            Language::Go,
+            Language::Rust,
+        ] {
+            let first = compiled_queries(language).unwrap() as *const CompiledQueries;
+            let second = compiled_queries(language).unwrap() as *const CompiledQueries;
+            assert_eq!(first, second, "{language:?} queries must be cached, not recompiled per file");
+        }
     }
 
     fn extract_at(source: &str, language: Language) -> MutationSet {

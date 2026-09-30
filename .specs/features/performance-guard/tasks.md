@@ -1,6 +1,6 @@
 # Tasks: Performance & Scale Guard (Fase 9)
 
-Primeiro corte = T-901…T-906 incluindo T-904b (aprovado em 2026-09-29). Segundo corte = T-907…T-912.
+Primeiro corte = T-901…T-906 incluindo T-903b, T-904b, T-904c (aprovado em 2026-09-29). Segundo corte = T-907…T-912.
 
 ## T-901: `PhaseTimings` e `sync --verbose` [x]
 - **REQ**: REQ-908 (parte)
@@ -19,13 +19,21 @@ Primeiro corte = T-901…T-906 incluindo T-904b (aprovado em 2026-09-29). Segund
 - **Done when**: (a) mesma seed → mesmos `git rev-tree`/blobs em duas gerações (compara lista de `(path, blake3)` e topologia, não OIDs); (b) `git rev-list --count HEAD` == commits pedidos; (c) existe exatamente 1 commit com ≥ `big_commit_files` arquivos; (d) gerar o default leva < 15 s.
 - **Gate**: `cargo test --test synthetic_repo`
 
-## T-903: Medição de cold start e investigação 27 s vs 15 s [ ]
+## T-903: Medição de cold start e investigação 27 s vs 15 s [x]
 - **REQ**: REQ-902 (baseline), REQ-903
 - **What**: Rodar o sintético default e o repo real com `sync --verbose` em `--release`; registrar tempo por fase, tamanho de `sync.wal`, `edges.bin`, RSS de pico. Testar hipóteses 1–5 do design.md (uma variável por vez). Sem alterar produção além de T-901. Registrar tabela antes/depois em `STATE.md` e neste design.md.
 - **Where**: `.specs/features/performance-guard/design.md` (seção "Medições"), `STATE.md`
 - **Depends on**: T-901, T-902
 - **Done when**: há uma tabela com fase → segundos para as duas bases e a causa dominante dos 27 s está nomeada (ou explicitamente "não reproduzido"). Nenhum processo nexspec vivo ao terminar.
 - **Gate**: medição registrada (sem gate de código)
+
+## T-903b: Cache de queries Tree-sitter + extração paralela [x]
+- **REQ**: REQ-902 (cold start)
+- **What**: `compiled_queries(language)` com `OnceLock` por linguagem (símbolo + chamada); `SyncOrchestrator` junta os arquivos de código (commitados + sujos) e chama `code::extract_all` (rayon) em vez de laço sequencial. Achado da T-903.
+- **Where**: `src/code/parser.rs`, `src/sync_orchestrator.rs`
+- **Depends on**: T-903
+- **Done when**: teste unitário garante que as queries são compiladas uma vez por linguagem; suíte inteira verde; `code` no repo real < 1 s (medido: 11,9 s → 0,6 s).
+- **Gate**: `cargo test`
 
 ## T-904: Teto de co-change (REQ-903) [ ]
 - **REQ**: REQ-903
@@ -34,6 +42,14 @@ Primeiro corte = T-901…T-906 incluindo T-904b (aprovado em 2026-09-29). Segund
 - **Depends on**: T-903 (a medição confirma que co-change é o gargalo antes de fixar defaults)
 - **Done when**: testes: (a) commit com 201 arquivos não gera arestas, com 200 gera; (b) arquivo que co-muda com 60 outros mantém ≤ 50 parceiros, os mais recentes; (c) o sintético default produz < 300 mil arestas de co-change (vs ~1,1 mi) e o cold start medido cai; (d) `COCHANGE_MAX_FILES=5` é respeitado.
 - **Gate**: `cargo test git::cochange && cargo test --test perf_smoke`
+
+## T-904c: O índice não conta como sujo [ ]
+- **REQ**: REQ-902 (sync sem mudanças), REQ-905(b)
+- **What**: `dirty_paths` ignora o `index_dir` do engine (`.specs/.index/`) mesmo sem `.gitignore`; `init` passa a sugerir/gravar a entrada no `.gitignore` do projeto.
+- **Where**: `src/sync_orchestrator.rs`, `src/git/source.rs`, `src/engine.rs`
+- **Depends on**: T-903b
+- **Done when**: repo sem `.gitignore`: `init` + 2 `sync` seguidos → segundo com `files_dirty == 0` e sem frame novo no WAL.
+- **Gate**: `cargo test --test sync_orchestrator`
 
 ## T-904b: `index_format` e reconstrução automática (D8) [ ]
 - **REQ**: REQ-903 (migração)
