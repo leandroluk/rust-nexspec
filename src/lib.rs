@@ -7,6 +7,7 @@ pub mod bench;
 pub mod code;
 pub mod domain;
 pub mod engine;
+pub mod export;
 pub mod enrich;
 pub mod git;
 pub mod graph;

@@ -74,6 +74,8 @@ pub enum EngineError {
     Hnsw(#[from] HnswError),
     #[error("codec error: {0}")]
     Codec(String),
+    #[error("export error: {0}")]
+    Export(String),
     #[error("no node found for target {0:?}")]
     TargetNotFound(String),
 }
@@ -403,6 +405,13 @@ impl Engine {
         let mut input = crate::sync_orchestrator::collect_domain_input(&git, &[])?;
         input.live = None;
         Ok(crate::domain::graph::build(&input).schema)
+    }
+
+    /// The graph in its portable form (Fase 12): nodes, edges and communities, filtered and in a stable order.
+    pub fn export_graph(&self, filter: &crate::export::ExportFilter) -> Result<crate::export::ExportGraph, EngineError> {
+        let snapshot = self.snapshot()?;
+        let communities = crate::report::communities::communities(&snapshot, 5, 0);
+        crate::export::ExportGraph::from_snapshot(&snapshot, &communities, filter).map_err(|e| EngineError::Export(e.to_string()))
     }
 
     /// Ids of the table, column, constraint and package nodes in the index (what the domain pass owns).

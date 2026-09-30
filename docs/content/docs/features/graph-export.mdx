@@ -1,0 +1,39 @@
+---
+title: "Phase 12 · Graph Export"
+description: Portable JSON, an interactive HTML page, a collapsible tree and a Markdown wiki, all from the same model.
+---
+
+The index is binary and local. `nexspec export` turns the graph into files you can commit, open in a browser or hand to an agent.
+
+Source: `.specs/features/graph-export/`
+
+```bash
+nexspec export                                   # JSON on stdout
+nexspec export --format json --out graph.json    # portable, versioned, importable
+nexspec export --format html --out graph.html    # interactive, one file, no network
+nexspec export --format tree --out tree.html     # directory → file → symbol, with an edge inspector
+nexspec export --format wiki --out wiki/         # index.md + one article per community
+nexspec export --format json --path 'src/**' --kind file --kind symbol
+nexspec export --format wiki --out wiki/ --check # exit 7 if what is on disk is out of date
+```
+
+## One model, four renderings
+
+Everything is built from the same model: nodes with their full payload, typed edges with confidence (`extracted`/`inferred`) and context (`runtime`, `type-only`, `test`, `spec`), and the communities of the [report](/docs/features/report-command). Output is sorted and carries no date, commit or tool version, so the same graph gives the same bytes and a committed export only changes when the graph does. `--check` compares byte for byte (for a wiki: every file, and files nobody generates any more) and exits with **7** when it is stale.
+
+| Format | What it is |
+| --- | --- |
+| `json` | `schema_version`, `nodes` (id, kind, label, path, community, full payload), `edges` (from, to, type, confidence, context), `communities`. Nothing is lost: it is what `import` (phase 13) reads back. |
+| `html` | One self-contained file: search, filter by kind and community, detail panel, neighbourhood highlight, pan and zoom. The layout runs in the page and works in short slices so it stays responsive. Above `--max-nodes` (default 5000) it keeps the most connected nodes and the page says how many were left out. "Changes together" edges are not drawn (tens of thousands of them would bury the structure); they stay in the JSON. |
+| `tree` | Directories, files and symbols as collapsible folders, filled in when opened. Selecting a node lists what it points at and what points at it; clicking a neighbour reveals it in the tree. |
+| `wiki` | `index.md` with the communities, and one article each: files, main symbols by links, which communities it depends on and which use it, related requirements. Links are relative. |
+
+## Filters
+
+`--path GLOB` (repeatable) keeps nodes whose path matches: files, symbols (through their file) and packages (their directory). `--kind` (repeatable) keeps node kinds: `file`, `symbol`, `requirement`, `task`, `adr`, `doc_section`, `table`, `view`, `column`, `constraint`, `package`. An edge is kept only when both ends are.
+
+## Safety
+
+Text from the repository reaches the pages only as text (never as HTML) and the embedded JSON cannot end its own `<script>` element; the pages load nothing from the network.
+
+GraphML, Cypher and the like are deliberately not built in: they belong on top of the JSON.

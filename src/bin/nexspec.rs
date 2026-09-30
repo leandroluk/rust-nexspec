@@ -179,6 +179,28 @@ struct ExtractArgs {
     dry_run: bool,
 }
 
+#[derive(clap::Args)]
+struct ExportArgs {
+    /// `json` (portable, importable), `html` (interactive graph), `tree` (collapsible hierarchy) or `wiki` (Markdown per community).
+    #[arg(long, default_value = "json")]
+    format: String,
+    /// File to write (`wiki`: a directory). Without it, json/html/tree go to stdout.
+    #[arg(long)]
+    out: Option<PathBuf>,
+    /// Keep only nodes whose path matches this glob (repeatable), e.g. `src/**`.
+    #[arg(long = "path")]
+    paths: Vec<String>,
+    /// Keep only these node kinds (repeatable): file, symbol, requirement, task, adr, doc_section, table, view, column, constraint, package.
+    #[arg(long = "kind")]
+    kinds: Vec<String>,
+    /// `html`: draw at most this many nodes (the most connected), and say how many were left out.
+    #[arg(long, default_value_t = nexspec::export::html::DEFAULT_MAX_NODES)]
+    max_nodes: usize,
+    /// Do not write: exit 7 if the existing export differs from what would be written now.
+    #[arg(long, requires = "out")]
+    check: bool,
+}
+
 #[derive(Subcommand)]
 enum HookAction {
     /// Append the nexspec block to post-commit, post-merge and post-checkout (idempotent).
@@ -322,6 +344,8 @@ enum Command {
     /// Compare the changesets with a live PostgreSQL database (read-only, opt-in) and add the objects that
     /// exist only there to the graph. Prints `drift: none` or `drift: N difference(s)` first.
     Extract(ExtractArgs),
+    /// Export the graph: portable JSON, an interactive HTML page, a collapsible tree or a Markdown wiki.
+    Export(ExportArgs),
     /// Say whether the index is in step with HEAD and the working tree. First stdout line:
     /// `up-to-date` (exit 0), `stale: <reason>` (exit 3) or `no-index` (exit 4). Never writes.
     CheckUpdate,
@@ -497,6 +521,96 @@ fn run_enrich(repo: &Path, index_dir: &Path, args: &EnrichArgs) -> Result<i32, B
     Ok(if report.failed.is_empty() { 0 } else { EXIT_PARTIAL })
 }
 
+/// Exit code of `export --check` when the export on disk is out of date.
+const EXIT_EXPORT_STALE: i32 = 7;
+
+fn run_export(repo: &Path, index_dir: &Path, args: &ExportArgs) -> Result<i32, Box<dyn std::error::Error>> {
+    use nexspec::export::{ExportFilter, html, tree, wiki};
+    let engine = Engine::open(index_dir, repo)?;
+    let graph = engine.export_graph(&ExportFilter { paths: args.paths.clone(), kinds: args.kinds.clone() })?;
+    // Relative file name -> content; the single-file formats use an empty name for `--out` itself.
+    let files: std::collections::BTreeMap<String, String> = match args.format.as_str() {
+        "json" => [(String::new(), graph.to_json())].into(),
+        "html" => [(String::new(), html::render(&graph, args.max_nodes))].into(),
+        "tree" => [(String::new(), tree::render(&graph))].into(),
+        "wiki" => wiki::render(&graph),
+        other => return Err(format!("unknown format {other:?} (expected json, html, tree or wiki)").into()),
+    };
+    let wiki = args.format == "wiki";
+    let Some(out) = &args.out else {
+        if wiki {
+            return Err("--format wiki needs --out <directory>".into());
+        }
+        print!("{}", files.values().next().expect("one file"));
+        return Ok(0);
+    };
+    let target = |name: &str| if name.is_empty() { out.clone() } else { out.join(name) };
+    let normalise = |text: &str| text.replace("\r\n", "\n");
+
+    if args.check {
+        let mut stale: Vec<String> = Vec::new();
+        for (name, content) in &files {
+            match std::fs::read_to_string(target(name)) {
+                Ok(existing) if normalise(&existing) == *content => {}
+                Ok(_) => stale.push(format!("{} differs", target(name).display())),
+                Err(_) => stale.push(format!("{} is missing", target(name).display())),
+            }
+        }
+        if wiki {
+            for extra in wiki_files_on_disk(out) {
+                if !files.contains_key(&extra) {
+                    stale.push(format!("{} is no longer generated", out.join(&extra).display()));
+                }
+            }
+        }
+        if stale.is_empty() {
+            println!("export up to date");
+            return Ok(0);
+        }
+        println!("export stale: {}", stale.len());
+        for line in stale.iter().take(10) {
+            println!("  {line}");
+        }
+        return Ok(EXIT_EXPORT_STALE);
+    }
+
+    if wiki {
+        // Articles of communities that no longer exist must not linger.
+        for extra in wiki_files_on_disk(out) {
+            if !files.contains_key(&extra) {
+                let _ = std::fs::remove_file(out.join(&extra));
+            }
+        }
+    }
+    for (name, content) in &files {
+        let path = target(name);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, content)?;
+    }
+    println!("exported {} file(s) to {}", files.len(), out.display());
+    Ok(0)
+}
+
+/// The `.md` files a previous wiki export left in `out` (`index.md` and `communities/*.md`).
+fn wiki_files_on_disk(out: &Path) -> Vec<String> {
+    let mut found = Vec::new();
+    if out.join("index.md").is_file() {
+        found.push("index.md".to_string());
+    }
+    if let Ok(entries) = std::fs::read_dir(out.join("communities")) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.ends_with(".md") {
+                found.push(format!("communities/{name}"));
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
 fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(PathBuf::from)
 }
@@ -591,6 +705,12 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                         println!("{name}: {}", if state == HookState::Installed { "installed" } else { "not installed" });
                     }
                 }
+            }
+        }
+        Command::Export(args) => {
+            let code = run_export(&repo, &index_dir, &args)?;
+            if code != 0 {
+                std::process::exit(code);
             }
         }
         Command::Extract(args) => {

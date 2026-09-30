@@ -2810,6 +2810,7 @@ dependencies = [
  "criterion",
  "ctrlc",
  "gix",
+ "globset",
  "ignore",
  "instant-distance",
  "memmap2",

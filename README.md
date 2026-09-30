@@ -70,6 +70,7 @@ Use `--repo <path>` to operate on another repository.
 | `bench [--corpus FILE] [--check] [--update-baseline] [--compare-enrich]` | Retrieval quality and token cost against a question corpus; `--compare-enrich` runs it without and with the `enrich` summaries. |
 | `enrich [--lang en,pt] [--top 20%] [--dry-run] [--status] [--clear] [--yes]` | Opt-in: an LLM writes a short summary per file so prose questions find code (see below). |
 | `extract --postgres DSN [--dry-run]` | Opt-in, read-only: compare the changesets with a live PostgreSQL database (`drift: …` first line) and add the objects that exist only there to the graph. |
+| `export [--format json\|html\|tree\|wiki] [--out PATH] [--path GLOB] [--kind K] [--check]` | Portable JSON, an interactive HTML page, a collapsible tree or a Markdown wiki of the graph; `--check` exits 7 when the export on disk is stale. |
 | `watch [--debounce MS]`                                                                | Sync after each burst of file changes (one watcher per repository; Ctrl+C stops it).            |
 | `hook install\|uninstall\|status`                                                      | Git hooks (`post-commit`, `post-merge`, `post-checkout`) that run `sync` in the background.     |
 | `check-update`                                                                         | `up-to-date`, `stale: <reason>` or `no-index` on the first line; never writes.                  |
@@ -88,6 +89,7 @@ Use `--repo <path>` to operate on another repository.
 | `4`  | `check-update`: there is no index.                                                   |
 | `5`  | `doctor`: at least one check failed.                                                 |
 | `6`  | `enrich`: some files could not be summarised (the rest were kept).                   |
+| `7`  | `export --check`: the export on disk is out of date.                                  |
 
 ## Retrieval enrichment
 

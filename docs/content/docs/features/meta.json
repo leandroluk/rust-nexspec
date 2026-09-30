@@ -11,6 +11,7 @@
     "workflow-integration",
     "retrieval-enrichment",
     "domain-extractors",
+    "graph-export",
     "vector-engine",
     "token-budgeting",
     "cli-mcp-server"
