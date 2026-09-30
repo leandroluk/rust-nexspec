@@ -28,3 +28,4 @@ Um benchmark reprodutível que mede (a) **qualidade** do ranking (o arquivo/sím
 
 - Q1: Formato do corpus: TOML (sem dependência nova, já usada?) ou YAML? Recomendação: TOML.
 - Q2: Congelar o commit do repositório-alvo para reprodutibilidade (baseline muda quando o alvo muda)?
+- Q3 (herdada da Fase 9): os tetos de co-change (`COCHANGE_MAX_FILES`=200, `COCHANGE_MAX_PAIRS`=50) ajudam ou atrapalham o ranking? Rodar o benchmark com tetos diferentes (e sem co-change) e fixar os defaults pelo resultado.

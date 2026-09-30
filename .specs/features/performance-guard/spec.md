@@ -26,5 +26,5 @@ Transformar cada falha de escala/plataforma já vista em teste automatizado e ad
 
 ## Open Questions
 
-- Q1: Rodar o job de orçamento em todo PR ou só no `main`/noturno? Recomendação: PR com repositório sintético reduzido; completo noturno.
-- Q2: `COCHANGE_MAX_FILES` = 200 é razoável? Validar contra o benchmark da Fase 8 (co-change ajuda o ranking?).
+- Q1: **Resolvida (2026-09-30)**: PR com repositório sintético reduzido (escala 0,25); completo noturno (`schedule`). Ver `.github/workflows/ci.yml`.
+- Q2: `COCHANGE_MAX_FILES` = 200 (default, configurável) segue sendo ajustado na Fase 8 — ver Q3 do spec `retrieval-benchmark`.

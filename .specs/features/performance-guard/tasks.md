@@ -117,17 +117,17 @@ Primeiro corte = T-901…T-906 incluindo T-903b, T-904b, T-904c (aprovado em 202
 - **Done when**: teste: após sync completo o arquivo tem 0 bytes; simulação de crash entre `stage` e `mark_done` ainda recupera via `resume()`.
 - **Gate**: `cargo test sync::wal && cargo test --test sync_crash_recovery`
 
-## T-911: CI matrix (REQ-906) [ ] (workflow escrito; falta a 1a execução verde)
+## T-911: CI matrix (REQ-906) [x]
 - **REQ**: REQ-906
 - **What**: `.github/workflows/ci.yml`: `windows-latest` e `ubuntu-latest` × `cargo test` (full e lean) + `clippy -D warnings`; job de orçamento com escala 0,25 em PR e 1,0 noturno (`schedule`); cache de `target/` e do modelo ONNX.
 - **Where**: `.github/workflows/ci.yml`
 - **Depends on**: T-907
-- **Estado (2026-09-30)**: `.github/workflows/ci.yml` commitado. 1a execução (run 36665563937): os 4 jobs `test` (ubuntu/windows x full/lean) verdes; `perf_budget` verde no ubuntu; `complexity` falhou no ubuntu (`CsrDelta::upsert/remove` 2,8-2,9x por cache miss em 200k entradas, não algoritmo) e o job do Windows foi cancelado por mim depois de ficar muito tempo em andamento (causa não investigada: pode ser só lentidão de build/execução no runner). Correção já aplicada localmente (N menor nos casos de hash table, `tests/complexity.rs`); falta rodar o CI de novo, ver o job do Windows terminar e, se travar de verdade, descobrir em qual teste.
+- **Estado (2026-09-30)**: run 36666438491 (commit e77bfdd) verde nos 6 jobs. Orçamento medido em CI (escala 0,25): Ubuntu cold 87 ms / sem mudança 3 ms / 1 arquivo 56 ms; Windows cold 702 ms / 28 ms / 391 ms; buscas < 5 ms. Razões de linearidade 1,8 a 2,4. O job `perf budget (windows)` leva ~10 min só por compilar sem cache (1a execução); o que parecia travamento era isso. A 1a execução (run 36665563937) falhou em `complexity` por cache miss em tabelas de 200 mil entradas; corrigido reduzindo N.
 - **Done when**: workflow válido; primeira execução verde nas duas plataformas.
 - **Gate**: execução do workflow
 
-## T-912: Fechamento da fase [ ]
+## T-912: Fechamento da fase [x]
 - **REQ**: todos
-- **What**: Atualizar ROADMAP (Fase 9 completa), STATE, docs; atualizar skill (commit + push + copiar para `~/.claude/skills` e `~/.gemini/config/skills`).
+- **What**: Atualizar ROADMAP (Fase 9 completa), STATE, docs. A skill `graph-spec-design` não mudou nesta fase (continua no graphify), então não houve cópia para `~/.claude/skills` nem `~/.gemini/config/skills`.
 - **Depends on**: T-907…T-911
 - **Gate**: `cargo test && cargo test --no-default-features --features lean && cargo clippy --all-targets -- -D warnings`

@@ -30,7 +30,7 @@ coerente (frases parecidas rankeiam mais perto que não-relacionadas).
 
 ## Todos
 - [ ] Plano "aposentar o graphify" (2026-09-29): Fases 11-18 especificadas (`.specs/features/{graphify-parity,graph-query-surface,graph-export,multi-repo-graph,domain-extractors,work-memory,workflow-integration,llm-enrichment,semantic-annotations}`); medicao: graphify AST-only 15,4 s a frio / 7,0 s sem mudancas vs nexspec 27 s / 0,9-1,6 s. Proximo: Fase 9 (medir e corrigir cold start), depois 7.
-- [ ] Fase 9 (performance-guard): T-901..T-910 CONCLUIDAS (2026-09-30, commits 7653cfd..3959258 + ci.yml). PENDENTE: (1) T-911: rodar o CI de novo com a correcao de `tests/complexity.rs` (N menor em upsert/remove) e conferir os 6 jobs verdes, inclusive o job `perf budget (windows-latest)` que ficou em andamento por muito tempo na 1a execucao e foi cancelado (investigar se ha teste travado no Windows); (2) T-912: fechar a fase (ROADMAP/STATE/docs), depois Fase 8. Medicoes finais (sintetico 1,3 mil arq., release): cold 1,5 s, sync sem mudanca 22 ms, sync de 1 arquivo 0,19 s, search 3 ms, trace 0,2 ms; repo real: cold 18,0 s -> 2,9 s.
+- [x] Fase 9 (performance-guard): COMPLETA em 2026-09-30 (T-901..T-912; CI verde nos 6 jobs, run 36666438491). Proximo: Fase 8 (retrieval-benchmark), depois 7 -> 10 -> 11.
 - [ ] Fase 8 (retrieval-benchmark), Fase 7 (dependency-edges), Fase 10 (report-command): specificadas em `.specs/features/*/spec.md` (2026-09-29); Design/Tasks pendentes (exceto Fase 9). Ordem sugerida 9 -> 8 -> 7 -> 10 (ver ROADMAP).
 
 ## Active Blockers
