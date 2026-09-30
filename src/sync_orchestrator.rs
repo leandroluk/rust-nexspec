@@ -106,11 +106,11 @@ impl<'a> SyncOrchestrator<'a> {
         // no new commits but a dirty tree, or vice versa). Markdown pass.
         let mut files_dirty = 0usize;
         let mut dirty_paths: Vec<PathBuf> = Vec::new();
-        if self.git.is_dirty()?
-            && let Some(root) = self.git.work_dir()
-        {
-            let tracked = self.git.dirty_paths()?;
-            dirty_paths = self.dirty_cache.scan(root, &tracked);
+        // `is_dirty()` ignores untracked files, so gate on the path list
+        // itself: a brand-new (uncommitted) spec must still be indexed.
+        if let Some(root) = self.git.work_dir() {
+            let candidates = self.git.dirty_paths()?;
+            dirty_paths = self.dirty_cache.scan(root, &candidates);
             for path in &dirty_paths {
                 if is_markdown(path)
                     && let Ok(text) = std::fs::read_to_string(root.join(path))

@@ -454,10 +454,8 @@ impl Engine {
         let git = GitSource::open(&self.repo_root)?;
         let mut changed_symbols: Vec<(StableId, String)> = Vec::new();
 
-        if git.is_dirty()?
-            && let Some(root) = git.work_dir()
-        {
-            for path in git.tracked_paths_at_head()? {
+        if let Some(root) = git.work_dir() {
+            for path in git.dirty_paths()? {
                 let Some(language) = Language::from_extension(&path) else { continue };
                 let head_bytes = git.read_blob_at_head(&path)?.unwrap_or_default();
                 let Ok(working_bytes) = std::fs::read(root.join(&path)) else { continue };
