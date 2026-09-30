@@ -106,13 +106,23 @@ pub fn parse_answer(text: &str, requested: &[FileRequest], langs: &[String]) -> 
     let value: Value = serde_json::from_str(text.trim()).map_err(|_| ProviderError::BadResponse("the answer is not JSON".to_string()))?;
     let array = value.as_array().ok_or_else(|| ProviderError::BadResponse("the answer is not a JSON array".to_string()))?;
     let mut answered: BTreeMap<&str, BTreeMap<String, String>> = BTreeMap::new();
+    let mut missing_detail: BTreeMap<&str, String> = BTreeMap::new();
     for item in array {
         let (Some(path), Some(summaries)) = (item.get("path").and_then(Value::as_str), item.get("summaries").and_then(Value::as_object)) else { continue };
         let mut per_lang = BTreeMap::new();
         for lang in langs {
-            if let Some(text) = summaries.get(lang).and_then(Value::as_str).map(str::trim).filter(|t| !t.is_empty()) {
+            // Models sometimes answer `pt-BR` or `PT` for `pt`: accept those spellings.
+            let found = summaries.iter().find(|(key, _)| {
+                let key = key.to_ascii_lowercase();
+                key == *lang || key.strip_prefix(lang.as_str()).is_some_and(|rest| rest.starts_with('-') || rest.starts_with('_'))
+            });
+            if let Some(text) = found.and_then(|(_, v)| v.as_str()).map(str::trim).filter(|t| !t.is_empty()) {
                 per_lang.insert(lang.clone(), text.to_string());
             }
+        }
+        if per_lang.len() < langs.len() {
+            let keys: Vec<&str> = summaries.keys().map(String::as_str).take(6).collect();
+            missing_detail.insert(path, format!("a requested language is missing (the answer had: {})", if keys.is_empty() { "no languages".to_string() } else { keys.join(", ") }));
         }
         answered.insert(path, per_lang);
     }
@@ -121,7 +131,9 @@ pub fn parse_answer(text: &str, requested: &[FileRequest], langs: &[String]) -> 
     for file in requested {
         match answered.remove(file.path.as_str()) {
             None => failed.push((file.path.clone(), "no answer for this file".to_string())),
-            Some(per_lang) if per_lang.len() < langs.len() => failed.push((file.path.clone(), "a requested language is missing".to_string())),
+            Some(per_lang) if per_lang.len() < langs.len() => {
+                failed.push((file.path.clone(), missing_detail.remove(file.path.as_str()).unwrap_or_else(|| "a requested language is missing".to_string())));
+            }
             Some(per_lang) => items.push(Summarised { path: file.path.clone(), summaries: per_lang }),
         }
     }
@@ -213,17 +225,24 @@ impl GeminiProvider {
         format!("{}/models/{}:generateContent", self.base_url, self.model)
     }
 
-    fn body(&self, prompt: &str) -> String {
+    /// The request. The schema names every language under `summaries`: an `OBJECT` without `properties` makes
+    /// Gemini answer `{}`, which is what `enrich` first got on a real run (every file "missing a language").
+    fn body(&self, prompt: &str, langs: &[String]) -> String {
+        let language_properties: serde_json::Map<String, Value> = langs.iter().map(|l| (l.clone(), json!({ "type": "STRING" }))).collect();
         json!({
             "contents": [{ "parts": [{ "text": prompt }] }],
             "generationConfig": {
                 "temperature": 0,
+                "maxOutputTokens": 8192,
                 "responseMimeType": "application/json",
                 "responseSchema": {
                     "type": "ARRAY",
                     "items": {
                         "type": "OBJECT",
-                        "properties": { "path": { "type": "STRING" }, "summaries": { "type": "OBJECT" } },
+                        "properties": {
+                            "path": { "type": "STRING" },
+                            "summaries": { "type": "OBJECT", "properties": language_properties, "required": langs }
+                        },
                         "required": ["path", "summaries"]
                     }
                 }
@@ -283,7 +302,7 @@ impl EnrichProvider for GeminiProvider {
 
     fn summarize(&self, files: &[FileRequest], langs: &[String]) -> Result<BatchOutcome, ProviderError> {
         validate_languages(langs)?;
-        let text = self.send_with_retry(&self.body(&build_prompt(files, langs)))?;
+        let text = self.send_with_retry(&self.body(&build_prompt(files, langs), langs))?;
         let response: Value = serde_json::from_str(&text).map_err(|_| ProviderError::BadResponse("the response is not JSON".to_string()))?;
         let usage = Usage {
             input_tokens: response.pointer("/usageMetadata/promptTokenCount").and_then(Value::as_u64).unwrap_or(0),
@@ -430,6 +449,27 @@ mod tests {
         assert_eq!(outcome.items.iter().map(|i| i.path.as_str()).collect::<Vec<_>>(), ["a.ts"]);
         let failed: Vec<_> = outcome.failed.iter().map(|(p, _)| p.as_str()).collect();
         assert_eq!(failed, ["b.ts", "c.ts"]);
+    }
+
+    #[test]
+    fn the_schema_names_every_language_so_the_model_cannot_answer_an_empty_object() {
+        let transport = ScriptedTransport::new(vec![Ok(ok_response(r#"[{"path":"a.ts","summaries":{"en":"x","pt":"y"}}]"#))]);
+        gemini(transport.clone()).summarize(&[request("a.ts")], &["en".into(), "pt".into()]).unwrap();
+        let seen = transport.seen.lock().unwrap();
+        let body: Value = serde_json::from_str(&seen[0].2).unwrap();
+        let summaries = &body["generationConfig"]["responseSchema"]["items"]["properties"]["summaries"];
+        assert_eq!(summaries["properties"]["pt"]["type"], "STRING");
+        assert_eq!(summaries["required"], json!(["en", "pt"]));
+        assert_eq!(body["generationConfig"]["maxOutputTokens"], 8192);
+    }
+
+    #[test]
+    fn a_regional_spelling_of_the_language_code_is_accepted_and_a_miss_says_what_came_back() {
+        let transport = ScriptedTransport::new(vec![Ok(ok_response(r#"[{"path":"a.ts","summaries":{"EN":"x","pt-BR":"y"}},{"path":"b.ts","summaries":{"english":"z"}}]"#))]);
+        let outcome = gemini(transport).summarize(&[request("a.ts"), request("b.ts")], &["en".into(), "pt".into()]).unwrap();
+        assert_eq!(outcome.items.len(), 1, "a.ts: EN and pt-BR are en and pt");
+        assert_eq!(outcome.failed.len(), 1);
+        assert!(outcome.failed[0].1.contains("the answer had: english"), "{:?}", outcome.failed);
     }
 
     #[test]
