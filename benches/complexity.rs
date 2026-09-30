@@ -28,7 +28,7 @@ fn id(i: usize) -> StableId {
 }
 
 fn edge(i: usize) -> Edge {
-    Edge { id: id(i), from: id(i % 997), to: id(i / 997), edge_type: EdgeType::CoChanges }
+    Edge { id: id(i), from: id(i % 997), to: id(i / 997), edge_type: EdgeType::CoChanges, meta: 0 }
 }
 
 fn filled_delta(n: usize) -> CsrDelta {

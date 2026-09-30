@@ -1,6 +1,6 @@
 # Tasks: Dependency Edges (Fase 7)
 
-## T-701: Vocabulário de arestas e `meta` (REQ-709, REQ-710) [ ]
+## T-701: Vocabulário de arestas e `meta` (REQ-709, REQ-710) [x]
 - **REQ**: REQ-709, REQ-710
 - **What**: `EdgeType` ganha `Imports, ReExports, Calls, Instantiates, Extends, References` (códigos 5–10) e `is_dependency()`. `Edge.meta: u8` com `EdgeMeta` (confiança/contexto). `CsrParticipant` lê `payload[0]` → `meta`. `INDEX_FORMAT` 5.
 - **Where**: `src/graph/edge.rs`, `src/graph/csr/*`, `src/engine.rs`, testes que constroem `Edge`

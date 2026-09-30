@@ -114,7 +114,7 @@ impl SyncParticipant for CsrParticipant {
                     from,
                     to,
                     edge_type,
-                    ..
+                    payload,
                 } => {
                     let edge_type = EdgeType::from_code(*edge_type).ok_or_else(|| {
                         SyncError::Storage(format!("unknown edge_type code {edge_type}"))
@@ -124,6 +124,8 @@ impl SyncParticipant for CsrParticipant {
                         from: *from,
                         to: *to,
                         edge_type,
+                        // `payload[0]` carries confidence/context (see `encode_meta`).
+                        meta: payload.first().copied().unwrap_or(0),
                     });
                 }
                 EdgeMutation::Remove { id } => {
@@ -254,6 +256,7 @@ mod tests {
                 from: [200u8; 32],
                 to: [i; 32],
                 edge_type: EdgeType::DefinedIn,
+                meta: 0,
             })
             .collect();
         CsrBase::build(&base_edges, file.path()).unwrap();
@@ -294,5 +297,35 @@ mod tests {
         );
         // Data must still be queryable after compaction (base+delta merged).
         assert_eq!(p.csr().edges_from(&[10u8; 32], EdgeType::DependsOn).len(), 5);
+    }
+
+    #[test]
+    fn edge_meta_travels_from_the_payload_and_survives_compaction() {
+        use crate::graph::edge::{Confidence, EdgeContext, encode_meta};
+        let (_file, p) = participant_over_empty_base();
+        let meta = encode_meta(Confidence::Inferred, EdgeContext::Test);
+        let set = MutationSet {
+            nodes: vec![],
+            edges: vec![EdgeMutation::Upsert {
+                id: [7u8; 32],
+                from: [10u8; 32],
+                to: [14u8; 32],
+                edge_type: EdgeType::Imports.to_code(),
+                payload: vec![meta],
+            }],
+            docs: vec![],
+        };
+        p.stage(1, &set).unwrap();
+        p.commit(1).unwrap();
+
+        let in_delta = p.csr().edges_from(&[10u8; 32], EdgeType::Imports);
+        assert_eq!(in_delta[0].meta, meta);
+        assert_eq!(in_delta[0].confidence(), Confidence::Inferred);
+        assert_eq!(in_delta[0].context(), EdgeContext::Test);
+
+        p.compact_now().unwrap();
+        let in_base = p.csr().edges_from(&[10u8; 32], EdgeType::Imports);
+        assert_eq!(in_base.len(), 1);
+        assert_eq!(in_base[0].meta, meta, "meta is stored in the base file too");
     }
 }

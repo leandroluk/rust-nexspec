@@ -75,11 +75,12 @@ fn regression_csr_upsert_bulk_is_linear() {
             from: id(i % 1000),
             to: id(i / 1000),
             edge_type: EdgeType::CoChanges,
+            meta: 0,
         });
     }
     // Replacing existing ids must stay O(1) too.
     for i in 0..n {
-        delta.upsert(Edge { id: id(i), from: id(0), to: id(1), edge_type: EdgeType::CoChanges });
+        delta.upsert(Edge { id: id(i), from: id(0), to: id(1), edge_type: EdgeType::CoChanges, meta: 0 });
     }
     assert_eq!(delta.len(), n as usize);
     let elapsed = started.elapsed();

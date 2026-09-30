@@ -103,6 +103,7 @@ mod tests {
             from: [1u8; 32],
             to: [2u8; 32],
             edge_type: EdgeType::DependsOn,
+            meta: 0,
         });
         csr.publish_delta(delta);
 
@@ -124,6 +125,7 @@ mod tests {
                         from: [1u8; 32],
                         to: [i; 32],
                         edge_type: EdgeType::DependsOn,
+                        meta: 0,
                     });
                     csr.publish_delta(delta);
                 }

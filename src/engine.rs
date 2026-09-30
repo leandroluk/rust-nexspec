@@ -146,8 +146,9 @@ pub struct BlameResult {
 /// whenever extraction or edge semantics change so stale indexes rebuild
 /// themselves instead of serving wrong answers. 2 = capped co-change edges,
 /// 3 = identifier-aware tokenizer for the lexical index,
-/// 4 = no `File` nodes for binaries/lockfiles.
-pub const INDEX_FORMAT: u64 = 4;
+/// 4 = no `File` nodes for binaries/lockfiles,
+/// 5 = `Edge.meta` and the dependency edge types.
+pub const INDEX_FORMAT: u64 = 5;
 
 /// Knobs for [`Engine::open_with`].
 #[derive(Debug, Clone, Copy)]

@@ -168,6 +168,7 @@ mod tests {
             from,
             to,
             edge_type,
+            meta: 0,
         }
     }
 
