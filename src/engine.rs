@@ -147,6 +147,21 @@ pub struct BlameResult {
 /// themselves instead of serving wrong answers. 2 = capped co-change edges.
 pub const INDEX_FORMAT: u64 = 2;
 
+/// Knobs for [`Engine::open_with`].
+#[derive(Debug, Clone, Copy)]
+pub struct EngineOptions {
+    /// Use the vector half of hybrid search when its model is present.
+    /// Turning it off makes results independent of the machine's `.models/`
+    /// (what a reproducible benchmark needs).
+    pub vector_search: bool,
+}
+
+impl Default for EngineOptions {
+    fn default() -> Self {
+        Self { vector_search: true }
+    }
+}
+
 pub struct Engine {
     db: Database,
     csr: Arc<Csr>,
@@ -158,6 +173,7 @@ pub struct Engine {
     /// O(points)); keyed by the `sync_version` it was loaded at.
     #[cfg(feature = "full")]
     hnsw_cache: std::sync::Mutex<Option<(u64, Arc<HnswParticipant>)>>,
+    vector_enabled: bool,
     /// Declared last so it is released after everything above is dropped
     /// (the database file must be closed before another process may open it).
     _lock: Option<SyncLock>,
@@ -168,6 +184,11 @@ impl Engine {
     /// missing (REQ-602: idempotent — an existing structure is opened, not
     /// reset).
     pub fn open(index_dir: &Path, repo_root: &Path) -> Result<Self, EngineError> {
+        Self::open_with(index_dir, repo_root, EngineOptions::default())
+    }
+
+    /// [`Engine::open`] with explicit [`EngineOptions`].
+    pub fn open_with(index_dir: &Path, repo_root: &Path, options: EngineOptions) -> Result<Self, EngineError> {
         std::fs::create_dir_all(index_dir)?;
 
         // REQ-907: wait for another process using this index instead of
@@ -187,10 +208,14 @@ impl Engine {
         drop(TantivyParticipant::new(&index_dir.join("tantivy"))?);
 
         #[cfg(feature = "full")]
-        let embedder = Embedder::new(
-            repo_root.join(".models").join("model_quantized.onnx"),
-            repo_root.join(".models").join("tokenizer.json"),
-        );
+        let embedder = if options.vector_search {
+            Embedder::new(
+                repo_root.join(".models").join("model_quantized.onnx"),
+                repo_root.join(".models").join("tokenizer.json"),
+            )
+        } else {
+            Embedder::new("vector-search-disabled.onnx", "vector-search-disabled.json")
+        };
 
         Ok(Self {
             db,
@@ -201,6 +226,7 @@ impl Engine {
             embedder,
             #[cfg(feature = "full")]
             hnsw_cache: std::sync::Mutex::new(None),
+            vector_enabled: options.vector_search,
             _lock: Some(lock),
         })
     }
@@ -605,10 +631,11 @@ impl Engine {
         #[cfg(feature = "full")]
         {
             let models = self.repo_root.join(".models");
-            models.join("model_quantized.onnx").exists() && models.join("tokenizer.json").exists()
+            self.vector_enabled && models.join("model_quantized.onnx").exists() && models.join("tokenizer.json").exists()
         }
         #[cfg(not(feature = "full"))]
         {
+            let _ = self.vector_enabled; // vectors do not exist in a lean build
             false
         }
     }
@@ -905,6 +932,7 @@ mod tests {
             embedder: Embedder::new("nonexistent.onnx", "nonexistent.json"),
             #[cfg(feature = "full")]
             hnsw_cache: std::sync::Mutex::new(None),
+            vector_enabled: true,
             _lock: None,
         };
         let result = engine.trace(&id_hex(&symbol_id)).unwrap();

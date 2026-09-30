@@ -16,7 +16,7 @@ use crate::bench::baselines::{BaselineError, RepoSnapshot};
 use crate::bench::corpus::{Corpus, Kind};
 use crate::bench::locate::ranked_for;
 use crate::bench::metrics::{QueryMetrics, aggregate, aggregate_by_kind, evaluate};
-use crate::engine::{Engine, EngineError};
+use crate::engine::{Engine, EngineError, EngineOptions};
 use crate::git::{GitError, GitSource};
 use crate::token::budget::{CharHeuristicTokenizer, TiktokenTokenizer, TokenError, Tokenizer};
 
@@ -61,6 +61,9 @@ pub struct BenchOptions {
     /// `max_tokens` given to `Engine::search` (what the agent would request).
     pub budget_tokens: u32,
     pub tokenizer: TokenizerKind,
+    /// Use the vector half of hybrid search when a model is present. `false`
+    /// makes the run reproducible across machines (BM25 only).
+    pub vector_search: bool,
 }
 
 impl BenchOptions {
@@ -71,6 +74,7 @@ impl BenchOptions {
             ks: vec![5, 10],
             budget_tokens: 2000,
             tokenizer: TokenizerKind::Heuristic,
+            vector_search: true,
         }
     }
 }
@@ -153,7 +157,7 @@ pub fn run(corpus: &Corpus, options: &BenchOptions) -> Result<BenchReport, Bench
         .unwrap_or_else(|| temp.as_ref().expect("temp dir exists when no index dir is given").path().to_path_buf());
 
     let started = Instant::now();
-    let engine = Engine::open(&index_dir, &repo)?;
+    let engine = Engine::open_with(&index_dir, &repo, EngineOptions { vector_search: options.vector_search })?;
     engine.sync()?;
     let index_seconds = started.elapsed().as_secs_f64();
 

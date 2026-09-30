@@ -84,6 +84,19 @@ enum Command {
         /// Write the report to this file instead of stdout.
         #[arg(long)]
         output: Option<PathBuf>,
+        /// BM25 only, ignoring any local ONNX model: reproducible across machines.
+        #[arg(long)]
+        no_vector: bool,
+        /// Fail (exit 1) if `locate` recall@5 is below `--min-locate-recall` or
+        /// any recall regressed > 5 points against this baseline file.
+        #[arg(long, num_args = 0..=1, default_missing_value = "bench/baseline.json")]
+        check: Option<PathBuf>,
+        /// Record this run as the new baseline (default file: bench/baseline.json).
+        #[arg(long, num_args = 0..=1, default_missing_value = "bench/baseline.json")]
+        update_baseline: Option<PathBuf>,
+        /// Absolute floor for `locate` recall@5 used by `--check`.
+        #[arg(long, default_value_t = 0.8)]
+        min_locate_recall: f64,
     },
 }
 
@@ -195,7 +208,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let engine = Engine::open(&index_dir, &repo)?;
             run_mcp(engine)?;
         }
-        Command::Bench { corpus, ks, index_dir, format, tokenizer, budget, output } => {
+        Command::Bench { corpus, ks, index_dir, format, tokenizer, budget, output, no_vector, check, update_baseline, min_locate_recall } => {
             use nexspec::bench::{report, runner};
             let corpus_path = corpus.unwrap_or_else(|| runner::default_corpus_path(&repo));
             let corpus = nexspec::bench::Corpus::load(&corpus_path)?;
@@ -212,11 +225,34 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             options.ks = ks;
             options.budget_tokens = budget;
             options.tokenizer = tokenizer;
+            options.vector_search = !no_vector;
             let result = runner::run(&corpus, &options)?;
             let text = if format == "json" { report::to_json(&result) } else { report::to_markdown(&result) };
             match output {
                 Some(path) => std::fs::write(path, text)?,
                 None => println!("{text}"),
+            }
+            if let Some(path) = update_baseline {
+                nexspec::bench::baseline::Baseline::from_report(&result).save(&path)?;
+                eprintln!("baseline recorded in {}", path.display());
+            }
+            if let Some(path) = check {
+                let baseline = if path.exists() {
+                    Some(nexspec::bench::baseline::Baseline::load(&path)?)
+                } else {
+                    eprintln!("warning: no baseline at {}; only the absolute floor is checked", path.display());
+                    None
+                };
+                let outcome = nexspec::bench::baseline::check(&result, baseline.as_ref(), min_locate_recall);
+                for warning in &outcome.warnings {
+                    eprintln!("warning: {warning}");
+                }
+                if !outcome.passed() {
+                    return Err(format!("benchmark gate failed:
+  - {}", outcome.failures.join("
+  - ")).into());
+                }
+                eprintln!("benchmark gate passed");
             }
         }
     }
