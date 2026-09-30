@@ -30,7 +30,7 @@ coerente (frases parecidas rankeiam mais perto que não-relacionadas).
 
 ## Todos
 - [ ] Plano "aposentar o graphify" (2026-09-29): Fases 11-18 especificadas (`.specs/features/{graphify-parity,graph-query-surface,graph-export,multi-repo-graph,domain-extractors,work-memory,workflow-integration,llm-enrichment,semantic-annotations}`); medicao: graphify AST-only 15,4 s a frio / 7,0 s sem mudancas vs nexspec 27 s / 0,9-1,6 s. Proximo: Fase 9 (medir e corrigir cold start), depois 7.
-- [ ] Fase 7 (dependency-edges) e Fase 10 (report-command): specificadas em `.specs/features/*/spec.md` (2026-09-29); Design/Tasks pendentes. Ordem: 7 -> 10 -> 11 (ver ROADMAP).
+- [ ] Fase 10 (report-command): especificada em `.specs/features/report-command/spec.md`; Design/Tasks pendentes. Ordem: 10 -> 11 (ver ROADMAP). Limite conhecido da Fase 7: importador nao alterado nao e religado quando um arquivo novo passa a resolver (reindexar resolve).
 
 ## Active Blockers
 - none
@@ -273,11 +273,11 @@ testes de inferência real, 78/78 (`lean`).
   limpos de primeira; `cargo test` → 72/72 pass.
 
 ## Lessons Learned (Last 5)
+- (2026-09-30) Expandir a busca por arestas de dependencia *para frente* encheu toda resposta de vizinhos (+35% de tokens) sem ganho de recall; o ganho veio de incluir *dependentes* so quando a pergunta pede. Medir tokens junto com recall a cada mudanca de busca.
 - (2026-09-30) O benchmark no repo real achou o que os testes unitarios nao achavam: `traceability` = 0 porque requisitos no formato `- **REQ-X (Rotulo)**:` e `### REQ-X:` nao eram indexados; `PNG` aparecendo em resultados de busca; vetor com peso igual piorando a ordem. Medir antes de ajustar ranking.
 - (2026-09-30) `HnswParticipant::new` reconstruia o grafo HNSW (~1,1 s / 5 mil pontos) em todo `sync`, mesmo sem mudancas; agora e sob demanda. O teste de orcamento (T-907) so revelou isso porque mede o sync sem mudancas separadamente.
 - (2026-09-30) Testes de razao T(2N)/T(N) com tabelas hash grandes medem cache miss em runner compartilhado (2,8x), nao algoritmo: manter N pequeno, serializar os testes de tempo e permitir novas tentativas.
 - (2026-09-30) O gargalo do cold start NAO era o co-change (hipotese do relatorio): era `Query::new` do tree-sitter recompilada por arquivo (11,9 s de 18 s) + extracao sequencial. Medir por fase (`sync --verbose`) antes de otimizar; co-change so pesava no stage/WAL/redb.
-- (2026-09-30) `@spec` acima de `export function` nao gerava `Satisfies` (o comentario e irmao do `export_statement`, nao da declaracao); achado ao escrever a regressao (g). Corrigido em parser.rs.
 
 ## Deferred Ideas
 - Trim de features do `gix` (`default-features = false`) — footprint atual

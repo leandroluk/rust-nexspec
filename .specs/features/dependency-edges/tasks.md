@@ -58,7 +58,7 @@
 - **Done when**: `trace <símbolo>` lista dependentes (`<-`) e dependências; God node respeita o teto e mostra omitidos; ciclo A→B→A é detectado.
 - **Gate**: `cargo test --test dependency_trace`
 
-## T-708: Aceite no repositório real e no benchmark (REQ-708) [ ]
+## T-708: Aceite no repositório real e no benchmark (REQ-708) [x]
 - **REQ**: REQ-708
 - **What**: no condominium: `trace CachePort` (7 usuários), `trace AccessUserPersonaReader` (11), amostra de 30 arestas revisada à mão; tempo do 1º sync ≤ +20% e sync sem mudanças < 2 s (`perf_budget`); `structure` do benchmark deixa de ser 0,00; baseline atualizado.
 - **Where**: medições; `.specs/features/dependency-edges/design.md`; `bench/baseline.json`
@@ -74,7 +74,7 @@
 - **Done when**: fixture por linguagem com import resolvido, relativo e externo (ignorado).
 - **Gate**: `cargo test --test dependency_edges_langs`
 
-## T-710: Fechamento da fase [ ]
+## T-710: Fechamento da fase [x]
 - **REQ**: todos
 - **What**: ROADMAP/STATE/docs; `cargo test` (full e lean) e clippy; CI verde.
 - **Depends on**: T-701…T-709

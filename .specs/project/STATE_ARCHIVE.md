@@ -373,3 +373,13 @@ contra specs do mesmo ciclo.
 - [x] Fase 8 (retrieval-benchmark): COMPLETA em 2026-09-30 (T-801..T-810). `nexspec bench` (corpus TOML, recall@k/MRR, baselines grep/leitura/corpus, custo fixo e break-even, `--check`/`--update-baseline`, `--no-vector`); corpora `bench/self.toml` (22 perguntas) e `<condominium>/.specs/bench/queries.toml` (24, arquivo criado la e NAO commitado); job `retrieval benchmark` no CI. Resultados (BM25): locate r5 self 0,93 / condominium 1,00; traceability condominium 0,00 -> 1,00; structure 0,00 nos dois (precisa da Fase 7). Decisoes: peso do vetor no RRF 0,1; co-change fora da busca; File nodes sem binarios/lockfiles; INDEX_FORMAT 4. Proximo: Fase 7 (dependency-edges), depois 10 -> 11.
 
 ---
+
+## Archive — 2026-09-30 (compaction 5)
+
+### Lesson
+- (2026-09-30) `@spec` acima de `export function` nao gerava `Satisfies` (o comentario e irmao do `export_statement`, nao da declaracao); achado ao escrever a regressao (g). Corrigido em parser.rs.
+
+### Todo (completed)
+- [x] Fase 7 (dependency-edges): COMPLETA em 2026-09-30 (T-701..T-710). Vocabulario de arestas com `meta` (confianca/contexto), ids de simbolo estaveis `(path,nome,ordinal)`, fatos TS/JS + resolvedor (relativo, tsconfig, `#/*`, workspace, barrels), Rust/Python/Go arquivo->arquivo, reconciliacao incremental, `trace` com teto por hop, `search` com dependentes so quando a pergunta pede, ciclos de import. INDEX_FORMAT 5. Medido (condominium): `trace CachePort`/`AccessUserPersonaReader` completos e sem falso positivo na amostra; structure recall@5 0,00 -> 1,00; 1o sync 1,30 -> 1,18 s.
+
+---
