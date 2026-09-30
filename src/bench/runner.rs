@@ -73,6 +73,9 @@ pub struct BenchOptions {
     /// Apply the work memory's ranking nudge (Fase 15). Off by default: a benchmark must not depend on
     /// what one person happened to save.
     pub memory: bool,
+    /// Compute real embeddings after the sync (`sync --embed`, needs the model), so the vector half of
+    /// hybrid search has something to work with. Off by default: it costs ~10 ms per node.
+    pub embed: bool,
 }
 
 impl BenchOptions {
@@ -87,6 +90,7 @@ impl BenchOptions {
             fixed_cost_files: Vec::new(),
             summary_weight: None,
             memory: false,
+            embed: false,
         }
     }
 }
@@ -194,6 +198,9 @@ pub fn run(corpus: &Corpus, options: &BenchOptions) -> Result<BenchReport, Bench
     let started = Instant::now();
     let engine = Engine::open_with(&index_dir, &repo, EngineOptions { vector_search: options.vector_search, summary_weight: options.summary_weight, memory: options.memory, ..EngineOptions::default() })?;
     engine.sync()?;
+    if options.embed && options.vector_search {
+        engine.embed_nodes()?;
+    }
     let index_seconds = started.elapsed().as_secs_f64();
 
     let git = GitSource::open(&repo)?;

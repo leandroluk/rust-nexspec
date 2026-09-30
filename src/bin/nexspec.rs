@@ -109,6 +109,9 @@ struct BenchArgs {
     /// Run the corpus without and with the `enrich` summaries and judge the difference (REQ-1911).
     #[arg(long)]
     compare_enrich: bool,
+    /// Embed the nodes after the sync (`sync --embed`; needs the model and vector search on) so hybrid search has real vectors.
+    #[arg(long)]
+    embed: bool,
     /// Run the corpus without and with the work memory's ranking nudge; fails if any kind loses more than 2 points.
     #[arg(long)]
     compare_memory: bool,
@@ -1344,7 +1347,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Command::Bench(args) => {
-            let BenchArgs { corpus, ks, index_dir, format, tokenizer, budget, output, no_vector, check, update_baseline, min_locate_recall, fixed_cost_files, compare_enrich, compare_memory } = *args;
+            let BenchArgs { corpus, ks, index_dir, format, tokenizer, budget, output, no_vector, check, update_baseline, min_locate_recall, fixed_cost_files, compare_enrich, compare_memory, embed } = *args;
             use nexspec::bench::{report, runner};
             let corpus_path = corpus.unwrap_or_else(|| runner::default_corpus_path(&repo));
             let corpus = nexspec::bench::Corpus::load(&corpus_path)?;
@@ -1362,6 +1365,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             options.budget_tokens = budget;
             options.tokenizer = tokenizer;
             options.vector_search = !no_vector;
+            options.embed = embed;
             options.fixed_cost_files = fixed_cost_files;
             if compare_memory {
                 let comparison = nexspec::bench::compare::compare_memory(&corpus, &options)?;

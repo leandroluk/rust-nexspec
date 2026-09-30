@@ -67,7 +67,7 @@ Use `--repo <path>` to operate on another repository.
 | `blame <symbol> [--full-history]`                                                      | AST-aware blame scoped to the symbol's lines.                                                   |
 | `diff --staged`                                                                        | Structural impact of the dirty/staged tree.                                                     |
 | `report [--format md\|json] [--max-tokens N] [--top N] [--fail-on-cycle] [--diff REV]` | Structural report of the graph (see below).                                                     |
-| `bench [--corpus FILE] [--check] [--update-baseline] [--compare-enrich]` | Retrieval quality and token cost against a question corpus; `--compare-enrich` runs it without and with the `enrich` summaries. |
+| `bench [--corpus FILE] [--check] [--update-baseline] [--compare-enrich] [--compare-memory] [--embed]` | Retrieval quality and token cost against a question corpus; `--compare-enrich` runs it without and with the `enrich` summaries. |
 | `enrich [--lang en,pt] [--top 20%] [--dry-run] [--status] [--clear] [--yes]` | Opt-in: an LLM writes a short summary per file so prose questions find code (see below). |
 | `extract --postgres DSN [--dry-run]` | Opt-in, read-only: compare the changesets with a live PostgreSQL database (`drift: …` first line) and add the objects that exist only there to the graph. |
 | `export [--format json\|html\|tree\|wiki] [--out PATH] [--path GLOB] [--kind K] [--check]` | Portable JSON, an interactive HTML page, a collapsible tree or a Markdown wiki of the graph; `--check` exits 7 when the export on disk is stale. |

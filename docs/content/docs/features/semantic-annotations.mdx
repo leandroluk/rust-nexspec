@@ -46,3 +46,14 @@ An annotation adds a node and an `AnnotatedBy` edge (not a dependency, so `affec
 `sync --embed` computes real embeddings (documents, requirements, symbols, tables, fresh annotations; new or changed ones only) and `--similar` links each node to up to 3 neighbours with similarity of at least 0.75 (`--similar-k`, `--similar-threshold`): `SimilarTo` edges, `INFERRED`, context `embedding`, the score kept in the edge (`explain` lists them). The pass costs about 10 ms per node (3700 nodes: 37 s on the reference repository), so it is opt-in; a `lean` build refuses it and without the model it says so and does nothing.
 
 > Until this phase the vector index was fed the serialized bytes of each node instead of embeddings, so vector search ranked on meaningless points. Vectors now travel in their own channel and only `sync --embed` produces them; without it, search is BM25 alone.
+
+## Does it help retrieval?
+
+`nexspec bench --embed` runs the corpus after `sync --embed`, so the vector half of hybrid search has real vectors (default vector weight 0.1). Measured on 2026-09-30 with the MiniLM model:
+
+| Corpus | BM25 only | BM25 + real embeddings |
+| --- | --- | --- |
+| this repository (22 questions) | recall@5 0.89, MRR 0.80, 44k answer tokens | recall@5 0.89, recall@10 0.91, MRR 0.83, 55k answer tokens |
+| condominium (24 questions) | recall@5 1.00, MRR 0.93, 23k answer tokens | recall@5 0.98, MRR 0.91, 37k answer tokens |
+
+A small gain on one corpus, a small loss and about 60 % more answer tokens on the other: not enough to turn embeddings on by default, which is why `sync` leaves them off and `SimilarTo` stays opt-in until a corpus shows a clear win.
