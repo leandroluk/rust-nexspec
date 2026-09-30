@@ -151,9 +151,16 @@ impl<'a> SyncOrchestrator<'a> {
             }
         }
 
-        combined
-            .edges
-            .extend(self.git.co_change_edges(&CoChangeWindow::default())?);
+        // Co-change edges depend only on commit history: recompute them when
+        // HEAD moved (or on the first sync), not on every no-op cycle -- the
+        // full pair set is ~O(files^2) per large commit.
+        let history_changed = since.is_none()
+            || !(diff.added.is_empty() && diff.modified.is_empty() && diff.deleted.is_empty());
+        if history_changed {
+            combined
+                .edges
+                .extend(self.git.co_change_edges(&CoChangeWindow::default())?);
+        }
 
         let has_changes =
             !combined.nodes.is_empty() || !combined.edges.is_empty() || !combined.docs.is_empty();
