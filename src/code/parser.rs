@@ -8,7 +8,9 @@ use std::sync::OnceLock;
 
 use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
 
-use crate::graph::edge::EdgeType;
+use crate::code::deps::{ExtractedFile, file_context};
+use crate::code::facts::FileFacts;
+use crate::graph::edge::{Confidence, EdgeType, encode_meta};
 use crate::graph::markdown::{find_markers, marker_node_id};
 use crate::graph::node::{NodePayload, file_node_id, symbol_node_id};
 use crate::sync::mutation::{EdgeMutation, MutationSet, NodeMutation, StableId};
@@ -168,18 +170,21 @@ fn rkyv_bytes(payload: &NodePayload) -> Vec<u8> {
         .to_vec()
 }
 
-struct SymbolInfo {
-    id: StableId,
-    name: String,
-    start_byte: usize,
-    end_byte: usize,
+/// A symbol found in a file, with its byte range (used to attribute uses to
+/// the symbol that contains them).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SymbolSpan {
+    pub id: StableId,
+    pub name: String,
+    pub start_byte: usize,
+    pub end_byte: usize,
 }
 
 /// Same-file call resolution in O(log S) per call instead of scanning every
 /// symbol (a 10k-function file made that quadratic). Semantics match the old
 /// linear `find`: the caller is the first symbol (document order) whose range
 /// contains the call, the callee the first symbol with that name.
-struct CallResolver {
+pub(crate) struct CallResolver {
     /// Symbol indices sorted by `(start_byte, original position)`.
     by_start: Vec<usize>,
     /// `max_end[k]` = largest `end_byte` among `by_start[..=k]`.
@@ -188,7 +193,7 @@ struct CallResolver {
 }
 
 impl CallResolver {
-    fn new(symbols: &[SymbolInfo]) -> Self {
+    pub(crate) fn new(symbols: &[SymbolSpan]) -> Self {
         let mut by_start: Vec<usize> = (0..symbols.len()).collect();
         by_start.sort_by_key(|&i| (symbols[i].start_byte, i));
         let mut max_end = Vec::with_capacity(by_start.len());
@@ -204,7 +209,7 @@ impl CallResolver {
         Self { by_start, max_end, first_by_name }
     }
 
-    fn caller_at<'a>(&self, symbols: &'a [SymbolInfo], byte: usize) -> Option<&'a SymbolInfo> {
+    pub(crate) fn caller_at<'a>(&self, symbols: &'a [SymbolSpan], byte: usize) -> Option<&'a SymbolSpan> {
         // First position whose prefix-max end passes `byte`: everything before
         // it ends at or before `byte`, so it is the earliest possible container.
         let k = self.max_end.partition_point(|&end| end <= byte);
@@ -212,12 +217,12 @@ impl CallResolver {
         (candidate.start_byte <= byte).then_some(candidate)
     }
 
-    fn callee_named<'a>(&self, symbols: &'a [SymbolInfo], name: &str) -> Option<&'a SymbolInfo> {
+    pub(crate) fn callee_named<'a>(&self, symbols: &'a [SymbolSpan], name: &str) -> Option<&'a SymbolSpan> {
         self.first_by_name.get(name).map(|&i| &symbols[i])
     }
 }
 
-fn edge_id(kind: &str, from: &StableId, to: &StableId) -> StableId {
+pub(crate) fn edge_id(kind: &str, from: &StableId, to: &StableId) -> StableId {
     let mut bytes = Vec::with_capacity(kind.len() + 65);
     bytes.extend_from_slice(kind.as_bytes());
     bytes.push(b':');
@@ -229,7 +234,7 @@ fn edge_id(kind: &str, from: &StableId, to: &StableId) -> StableId {
 /// Parse `source` (the file at `path`) and return: one
 /// [`crate::graph::node::NodeType::Symbol`] node per function/method/type
 /// definition (REQ-302), a `DefinedIn` edge from each symbol to the file
-/// node (REQ-303), a `DependsOn` edge for each call site whose callee
+/// node (REQ-303), a `Calls` edge for each call site whose callee
 /// resolves to another symbol *in the same file* (REQ-303's documented
 /// same-file-only scope), and a `Satisfies` edge for each symbol whose
 /// immediately preceding comment mentions `@spec REQ-XXX`/`@adr ADR-XXX`
@@ -244,6 +249,18 @@ pub fn extract(
     path: &Path,
     known_markers: &HashMap<String, StableId>,
 ) -> Result<MutationSet, CodeError> {
+    Ok(extract_with_facts(source, language, path, known_markers)?.set)
+}
+
+/// [`extract`] plus the file's module facts (imports, re-exports, usages of
+/// imported names) and its symbol spans, from a single parse. Cross-file
+/// dependency edges are built from these by [`crate::code::deps`].
+pub fn extract_with_facts(
+    source: &str,
+    language: Language,
+    path: &Path,
+    known_markers: &HashMap<String, StableId>,
+) -> Result<ExtractedFile, CodeError> {
     let ts_language = language.ts_language();
     let mut parser = Parser::new();
     parser
@@ -258,7 +275,7 @@ pub fn extract(
 
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
-    let mut symbols: Vec<SymbolInfo> = Vec::new();
+    let mut symbols: Vec<SymbolSpan> = Vec::new();
     let mut ordinals: HashMap<String, usize> = HashMap::new();
     let file_path = path.to_string_lossy().to_string();
 
@@ -326,7 +343,7 @@ pub fn extract(
                     }
                 }
 
-                symbols.push(SymbolInfo {
+                symbols.push(SymbolSpan {
                     id,
                     name: name.to_string(),
                     start_byte: def_node.start_byte(),
@@ -354,19 +371,28 @@ pub fn extract(
             && caller.id != callee.id
         {
             edges.push(EdgeMutation::Upsert {
-                id: edge_id("depends-on", &caller.id, &callee.id),
+                id: edge_id("calls", &caller.id, &callee.id),
                 from: caller.id,
                 to: callee.id,
-                edge_type: EdgeType::DependsOn.to_code(),
-                payload: Vec::new(),
+                edge_type: EdgeType::Calls.to_code(),
+                payload: vec![encode_meta(Confidence::Extracted, file_context(&file_path))],
             });
         }
     }
 
-    Ok(MutationSet {
-        nodes,
-        edges,
-        docs: Vec::new(),
+    let facts = if language.has_module_facts() {
+        crate::code::facts::collect(&tree, source)
+    } else {
+        FileFacts::default()
+    };
+    Ok(ExtractedFile {
+        set: MutationSet {
+            nodes,
+            edges,
+            docs: Vec::new(),
+        },
+        facts,
+        symbols,
     })
 }
 
@@ -497,18 +523,18 @@ export type Id = string;
     }
 
     #[test]
-    fn depends_on_edge_links_caller_to_callee_in_same_file() {
+    fn calls_edge_links_caller_to_callee_in_same_file() {
         let set = extract_at("fn a() { b(); }\nfn b() {}\n", Language::Rust);
         let a = symbol_id(&set, "a");
         let b = symbol_id(&set, "b");
-        assert!(has_edge(&set, a, b, EdgeType::DependsOn));
+        assert!(has_edge(&set, a, b, EdgeType::Calls));
     }
 
     #[test]
     fn call_to_unresolved_function_produces_no_edge_and_no_error() {
         let set = extract_at("fn a() { unknown_function(); }\n", Language::Rust);
         assert!(set.edges.iter().all(|e| !matches!(e,
-            EdgeMutation::Upsert { edge_type, .. } if *edge_type == EdgeType::DependsOn.to_code()
+            EdgeMutation::Upsert { edge_type, .. } if *edge_type == EdgeType::Calls.to_code()
         )));
     }
 
@@ -553,10 +579,10 @@ function local() {}
         // A class spanning two methods, a gap, then two adjacent functions and
         // a repeated name: the shapes real files produce.
         let ranges = [(0, 100, "Klass"), (10, 40, "m1"), (50, 90, "m2"), (120, 150, "f"), (150, 180, "g"), (200, 230, "f")];
-        let symbols: Vec<SymbolInfo> = ranges
+        let symbols: Vec<SymbolSpan> = ranges
             .iter()
             .enumerate()
-            .map(|(i, (start, end, name))| SymbolInfo {
+            .map(|(i, (start, end, name))| SymbolSpan {
                 id: [i as u8; 32],
                 name: name.to_string(),
                 start_byte: *start,

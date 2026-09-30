@@ -34,7 +34,7 @@
 - **Done when**: fixture com alias `paths`, barrel `index.ts`, `.js` apontando para `.ts`, workspace `@scope/pkg`, pacote externo (→ `None`), tsconfig com comentários.
 - **Gate**: `cargo test code::resolve`
 
-## T-705: Arestas de dependência (REQ-703, REQ-704, REQ-710) [ ]
+## T-705: Arestas de dependência (REQ-703, REQ-704, REQ-710) [x]
 - **REQ**: REQ-703, REQ-704, REQ-710
 - **What**: `dependency_edges(path, facts, resolver, symbols)` emite `Imports/ReExports` (arquivo→arquivo) e `Calls/Instantiates/Extends/References` (símbolo→símbolo, fallback arquivo→arquivo), com `meta` (confiança por destino declarado; contexto por caminho/posição). Chamadas do mesmo arquivo passam a `Calls`. Integra no pass 2 do orquestrador.
 - **Where**: `src/code/deps.rs`, `src/code/parser.rs`, `src/sync_orchestrator.rs`

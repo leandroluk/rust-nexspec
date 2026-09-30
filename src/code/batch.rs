@@ -11,7 +11,8 @@ use std::path::PathBuf;
 
 use rayon::prelude::*;
 
-use crate::code::parser::{CodeError, Language, extract};
+use crate::code::deps::ExtractedFile;
+use crate::code::parser::{CodeError, Language, extract_with_facts};
 use crate::sync::mutation::{MutationSet, StableId};
 
 /// Parse every file in parallel and return each file's own [`MutationSet`],
@@ -20,10 +21,10 @@ use crate::sync::mutation::{MutationSet, StableId};
 pub fn extract_each(
     files: &[(PathBuf, String, Language)],
     known_markers: &HashMap<String, StableId>,
-) -> Result<Vec<(PathBuf, MutationSet)>, CodeError> {
+) -> Result<Vec<(PathBuf, ExtractedFile)>, CodeError> {
     files
         .par_iter()
-        .map(|(path, source, language)| Ok((path.clone(), extract(source, *language, path, known_markers)?)))
+        .map(|(path, source, language)| Ok((path.clone(), extract_with_facts(source, *language, path, known_markers)?)))
         .collect()
 }
 
@@ -39,10 +40,10 @@ pub fn extract_all(
     let results = extract_each(files, known_markers)?;
 
     let mut combined = MutationSet::default();
-    for (_, set) in results {
-        combined.nodes.extend(set.nodes);
-        combined.edges.extend(set.edges);
-        combined.docs.extend(set.docs);
+    for (_, file) in results {
+        combined.nodes.extend(file.set.nodes);
+        combined.edges.extend(file.set.edges);
+        combined.docs.extend(file.set.docs);
     }
     Ok(combined)
 }
@@ -76,7 +77,7 @@ mod tests {
 
         let mut sequential = MutationSet::default();
         for (path, source, language) in &files {
-            let set = extract(source, *language, path, &known).unwrap();
+            let set = crate::code::parser::extract(source, *language, path, &known).unwrap();
             sequential.nodes.extend(set.nodes);
             sequential.edges.extend(set.edges);
             sequential.docs.extend(set.docs);

@@ -207,7 +207,35 @@ impl<'a> SyncOrchestrator<'a> {
             .filter(|(i, (path, _, _))| latest[path] == *i)
             .map(|(_, f)| f)
             .collect();
-        let per_file = code::extract_each(&code_files, &known_markers)?;
+        let mut per_file = code::extract_each(&code_files, &known_markers)?;
+        // Cross-file dependency edges (Fase 7): resolve each file's imports
+        // against the tracked files and link uses to declared symbols.
+        if per_file.iter().any(|(_, f)| !f.facts.imports.is_empty()) {
+            let mut tracked: Vec<String> = self
+                .git
+                .tracked_paths_at_head()?
+                .iter()
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                .collect();
+            tracked.extend(code_files.iter().map(|(p, _, _)| p.to_string_lossy().replace('\\', "/")));
+            tracked.extend(dirty_paths.iter().map(|p| p.to_string_lossy().replace('\\', "/")));
+            let git = &self.git;
+            let resolver = code::SpecifierResolver::new(tracked, |p| read_repo_text(git, p));
+            let mut builder = code::DependencyBuilder::new(
+                &resolver,
+                Box::new(|p: &str| {
+                    let language = code::Language::from_extension(Path::new(p))?;
+                    read_repo_text(git, p).map(|text| (text, language))
+                }),
+            );
+            for (path, file) in &per_file {
+                builder.seed(&path.to_string_lossy(), file);
+            }
+            for (path, file) in per_file.iter_mut() {
+                let edges = builder.edges_for(&path.to_string_lossy(), file);
+                file.set.edges.extend(edges);
+            }
+        }
         let deleted_code: Vec<PathBuf> = diff
             .deleted
             .iter()
@@ -217,10 +245,10 @@ impl<'a> SyncOrchestrator<'a> {
         if let Some(csr) = &self.csr {
             reconcile_code_files(csr, &per_file, &deleted_code, &mut combined);
         }
-        for (_, set) in per_file {
-            combined.nodes.extend(set.nodes);
-            combined.edges.extend(set.edges);
-            combined.docs.extend(set.docs);
+        for (_, file) in per_file {
+            combined.nodes.extend(file.set.nodes);
+            combined.edges.extend(file.set.edges);
+            combined.docs.extend(file.set.docs);
         }
         timings.code = code_started.elapsed();
 
@@ -275,7 +303,7 @@ fn is_code_owned_edge(edge_type: EdgeType) -> bool {
 /// (Importers that did not change are not re-resolved: see design.md D5.)
 fn reconcile_code_files(
     csr: &Csr,
-    per_file: &[(PathBuf, MutationSet)],
+    per_file: &[(PathBuf, code::ExtractedFile)],
     deleted: &[PathBuf],
     out: &mut MutationSet,
 ) {
@@ -305,7 +333,8 @@ fn reconcile_code_files(
         }
     };
 
-    for (path, set) in per_file {
+    for (path, file) in per_file {
+        let set = &file.set;
         let file_id = file_node_id(&path.to_string_lossy());
         let new_symbols: HashSet<StableId> = set
             .nodes
@@ -406,6 +435,18 @@ fn is_noise_path(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .is_some_and(|ext| NOISE_EXTENSIONS.iter().any(|n| n.eq_ignore_ascii_case(ext)))
+}
+
+/// Text of a repository file: the working-tree copy when present (it is the
+/// current one, committed or not), else the blob at `HEAD`.
+fn read_repo_text(git: &GitSource, path: &str) -> Option<String> {
+    if let Some(root) = git.work_dir()
+        && let Ok(text) = std::fs::read_to_string(root.join(path))
+    {
+        return Some(text);
+    }
+    let bytes = git.read_blob_at_head(Path::new(path)).ok().flatten()?;
+    String::from_utf8(bytes).ok()
 }
 
 fn is_markdown(path: &Path) -> bool {
