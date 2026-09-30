@@ -5,6 +5,8 @@
 //! lives in how the coordinator publishes new instances, not in this type's
 //! own mutability.
 
+use std::collections::{HashMap, HashSet};
+
 use crate::graph::csr::base::CsrBase;
 use crate::graph::edge::{Edge, EdgeType};
 use crate::sync::mutation::StableId;
@@ -12,23 +14,34 @@ use crate::sync::mutation::StableId;
 #[derive(Debug, Clone, Default)]
 pub struct CsrDelta {
     added: Vec<Edge>,
-    removed: Vec<StableId>,
+    /// `edge.id` -> position in `added`, so upsert/remove are O(1) instead of
+    /// a linear `retain` per call (which made bulk syncs O(n²)).
+    added_index: HashMap<StableId, usize>,
+    removed: HashSet<StableId>,
 }
 
 impl CsrDelta {
     /// Add or replace an edge. Replacing means the same `id` upserted again
     /// (idempotent from the coordinator's point of view — REQ-005).
     pub fn upsert(&mut self, edge: Edge) {
-        self.added.retain(|e| e.id != edge.id);
-        self.removed.retain(|id| *id != edge.id);
-        self.added.push(edge);
+        self.removed.remove(&edge.id);
+        match self.added_index.get(&edge.id) {
+            Some(&pos) => self.added[pos] = edge,
+            None => {
+                self.added_index.insert(edge.id, self.added.len());
+                self.added.push(edge);
+            }
+        }
     }
 
     pub fn remove(&mut self, id: StableId) {
-        self.added.retain(|e| e.id != id);
-        if !self.removed.contains(&id) {
-            self.removed.push(id);
+        if let Some(pos) = self.added_index.remove(&id) {
+            self.added.swap_remove(pos);
+            if let Some(moved) = self.added.get(pos) {
+                self.added_index.insert(moved.id, pos);
+            }
         }
+        self.removed.insert(id);
     }
 
     /// Edges added in this delta matching `from`/`edge_type` — does not
@@ -125,5 +138,25 @@ mod tests {
 
         let merged = delta.merge_into(&base, &[10u8; 32], EdgeType::Implements);
         assert!(merged.is_empty());
+    }
+
+    #[test]
+    fn bulk_upserts_stay_linear_and_dedupe_by_id() {
+        let mut delta = CsrDelta::default();
+        for n in 0..200_000u32 {
+            let mut id = [0u8; 32];
+            id[..4].copy_from_slice(&n.to_le_bytes());
+            delta.upsert(edge(id, [1u8; 32], [2u8; 32], EdgeType::CoChanges));
+        }
+        // Re-upserting an existing id replaces it, never duplicates.
+        let mut dup = [0u8; 32];
+        dup[..4].copy_from_slice(&7u32.to_le_bytes());
+        delta.upsert(edge(dup, [1u8; 32], [3u8; 32], EdgeType::CoChanges));
+        assert_eq!(delta.len(), 200_000);
+
+        delta.remove(dup);
+        assert_eq!(delta.len(), 199_999);
+        assert!(delta.is_removed(&dup));
+        assert!(delta.added_edges().iter().all(|e| e.id != dup));
     }
 }
