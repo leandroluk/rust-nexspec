@@ -1,5 +1,6 @@
 //! Retrieval benchmark (Fase 8, `.specs/features/retrieval-benchmark/`).
 
+pub mod baselines;
 pub mod corpus;
 pub mod locate;
 pub mod metrics;
