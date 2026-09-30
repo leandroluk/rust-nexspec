@@ -66,7 +66,7 @@
 - **Done when**: números registrados no design.md; `cargo test --release --test perf_budget -- --ignored` verde.
 - **Gate**: `cargo test && nexspec bench --corpus bench/self.toml --no-vector --check`
 
-## T-709: Python, Go e Rust — arquivo→arquivo (REQ-705) [ ]
+## T-709: Python, Go e Rust — arquivo→arquivo (REQ-705) [x]
 - **REQ**: REQ-705
 - **What**: imports de módulo: Python (`import`, `from … import`, relativos), Go (`import "path"` via `go.mod`), Rust (`use`, `mod` dentro do crate). Só `Imports`.
 - **Where**: `src/code/facts.rs`, `src/code/resolve.rs`

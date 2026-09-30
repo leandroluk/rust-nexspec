@@ -4,6 +4,7 @@
 pub mod batch;
 pub mod deps;
 pub mod facts;
+pub mod modules;
 pub mod parser;
 pub mod resolve;
 

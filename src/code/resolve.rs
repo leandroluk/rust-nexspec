@@ -25,6 +25,8 @@ pub struct SpecifierResolver {
     tsconfigs: HashMap<String, TsConfig>,
     /// `package.json` directory -> what the package declares.
     packages: HashMap<String, Package>,
+    /// Cargo crates and Go modules (Rust/Go imports).
+    modules: crate::code::modules::ModuleContext,
     /// Package name -> directory (workspace packages only: those tracked here).
     by_name: HashMap<String, String>,
 }
@@ -53,6 +55,7 @@ impl SpecifierResolver {
         let mut tsconfigs = HashMap::new();
         let mut packages = HashMap::new();
         let mut by_name = HashMap::new();
+        let mut modules = crate::code::modules::ModuleContext::default();
         let mut sorted: Vec<&String> = files.iter().collect();
         sorted.sort();
         for path in sorted {
@@ -60,6 +63,14 @@ impl SpecifierResolver {
             if name == "tsconfig.json" {
                 if let Some(config) = load_tsconfig(path, &read, 0) {
                     tsconfigs.insert(dir.to_string(), config);
+                }
+            } else if name == "Cargo.toml" {
+                if let Some(text) = read(path) {
+                    modules.add_cargo_toml(dir, &text);
+                }
+            } else if name == "go.mod" {
+                if let Some(text) = read(path) {
+                    modules.add_go_mod(dir, &text);
                 }
             } else if name == "package.json"
                 && let Some(text) = read(path)
@@ -72,7 +83,21 @@ impl SpecifierResolver {
                 packages.insert(dir.to_string(), package);
             }
         }
-        Self { files, tsconfigs, packages, by_name }
+        Self { files, tsconfigs, packages, modules, by_name }
+    }
+
+    /// Every tracked file `specifier` may refer to: at most one for TS/JS,
+    /// Rust and Python; a Go import names a package, i.e. all its files.
+    pub fn resolve_all(&self, from_file: &str, specifier: &str) -> Vec<String> {
+        let from_file = from_file.replace('\\', "/");
+        let ecmascript = from_file
+            .rsplit_once('.')
+            .is_some_and(|(_, ext)| matches!(ext, "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "mts" | "cts"));
+        if ecmascript {
+            self.resolve(&from_file, specifier).into_iter().collect()
+        } else {
+            crate::code::modules::resolve(&self.modules, &self.files, &from_file, specifier)
+        }
     }
 
     /// The tracked file `specifier` (written in `from_file`) refers to.

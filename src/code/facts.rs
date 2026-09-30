@@ -82,7 +82,8 @@ pub fn extract_facts(source: &str, language: Language) -> FileFacts {
         return FileFacts::default();
     }
     match parser.parse(source, None) {
-        Some(tree) => collect(&tree, source),
+        Some(tree) if language.is_ecmascript() => collect(&tree, source),
+        Some(tree) => crate::code::modules::collect_other(language, &tree, source),
         None => FileFacts::default(),
     }
 }
@@ -446,7 +447,9 @@ export const App = () => <Button label=\"x\" />;
     }
 
     #[test]
-    fn languages_without_modules_have_no_facts() {
-        assert_eq!(extract_facts("use std::fmt;", Language::Rust), FileFacts::default());
+    fn other_languages_yield_file_level_imports_without_usages() {
+        let f = extract_facts("use std::fmt;\nfn main() {}\n", Language::Rust);
+        assert_eq!(f.imports.iter().map(|i| i.specifier.as_str()).collect::<Vec<_>>(), vec!["std::fmt"]);
+        assert!(f.usages.is_empty() && f.imports[0].bindings.is_empty());
     }
 }

@@ -167,26 +167,27 @@ impl<'a> DependencyBuilder<'a> {
         };
 
         // File-level edges: one per resolved import/re-export.
-        let mut resolved: HashMap<&str, Option<String>> = HashMap::new();
+        let mut resolved: HashMap<&str, Vec<String>> = HashMap::new();
         for fact in &extracted.facts.imports {
-            let target = resolved
+            let targets = resolved
                 .entry(fact.specifier.as_str())
-                .or_insert_with(|| self.resolver.resolve(&path, &fact.specifier))
+                .or_insert_with(|| self.resolver.resolve_all(&path, &fact.specifier))
                 .clone();
-            let Some(target) = target else { continue };
             let edge_type = if fact.kind == ImportKind::ReExport { EdgeType::ReExports } else { EdgeType::Imports };
-            add(
-                file_id,
-                file_node_id(&target),
-                Pending { edge_type, confidence: Confidence::Extracted, context: context_for(fact.type_only) },
-            );
+            for target in targets {
+                add(
+                    file_id,
+                    file_node_id(&target),
+                    Pending { edge_type, confidence: Confidence::Extracted, context: context_for(fact.type_only) },
+                );
+            }
         }
 
         // Symbol-level edges: each use of an imported name.
         let call_resolver = CallResolver::new(&extracted.symbols);
         for usage in &extracted.facts.usages {
             let Some((fact, binding)) = find_binding(&extracted.facts, &usage.name) else { continue };
-            let Some(Some(target_file)) = resolved.get(fact.specifier.as_str()).cloned() else { continue };
+            let Some(target_file) = resolved.get(fact.specifier.as_str()).and_then(|t| t.first()).cloned() else { continue };
 
             let from = call_resolver
                 .caller_at(&extracted.symbols, usage.byte)

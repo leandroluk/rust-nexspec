@@ -39,8 +39,16 @@ impl Language {
         }
     }
 
-    /// Whether files in this language have `import`/`export` module facts.
+    /// Whether files in this language have module imports we can extract.
     pub fn has_module_facts(self) -> bool {
+        matches!(
+            self,
+            Language::TypeScript | Language::Tsx | Language::JavaScript | Language::Rust | Language::Python | Language::Go
+        )
+    }
+
+    /// TS/JS: imports carry bindings and identifier usages (symbol-level edges).
+    pub fn is_ecmascript(self) -> bool {
         matches!(self, Language::TypeScript | Language::Tsx | Language::JavaScript)
     }
 
@@ -380,8 +388,10 @@ pub fn extract_with_facts(
         }
     }
 
-    let facts = if language.has_module_facts() {
+    let facts = if language.is_ecmascript() {
         crate::code::facts::collect(&tree, source)
+    } else if language.has_module_facts() {
+        crate::code::modules::collect_other(language, &tree, source)
     } else {
         FileFacts::default()
     };
