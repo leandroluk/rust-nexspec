@@ -16,6 +16,10 @@ começar a ser trabalhada.
 | 4 | Vector Engine & Hybrid Traversal | ONNX (ort) **lazy-loaded** + modelo INT8 quantizado, flag de compilação "lean" (sem ort/HNSW), HNSW, RRF, expansão k-hop sobre base+delta | **Completo** (`.specs/features/vector-engine/`) |
 | 5 | Token Budgeting & LLM Serialization | Pruning AST, `Tokenizer` trait plugável (default tiktoken-rs) com margem de segurança (90% do budget), fallback offline (`char_count / 3.5`), serializer Markdown denso | **Completo** (`.specs/features/token-budgeting/`) |
 | 6 | Interface, MCP Server & Tooling | CLI (`clap`: init/sync/compact/search/trace/blame/diff), servidor MCP (`rmcp`) com tool surface unificado | **Completo** (`.specs/features/cli-mcp-server/`) — integração drop-in na skill `graph-spec-design` **fora do escopo deste repositório** por instrução do usuário (ver nota abaixo) |
+| 7 | Dependency Edges | Import/referência entre arquivos (TS/JS primeiro): `DependsOn` arquivo→arquivo e símbolo→símbolo, resolução de `tsconfig paths`/`#/*`/workspace, herança e DI (tipos de construtor), incremental sem arestas órfãs | **Planejado** (`.specs/features/dependency-edges/`) |
+| 8 | Retrieval Benchmark | Corpus de perguntas + `nexspec bench`: recall@k/MRR, tokens vs. baselines (grep, leitura de arquivos), portão de qualidade e ranking ciente de identificadores | **Planejado** (`.specs/features/retrieval-benchmark/`) |
+| 9 | Performance & Scale Guard | Repositório sintético determinístico, orçamentos de tempo em CI (Windows+Linux), teto de co-change, micro-benchmarks, regressões nomeadas dos bugs reais, espera de lock do redb, higiene do WAL | **Planejado** (`.specs/features/performance-guard/`) |
+| 10 | Report Command | `nexspec report`: God nodes, comunidades + coesão, cobertura de requisitos (REQ órfãos/sem implementação), saída com orçamento de tokens e tool MCP | **Planejado** (`.specs/features/report-command/`) — depende da Fase 7 |
 
 ### Nota — por que a Fase 0 existe e vem antes de tudo
 
@@ -54,3 +58,27 @@ Fase 0→1→2→3 é uma cadeia rígida de pré-requisitos (consistência → s
 AST); nenhuma delas faz sentido isolada das anteriores. Fases 4 e 5 podem ser
 paralelizadas depois que 3 estiver de pé. Fase 6 fecha o pacote e é o ponto de
 integração real com este projeto (`graph-spec-design` deixa de depender de Python).
+
+## Evoluções pós-v1 (registradas em 2026-09-29)
+
+Origem: avaliação "promissor → confiável" feita após dogfooding no projeto `condominium-management-system`
+(oito bugs corrigidos numa sessão: O(n²) no `CsrDelta`, co-change recalculado a cada sync, `DirtyCache`,
+arquivos não rastreados, `abstract class`, ids com prefixo, ligação REQ↔TASK entre arquivos e `trace` unidirecional).
+
+| Evolução | Fase | Por quê |
+|---|---|---|
+| Arestas de import/referência entre arquivos | 7 | `trace CachePort` não lista os 7 usuários; sem isso não há análise de impacto |
+| Benchmark de precisão e de tokens | 8 | a economia de tokens foi só estimada; o ranking errou em consulta real |
+| CI com orçamento de tempo e regressões | 9 | os bugs só apareceram em repositório real; testes unitários passavam |
+| `nexspec report` (God nodes, comunidades, cobertura) | 10 | a skill promete God nodes/coesão que o `nexspec` não produz |
+
+**Ordem sugerida:** 9 e 8 primeiro (rede de proteção e régua), depois 7 (medindo o ganho no benchmark), por fim 10.
+Os critérios para substituir o graphify de vez: Fase 8 com `recall@5 ≥ 0,8` em `locate` **e** Fase 7 entregue.
+
+### Evoluções externas (repositório `graph-spec-design`, fora deste escopo)
+
+- **Reduzir o custo fixo por sessão:** o `STATE.md` pesa ~7,6 mil tokens por sessão (limite atual 30 KB) e o índice
+  não o reduz; baixar o limite para ~10–12 KB e endurecer as janelas de compactação.
+- **Alinhar promessas ao que existe:** remover "God Node (degree N)"/coesão dos templates de `specify.md` e `design.md`
+  até a Fase 10 existir; depois trocar por `nexspec report`.
+- **Adotar ids com prefixo de feature** (`REQ-CTR-001`) — já suportado pelo `nexspec` desde 2026-09-29.

@@ -29,6 +29,7 @@ pooling + normalização L2, confirmado determinístico e semanticamente
 coerente (frases parecidas rankeiam mais perto que não-relacionadas).
 
 ## Todos
+- [ ] Fase 9 (performance-guard), Fase 8 (retrieval-benchmark), Fase 7 (dependency-edges), Fase 10 (report-command): specificadas em `.specs/features/*/spec.md` (2026-09-29); Design/Tasks pendentes. Ordem sugerida 9 -> 8 -> 7 -> 10 (ver ROADMAP).
 - [x] T-601..T-612: Fase 6 completa (ver Feature "cli-mcp-server" abaixo)
 
 ## Active Blockers
@@ -173,6 +174,7 @@ warnings` limpos em `full` e `lean`; suíte completa 85/85 (`full`) + 2
 testes de inferência real, 78/78 (`lean`).
 
 ## Recent Progress (Last 10)
+- 2026-09-29 Correcoes de dogfooding (commits `862ca8e`, `b49cab7`, `6fbd4a7`, `a09cbf3`, `81fbf65`, `67344c5`): `CsrDelta` O(n^2) -> indice por id (sync do repo real de >8 min sem terminar para ~25 s); `abstract class`/`enum`/`type` indexados; `dirty` usa `gix status` (nao mais todos os arquivos) e inclui nao rastreados; ids com prefixo (`REQ-TCK-001`) e sufixo (`REQ-021b`); ids de REQ/TASK/ADR so pelo marcador (links entre arquivos e `@spec` sem tabela); listas dentro de TASK contam como corpo; `trace` segue arestas de entrada (`<-`); co-change so recalculado quando o historico muda (sync sem novidades 5,8 s -> 0,9 s). Evolucoes derivadas registradas como Fases 7-10 no ROADMAP.
 - 2026-09-29 T-406 completo. Baixado `all-MiniLM-L6-v2` quantizado INT8
   (~23MB, `Xenova/all-MiniLM-L6-v2` no Hugging Face) + `tokenizer.json` +
   `config.json` para `.models/` (novo, gitignored). Adicionada dependência
@@ -370,6 +372,7 @@ contra specs do mesmo ciclo.
 - 2026-09-28 Rename SpecDB → NexSpec aplicado em todo o código/docs.
 
 ## Lessons Learned (Last 5)
+- [2026-09-29] Testes unitarios passavam com todos esses bugs presentes: so o dogfooding em repositorio real (1,3 mil arquivos, 160 commits, commit de 800 arquivos) os expos. Escala e plataforma precisam de teste com orcamento de tempo (Fase 9).
 - 2026-09-28 Um trait genérico (`SyncParticipant`) desenhado antes de seus
   consumidores reais existirem tende a forçar pelo menos um refino de
   assinatura/tipo quando o primeiro consumidor real chega (`Csr::base` →
