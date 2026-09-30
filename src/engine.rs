@@ -138,6 +138,11 @@ pub struct BlameResult {
     pub co_changed_files: Vec<String>,
 }
 
+/// Version of everything the index derives from the repository. Bump it
+/// whenever extraction or edge semantics change so stale indexes rebuild
+/// themselves instead of serving wrong answers. 2 = capped co-change edges.
+pub const INDEX_FORMAT: u64 = 2;
+
 pub struct Engine {
     db: Database,
     csr: Arc<Csr>,
@@ -154,7 +159,7 @@ impl Engine {
     pub fn open(index_dir: &Path, repo_root: &Path) -> Result<Self, EngineError> {
         std::fs::create_dir_all(index_dir)?;
 
-        let db = Database::create(index_dir.join("metadata.redb"))?;
+        let db = Self::open_current_format_db(index_dir)?;
 
         let csr_path = index_dir.join("edges.bin");
         if !csr_path.exists() {
@@ -181,6 +186,37 @@ impl Engine {
             #[cfg(feature = "full")]
             embedder,
         })
+    }
+
+    /// Opens `metadata.redb`, first discarding the whole derived index when
+    /// it was written by an incompatible build (`INDEX_FORMAT`). The index is
+    /// always regenerable from Git + specs, so the next `sync` rebuilds it.
+    /// Only `index_dir` is ever removed.
+    fn open_current_format_db(index_dir: &Path) -> Result<Database, EngineError> {
+        let db_path = index_dir.join("metadata.redb");
+        let db = Database::create(&db_path)?;
+        let version = VersionPointer::new(&db);
+        let has_data = version.current()? > 0 || version.last_indexed_commit()?.is_some();
+        match version.index_format()? {
+            Some(INDEX_FORMAT) => Ok(db),
+            None if !has_data => {
+                version.set_index_format(INDEX_FORMAT)?;
+                Ok(db)
+            }
+            found => {
+                eprintln!(
+                    "nexspec: index format {} is incompatible with this build (expects {INDEX_FORMAT}); rebuilding {}",
+                    found.map_or_else(|| "unknown".to_string(), |n| n.to_string()),
+                    index_dir.display()
+                );
+                drop(db);
+                std::fs::remove_dir_all(index_dir)?;
+                std::fs::create_dir_all(index_dir)?;
+                let db = Database::create(&db_path)?;
+                VersionPointer::new(&db).set_index_format(INDEX_FORMAT)?;
+                Ok(db)
+            }
+        }
     }
 
     fn wal_path(&self) -> PathBuf {
@@ -584,6 +620,78 @@ mod tests {
         let reopened = Engine::open(index_dir.path(), repo_dir.path()).unwrap();
         let node_count_after = reopened.search("engine test requirement", None).unwrap().hits.len();
         assert_eq!(node_count_after, node_count_before, "reopening must not lose previously synced data");
+    }
+
+    fn stored_index_format(index_dir: &Path) -> Option<u64> {
+        let db = Database::create(index_dir.join("metadata.redb")).unwrap();
+        VersionPointer::new(&db).index_format().unwrap()
+    }
+
+    #[test]
+    fn fresh_index_records_the_current_format() {
+        let repo_dir = TempDir::new().unwrap();
+        init_git_repo_with_markdown(repo_dir.path());
+        let index_dir = TempDir::new().unwrap();
+        drop(Engine::open(index_dir.path(), repo_dir.path()).unwrap());
+        assert_eq!(stored_index_format(index_dir.path()), Some(INDEX_FORMAT));
+    }
+
+    #[test]
+    fn incompatible_index_is_discarded_and_rebuilt_by_the_next_sync() {
+        let repo_dir = TempDir::new().unwrap();
+        init_git_repo_with_markdown(repo_dir.path());
+        let workspace = TempDir::new().unwrap();
+        let index_dir = workspace.path().join("index");
+        let sibling = workspace.path().join("graph.json");
+        std::fs::write(&sibling, "keep me").unwrap();
+
+        let engine = Engine::open(&index_dir, repo_dir.path()).unwrap();
+        engine.sync().unwrap();
+        drop(engine);
+
+        // Simulate an index written by an older build: older format, stale file.
+        {
+            let db = Database::create(index_dir.join("metadata.redb")).unwrap();
+            VersionPointer::new(&db).set_index_format(INDEX_FORMAT - 1).unwrap();
+        }
+        std::fs::write(index_dir.join("stale.bin"), "old").unwrap();
+
+        let engine = Engine::open(&index_dir, repo_dir.path()).unwrap();
+        assert!(!index_dir.join("stale.bin").exists(), "old index contents are discarded");
+        assert_eq!(std::fs::read_to_string(&sibling).unwrap(), "keep me", "nothing outside index_dir is touched");
+        assert_eq!(engine.search("engine test requirement", None).unwrap().hits.len(), 0);
+
+        engine.sync().unwrap();
+        assert!(
+            !engine.search("engine test requirement", None).unwrap().hits.is_empty(),
+            "the next sync rebuilds the index from Git"
+        );
+        drop(engine);
+        assert_eq!(stored_index_format(&index_dir), Some(INDEX_FORMAT));
+    }
+
+    #[test]
+    fn index_without_a_format_but_with_data_is_rebuilt() {
+        let repo_dir = TempDir::new().unwrap();
+        init_git_repo_with_markdown(repo_dir.path());
+        let index_dir = TempDir::new().unwrap();
+        let engine = Engine::open(index_dir.path(), repo_dir.path()).unwrap();
+        engine.sync().unwrap();
+        drop(engine);
+        // Pre-format-tracking index: data present, no format key.
+        {
+            let db = Database::create(index_dir.path().join("metadata.redb")).unwrap();
+            let tx = db.begin_write().unwrap();
+            {
+                let mut t = tx
+                    .open_table(redb::TableDefinition::<&str, u64>::new("meta"))
+                    .unwrap();
+                t.remove("index_format").unwrap();
+            }
+            tx.commit().unwrap();
+        }
+        let engine = Engine::open(index_dir.path(), repo_dir.path()).unwrap();
+        assert_eq!(engine.search("engine test requirement", None).unwrap().hits.len(), 0);
     }
 
     #[test]

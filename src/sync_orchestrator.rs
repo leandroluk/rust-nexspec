@@ -132,7 +132,10 @@ impl<'a> SyncOrchestrator<'a> {
         // itself: a brand-new (uncommitted) spec must still be indexed.
         if let Some(root) = self.git.work_dir() {
             let scan_started = Instant::now();
-            let candidates = self.git.dirty_paths()?;
+            let mut candidates = self.git.dirty_paths()?;
+            // The engine's own artifacts are never source material, even in
+            // a repo that forgot to git-ignore them.
+            candidates.retain(|path| !is_engine_artifact(path));
             dirty_paths = self.dirty_cache.scan(root, &candidates);
             scan_time = scan_started.elapsed();
             timings.diff += scan_time;
@@ -243,6 +246,12 @@ fn known_markers_from(nodes: &[NodeMutation]) -> HashMap<String, StableId> {
         }
     }
     map
+}
+
+/// Directories the engine writes into the repository (`.specs/.index/`,
+/// downloaded `.models/`): touching them must not make the tree look dirty.
+fn is_engine_artifact(path: &Path) -> bool {
+    path.starts_with(".specs/.index") || path.starts_with(".models")
 }
 
 fn is_markdown(path: &Path) -> bool {

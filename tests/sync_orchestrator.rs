@@ -104,3 +104,32 @@ fn run_once_reports_phase_timings_and_staged_counts() {
     assert_eq!(second.timings.nodes, 0);
     assert_eq!(second.timings.edges, 0, "no-op sync stages nothing");
 }
+
+#[test]
+fn engine_artifacts_never_count_as_dirty() {
+    let repo = FixtureRepo::init(); // deliberately no .gitignore
+    repo.write_file("spec.md", "## Requirements
+- REQ-420: real spec
+");
+    repo.commit("chore: spec");
+    repo.write_file(".specs/.index/edges.bin", "binary-ish");
+    repo.write_file(".models/model.onnx", "weights");
+
+    let db_file = NamedTempFile::new().unwrap();
+    let db = Database::create(db_file.path()).unwrap();
+    let wal_file = NamedTempFile::new().unwrap();
+    let wal = nexspec::sync::Wal::open(wal_file.path()).unwrap();
+    let coordinator = Coordinator::new(
+        wal,
+        VersionPointer::new(&db),
+        vec![Box::new(RedbParticipant::new(&db))],
+    );
+    let git = GitSource::open(repo.path()).unwrap();
+    let mut orchestrator = SyncOrchestrator::new(git, coordinator, VersionPointer::new(&db));
+
+    let first = orchestrator.run_once().unwrap();
+    assert_eq!(first.files_dirty, 0, "index/model files are not source");
+    let second = orchestrator.run_once().unwrap();
+    assert_eq!(second.files_dirty, 0);
+    assert!(second.target_version.is_none(), "no-op sync must not stage a new frame");
+}

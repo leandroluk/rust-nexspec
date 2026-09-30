@@ -6,6 +6,7 @@ use redb::{Database, ReadableDatabase, TableDefinition};
 
 const META_TABLE: TableDefinition<&str, u64> = TableDefinition::new("meta");
 const SYNC_VERSION_KEY: &str = "sync_version";
+const INDEX_FORMAT_KEY: &str = "index_format";
 
 // Separate table for non-u64 metadata (byte blobs). Same `redb` file, same
 // transactional path as `META_TABLE` — just a different value type.
@@ -75,6 +76,29 @@ impl<'a> VersionPointer<'a> {
         Ok(())
     }
 
+    /// Layout/semantics version of everything derived into the index
+    /// (`.specs/features/performance-guard/design.md` D8). `None` means the
+    /// index predates format tracking (or is brand new).
+    pub fn index_format(&self) -> Result<Option<u64>, VersionError> {
+        let tx = self.db.begin_read()?;
+        let table = match tx.open_table(META_TABLE) {
+            Ok(t) => t,
+            Err(redb::TableError::TableDoesNotExist(_)) => return Ok(None),
+            Err(e) => return Err(e.into()),
+        };
+        Ok(table.get(INDEX_FORMAT_KEY)?.map(|v| v.value()))
+    }
+
+    pub fn set_index_format(&self, format: u64) -> Result<(), VersionError> {
+        let tx = self.db.begin_write()?;
+        {
+            let mut table = tx.open_table(META_TABLE)?;
+            table.insert(INDEX_FORMAT_KEY, format)?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     /// The Git commit OID last fully indexed (REQ-202 in
     /// `.specs/features/git-integration/spec.md`) — `None` means "never
     /// indexed", not an error.
@@ -138,6 +162,17 @@ mod tests {
         assert_eq!(vp.current().unwrap(), 42);
         vp.bump(43).unwrap();
         assert_eq!(vp.current().unwrap(), 43);
+    }
+
+    #[test]
+    fn index_format_roundtrips_and_is_independent_of_sync_version() {
+        let (_file, db) = temp_db();
+        let vp = VersionPointer::new(&db);
+        assert_eq!(vp.index_format().unwrap(), None);
+        vp.set_index_format(2).unwrap();
+        vp.bump(5).unwrap();
+        assert_eq!(vp.index_format().unwrap(), Some(2));
+        assert_eq!(vp.current().unwrap(), 5);
     }
 
     #[test]

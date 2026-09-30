@@ -43,7 +43,7 @@ Primeiro corte = T-901…T-906 incluindo T-903b, T-904b, T-904c (aprovado em 202
 - **Done when**: testes: (a) commit com 201 arquivos não gera arestas, com 200 gera; (b) arquivo que co-muda com 60 outros mantém ≤ 50 parceiros, os mais recentes; (c) o sintético default produz < 300 mil arestas de co-change (vs ~1,1 mi) e o cold start medido cai; (d) `COCHANGE_MAX_FILES=5` é respeitado.
 - **Gate**: `cargo test git::cochange && cargo test --test perf_smoke`
 
-## T-904c: O índice não conta como sujo [ ]
+## T-904c: O índice não conta como sujo [x]
 - **REQ**: REQ-902 (sync sem mudanças), REQ-905(b)
 - **What**: `dirty_paths` ignora o `index_dir` do engine (`.specs/.index/`) mesmo sem `.gitignore`; `init` passa a sugerir/gravar a entrada no `.gitignore` do projeto.
 - **Where**: `src/sync_orchestrator.rs`, `src/git/source.rs`, `src/engine.rs`
@@ -51,7 +51,7 @@ Primeiro corte = T-901…T-906 incluindo T-903b, T-904b, T-904c (aprovado em 202
 - **Done when**: repo sem `.gitignore`: `init` + 2 `sync` seguidos → segundo com `files_dirty == 0` e sem frame novo no WAL.
 - **Gate**: `cargo test --test sync_orchestrator`
 
-## T-904b: `index_format` e reconstrução automática (D8) [ ]
+## T-904b: `index_format` e reconstrução automática (D8) [x]
 - **REQ**: REQ-903 (migração)
 - **What**: `VersionPointer::index_format()/set_index_format()` (chave em `meta`), `const INDEX_FORMAT: u64 = 2` em `engine.rs`. `Engine::open`: índice existente com formato ausente/diferente → remove `index_dir` (só ele) e recria; aviso em stderr. Índice novo grava o formato atual.
 - **Where**: `src/sync/version.rs`, `src/engine.rs`
