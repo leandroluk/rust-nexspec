@@ -20,6 +20,44 @@ struct Cli {
     command: Command,
 }
 
+#[derive(clap::Args)]
+struct BenchArgs {
+    /// Corpus TOML. Default: `<repo>/.specs/bench/queries.toml`.
+    #[arg(long)]
+    corpus: Option<PathBuf>,
+    /// Ranks to report recall for, comma separated.
+    #[arg(long = "k", value_delimiter = ',', default_values_t = [5usize, 10])]
+    ks: Vec<usize>,
+    /// Build the index here instead of a temporary directory.
+    #[arg(long)]
+    index_dir: Option<PathBuf>,
+    /// `md` (default) or `json`.
+    #[arg(long, default_value = "md")]
+    format: String,
+    /// `heuristic` (default, offline) or `tiktoken`.
+    #[arg(long, default_value = "heuristic")]
+    tokenizer: String,
+    /// `max_tokens` requested from `search` for each answer.
+    #[arg(long, default_value_t = 2000)]
+    budget: u32,
+    /// Write the report to this file instead of stdout.
+    #[arg(long)]
+    output: Option<PathBuf>,
+    /// BM25 only, ignoring any local ONNX model: reproducible across machines.
+    #[arg(long)]
+    no_vector: bool,
+    /// Fail (exit 1) if `locate` recall@5 is below `--min-locate-recall` or
+    /// any recall regressed > 5 points against this baseline file.
+    #[arg(long, num_args = 0..=1, default_missing_value = "bench/baseline.json")]
+    check: Option<PathBuf>,
+    /// Record this run as the new baseline (default file: bench/baseline.json).
+    #[arg(long, num_args = 0..=1, default_missing_value = "bench/baseline.json")]
+    update_baseline: Option<PathBuf>,
+    /// Absolute floor for `locate` recall@5 used by `--check`.
+    #[arg(long, default_value_t = 0.8)]
+    min_locate_recall: f64,
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Create `.specs/.index/` if it doesn't exist yet (idempotent).
@@ -62,42 +100,7 @@ enum Command {
     Mcp,
     /// Measure retrieval quality and token cost against a question corpus
     /// (never writes into the repository: the index is built in a temp dir).
-    Bench {
-        /// Corpus TOML. Default: `<repo>/.specs/bench/queries.toml`.
-        #[arg(long)]
-        corpus: Option<PathBuf>,
-        /// Ranks to report recall for, comma separated.
-        #[arg(long = "k", value_delimiter = ',', default_values_t = [5usize, 10])]
-        ks: Vec<usize>,
-        /// Build the index here instead of a temporary directory.
-        #[arg(long)]
-        index_dir: Option<PathBuf>,
-        /// `md` (default) or `json`.
-        #[arg(long, default_value = "md")]
-        format: String,
-        /// `heuristic` (default, offline) or `tiktoken`.
-        #[arg(long, default_value = "heuristic")]
-        tokenizer: String,
-        /// `max_tokens` requested from `search` for each answer.
-        #[arg(long, default_value_t = 2000)]
-        budget: u32,
-        /// Write the report to this file instead of stdout.
-        #[arg(long)]
-        output: Option<PathBuf>,
-        /// BM25 only, ignoring any local ONNX model: reproducible across machines.
-        #[arg(long)]
-        no_vector: bool,
-        /// Fail (exit 1) if `locate` recall@5 is below `--min-locate-recall` or
-        /// any recall regressed > 5 points against this baseline file.
-        #[arg(long, num_args = 0..=1, default_missing_value = "bench/baseline.json")]
-        check: Option<PathBuf>,
-        /// Record this run as the new baseline (default file: bench/baseline.json).
-        #[arg(long, num_args = 0..=1, default_missing_value = "bench/baseline.json")]
-        update_baseline: Option<PathBuf>,
-        /// Absolute floor for `locate` recall@5 used by `--check`.
-        #[arg(long, default_value_t = 0.8)]
-        min_locate_recall: f64,
-    },
+    Bench(Box<BenchArgs>),
 }
 
 fn index_dir(repo: &Path) -> PathBuf {
@@ -208,7 +211,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let engine = Engine::open(&index_dir, &repo)?;
             run_mcp(engine)?;
         }
-        Command::Bench { corpus, ks, index_dir, format, tokenizer, budget, output, no_vector, check, update_baseline, min_locate_recall } => {
+        Command::Bench(args) => {
+            let BenchArgs { corpus, ks, index_dir, format, tokenizer, budget, output, no_vector, check, update_baseline, min_locate_recall } = *args;
             use nexspec::bench::{report, runner};
             let corpus_path = corpus.unwrap_or_else(|| runner::default_corpus_path(&repo));
             let corpus = nexspec::bench::Corpus::load(&corpus_path)?;
