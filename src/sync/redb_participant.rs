@@ -45,6 +45,24 @@ impl<'a> RedbParticipant<'a> {
         self.get_from(NODES, id)
     }
 
+    /// Every committed node, in id order. Used by the report to picture the
+    /// whole graph; not for hot paths.
+    pub fn all_nodes(&self) -> Result<Vec<(StableId, Vec<u8>)>, SyncError> {
+        let tx = self.db.begin_read().map_err(storage_err)?;
+        let table = match tx.open_table(NODES) {
+            Ok(t) => t,
+            Err(redb::TableError::TableDoesNotExist(_)) => return Ok(Vec::new()),
+            Err(e) => return Err(storage_err(e)),
+        };
+        let mut out = Vec::new();
+        for entry in table.iter().map_err(storage_err)? {
+            let (key, value) = entry.map_err(storage_err)?;
+            let Ok(id) = <StableId>::try_from(key.value()) else { continue };
+            out.push((id, value.value().to_vec()));
+        }
+        Ok(out)
+    }
+
     pub fn get_edge(&self, id: &StableId) -> Result<Option<Vec<u8>>, SyncError> {
         self.get_from(EDGES, id)
     }

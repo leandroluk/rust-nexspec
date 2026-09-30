@@ -10,6 +10,7 @@ pub mod git;
 pub mod graph;
 pub mod hybrid;
 pub mod mcp;
+pub mod report;
 pub mod search;
 pub mod sync;
 pub mod sync_orchestrator;

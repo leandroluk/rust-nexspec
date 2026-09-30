@@ -224,6 +224,17 @@ pub struct GetSymbolHistoryArgs {
 }
 
 #[derive(Deserialize, JsonSchema)]
+pub struct GraphReportArgs {
+    /// `md` (default) or `json`.
+    #[serde(default)]
+    pub format: Option<String>,
+    /// Fit the Markdown report into this many tokens.
+    pub max_tokens: Option<u32>,
+    /// God nodes to list (default 10).
+    pub top: Option<usize>,
+}
+
+#[derive(Deserialize, JsonSchema)]
 pub struct SyncWorkspaceArgs {
     /// Replay any WAL frame no store fully applied yet before syncing.
     #[serde(default)]
@@ -277,6 +288,20 @@ impl NexSpecMcp {
         serde_json::to_string(&blame_response(result)).map_err(|e| e.to_string())
     }
 
+    #[tool(description = "Structural report of the graph: God nodes, communities with cohesion, requirement coverage, surprising connections, import cycles and suggested questions")]
+    async fn graph_report(&self, Parameters(args): Parameters<GraphReportArgs>) -> Result<String, String> {
+        let mut options = crate::report::ReportOptions::default();
+        if let Some(top) = args.top {
+            options.top = top.max(1);
+        }
+        let report = self.engine.report(options).map_err(|e| e.to_string())?;
+        match args.format.as_deref() {
+            Some("json") => Ok(crate::report::render::to_json(&report)),
+            None | Some("md") => Ok(crate::report::render::to_markdown(&report, args.max_tokens)),
+            Some(other) => Err(format!("unknown format {other:?} (expected md or json)")),
+        }
+    }
+
     #[tool(description = "Run one incremental sync cycle against the repository's Git history")]
     async fn sync_workspace(&self, Parameters(args): Parameters<SyncWorkspaceArgs>) -> Result<String, String> {
         if args.resume {
@@ -326,6 +351,32 @@ mod tests {
         let engine = Engine::open(index_dir.path(), repo_dir.path()).unwrap();
         engine.sync().unwrap();
         (repo_dir, index_dir, engine)
+    }
+
+    #[tokio::test]
+    async fn graph_report_returns_markdown_json_and_rejects_unknown_formats() {
+        let (_repo, _index, engine) = fixture_engine();
+        let mcp = NexSpecMcp::new(Arc::new(engine));
+
+        let md = mcp
+            .graph_report(Parameters(GraphReportArgs { format: None, max_tokens: None, top: None }))
+            .await
+            .unwrap();
+        assert!(md.contains("## Summary") && md.contains("## Requirement Coverage"), "{md}");
+        assert!(md.contains("REQ-1"), "the unimplemented requirement is listed: {md}");
+
+        let json = mcp
+            .graph_report(Parameters(GraphReportArgs { format: Some("json".into()), max_tokens: None, top: Some(3) }))
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(value["requirement_coverage"]["unimplemented_requirements"].as_array().unwrap().iter().any(|r| r == "REQ-1"));
+
+        let err = mcp
+            .graph_report(Parameters(GraphReportArgs { format: Some("xml".into()), max_tokens: None, top: None }))
+            .await
+            .unwrap_err();
+        assert!(err.contains("unknown format"), "{err}");
     }
 
     #[tokio::test]

@@ -753,6 +753,37 @@ impl Engine {
         }
     }
 
+    /// Facts about the index itself, for the report summary.
+    pub fn index_info(&self) -> Result<crate::report::IndexInfo, EngineError> {
+        let version = VersionPointer::new(&self.db);
+        let oid = version.last_indexed_commit()?;
+        let last_indexed_at = match (oid, GitSource::open(&self.repo_root)) {
+            (Some(oid), Ok(git)) => git.commit_time(oid),
+            _ => None,
+        };
+        Ok(crate::report::IndexInfo {
+            last_indexed_commit: oid.map(|o| o.iter().map(|b| format!("{b:02x}")).collect()),
+            last_indexed_at,
+            sync_version: version.current()?,
+            index_bytes: directory_size(&self.index_dir),
+        })
+    }
+
+    /// The structural report (Fase 10).
+    pub fn report(&self, options: crate::report::ReportOptions) -> Result<crate::report::Report, EngineError> {
+        Ok(crate::report::build(&self.snapshot()?, self.index_info()?, options))
+    }
+
+    /// The whole graph as plain data, for the report.
+    pub fn snapshot(&self) -> Result<crate::report::GraphSnapshot, EngineError> {
+        let redb = RedbParticipant::new(&self.db);
+        let mut nodes = std::collections::BTreeMap::new();
+        for (id, bytes) in redb.all_nodes()? {
+            nodes.insert(id, decode_node_payload(&bytes)?);
+        }
+        Ok(crate::report::GraphSnapshot::new(nodes, self.csr.all_edges()))
+    }
+
     /// Groups of files that import each other (REQ-712), as repo-relative
     /// paths, largest group first.
     pub fn import_cycles(&self) -> Result<Vec<Vec<String>>, EngineError> {
@@ -836,6 +867,19 @@ impl Engine {
             None => Ok(None),
         }
     }
+}
+
+/// Total size of the regular files under `dir` (missing directory: 0).
+fn directory_size(dir: &Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(dir) else { return 0 };
+    entries
+        .filter_map(Result::ok)
+        .map(|entry| match entry.metadata() {
+            Ok(m) if m.is_dir() => directory_size(&entry.path()),
+            Ok(m) => m.len(),
+            Err(_) => 0,
+        })
+        .sum()
 }
 
 /// Lowercase hex encoding of a `StableId`, for display in CLI/MCP output.

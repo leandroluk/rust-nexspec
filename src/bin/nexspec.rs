@@ -102,6 +102,22 @@ enum Command {
     },
     /// Run the embedded MCP server over stdio.
     Mcp,
+    /// Structural report: God nodes, communities, requirement coverage,
+    /// surprising connections, import cycles and suggested questions.
+    Report {
+        /// `md` (default) or `json`.
+        #[arg(long, default_value = "md")]
+        format: String,
+        /// Fit the Markdown report into this many tokens (90% safety margin).
+        #[arg(long = "max-tokens")]
+        max_tokens: Option<u32>,
+        /// God nodes to list.
+        #[arg(long, default_value_t = 10)]
+        top: usize,
+        /// Exit with status 2 when an import cycle exists (for CI).
+        #[arg(long)]
+        fail_on_cycle: bool,
+    },
     /// Measure retrieval quality and token cost against a question corpus
     /// (never writes into the repository: the index is built in a temp dir).
     Bench(Box<BenchArgs>),
@@ -234,6 +250,23 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Command::Mcp => {
             let engine = Engine::open(&index_dir, &repo)?;
             run_mcp(engine)?;
+        }
+        Command::Report { format, max_tokens, top, fail_on_cycle } => {
+            if !matches!(format.as_str(), "md" | "json") {
+                return Err(format!("unknown format {format:?} (expected md or json)").into());
+            }
+            let engine = Engine::open(&index_dir, &repo)?;
+            let options = nexspec::report::ReportOptions { top: top.max(1), ..Default::default() };
+            let report = engine.report(options)?;
+            if format == "json" {
+                println!("{}", nexspec::report::render::to_json(&report));
+            } else {
+                print!("{}", nexspec::report::render::to_markdown(&report, max_tokens));
+            }
+            if fail_on_cycle && !report.import_cycles.is_empty() {
+                eprintln!("error: {} import cycle(s) found", report.import_cycles.len());
+                std::process::exit(2);
+            }
         }
         Command::Bench(args) => {
             let BenchArgs { corpus, ks, index_dir, format, tokenizer, budget, output, no_vector, check, update_baseline, min_locate_recall, fixed_cost_files } = *args;

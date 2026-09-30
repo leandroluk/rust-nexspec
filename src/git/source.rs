@@ -58,6 +58,13 @@ impl GitSource {
 
     /// Whether the working tree has uncommitted changes relative to `HEAD`.
     /// Untracked files do not count (matches `gix`'s own definition).
+    /// Commit time (unix seconds) of `oid`, if the commit exists.
+    pub fn commit_time(&self, oid: [u8; 20]) -> Option<i64> {
+        let id = gix::ObjectId::from_bytes_or_panic(&oid);
+        let commit = self.repo.find_commit(id).ok()?;
+        commit.time().ok().map(|t| t.seconds)
+    }
+
     pub fn is_dirty(&self) -> Result<bool, GitError> {
         self.repo.is_dirty().map_err(op_err)
     }
