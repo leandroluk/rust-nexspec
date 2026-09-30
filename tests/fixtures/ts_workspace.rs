@@ -4,6 +4,17 @@
 #![allow(dead_code)]
 
 use super::FixtureRepo;
+use std::sync::Arc;
+
+use nexspec::GitSource;
+use nexspec::graph::csr::{Csr, CsrBase, CsrParticipant};
+use nexspec::graph::edge::{Edge, EdgeType};
+use nexspec::graph::node::{file_node_id, symbol_node_id};
+use nexspec::sync::mutation::StableId;
+use nexspec::sync::{Coordinator, RedbParticipant, VersionPointer};
+use nexspec::sync_orchestrator::SyncOrchestrator;
+use redb::Database;
+use tempfile::NamedTempFile;
 
 pub fn build() -> FixtureRepo {
     let repo = FixtureRepo::init();
@@ -30,5 +41,59 @@ pub fn build() -> FixtureRepo {
     );
     repo.commit("feat: workspace");
     repo
+}
+
+/// An orchestrator wired to a queryable CSR, for tests that sync repeatedly.
+pub struct Workspace {
+    pub repo: FixtureRepo,
+    pub csr: Arc<Csr>,
+    pub orchestrator: SyncOrchestrator<'static>,
+    _db: Box<Database>,
+    _files: Vec<NamedTempFile>,
+}
+
+impl Workspace {
+    pub fn new(repo: FixtureRepo) -> Self {
+        let db_file = NamedTempFile::new().unwrap();
+        let db = Box::new(Database::create(db_file.path()).unwrap());
+        // The orchestrator borrows the database; it lives exactly as long as
+        // this struct, which owns the box.
+        let db_ref: &'static Database = unsafe { &*(db.as_ref() as *const Database) };
+        let csr_file = NamedTempFile::new().unwrap();
+        CsrBase::build(&[], csr_file.path()).unwrap();
+        let base = CsrBase::open(csr_file.path()).unwrap();
+        let participant = CsrParticipant::new(Arc::new(Csr::new(base)), csr_file.path().to_path_buf());
+        let csr = participant.csr_handle();
+        let wal_file = NamedTempFile::new().unwrap();
+        let wal = nexspec::sync::Wal::open(wal_file.path()).unwrap();
+        let coordinator = Coordinator::new(
+            wal,
+            VersionPointer::new(db_ref),
+            vec![Box::new(RedbParticipant::new(db_ref)), Box::new(participant)],
+        );
+        let git = GitSource::open(repo.path()).unwrap();
+        let orchestrator = SyncOrchestrator::new(git, coordinator, VersionPointer::new(db_ref)).with_csr(Arc::clone(&csr));
+        Self { repo, csr, orchestrator, _db: db, _files: vec![db_file, csr_file, wal_file] }
+    }
+
+    pub fn sync(&mut self) {
+        self.orchestrator.run_once().expect("sync");
+    }
+
+    pub fn edges(&self, from: &StableId, edge_type: EdgeType) -> Vec<Edge> {
+        self.csr.edges_from(from, edge_type)
+    }
+
+    pub fn has_edge(&self, from: &StableId, to: &StableId, edge_type: EdgeType) -> Option<Edge> {
+        self.edges(from, edge_type).into_iter().find(|e| e.to == *to)
+    }
+}
+
+pub fn file(path: &str) -> StableId {
+    file_node_id(path)
+}
+
+pub fn symbol(path: &str, name: &str) -> StableId {
+    symbol_node_id(path, name, 0)
 }
 

@@ -42,7 +42,7 @@
 - **Done when**: fixture `ts_workspace` produz as arestas esperadas (incl. `extends`, `implements`, `new`, tipo de parâmetro de construtor, decorator, `import type` = type-only, arquivo `*.spec.ts` = test, não resolvido = nenhuma aresta).
 - **Gate**: `cargo test --test dependency_edges`
 
-## T-706: Incrementalidade (REQ-706) [ ]
+## T-706: Incrementalidade (REQ-706) [x]
 - **REQ**: REQ-706
 - **What**: por arquivo de código alterado/apagado: varredura de `all_edges()` → `Remove` das arestas de dependência antigas que partiam dele e não foram regeradas; apagado remove também as que chegavam. Documentar o limite D5.
 - **Where**: `src/sync_orchestrator.rs`
