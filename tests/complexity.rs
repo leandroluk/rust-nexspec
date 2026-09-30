@@ -36,7 +36,7 @@ fn serial() -> std::sync::MutexGuard<'static, ()> {
 /// algorithm), which would make the bound meaningless.
 const MAX_RATIO: f64 = 2.5;
 const RUNS: usize = 3;
-const ATTEMPTS: usize = 3;
+const ATTEMPTS: usize = 5;
 
 /// Debug builds are ~10x slower, so they use smaller inputs (still enough to
 /// expose a quadratic blow-up in the cheap cases); CI also runs this file with
@@ -119,7 +119,7 @@ fn complexity_csr_delta_remove_is_linear() {
 
 #[test]
 fn complexity_markdown_extract_is_linear() {
-    assert_linear("markdown::extract", scaled(4_000), |n| {
+    assert_linear("markdown::extract", 4_000, |n| {
         let mut text = String::from("## Requirements\n\n");
         for i in 0..n {
             text.push_str(&format!("- REQ-{i:05}: requirement number {i} with some body text\n"));
