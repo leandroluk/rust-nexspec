@@ -57,6 +57,7 @@ pub fn tag_export(graph: &ExportGraph, tag: &str) -> ExportGraph {
                 }
                 ExportPayload::Table { schema, .. } => *schema = format!("{tag}:{schema}"),
                 ExportPayload::Package { dir, .. } => *dir = prefixed(tag, dir),
+                ExportPayload::Annotation { target, .. } => *target = format!("{tag}:{target}"),
                 ExportPayload::Column { .. } | ExportPayload::Constraint { .. } | ExportPayload::Endpoint { .. } => {}
             }
             node.path = n.path.as_deref().map(|p| prefixed(tag, p));

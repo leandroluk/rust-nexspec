@@ -20,6 +20,11 @@ pub fn cache_path(repo: &Path) -> PathBuf {
     repo.join(".specs").join(".cache").join("memory.json")
 }
 
+/// Where the outcomes of annotations (Fase 18) are kept for the ranking: written by the materialisation, read with the memory.
+pub fn outcomes_path(repo: &Path) -> PathBuf {
+    repo.join(".specs").join(".cache").join("annotation-outcomes.json")
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 struct Stored {
     boost: Vec<String>,
@@ -69,12 +74,33 @@ impl Overlay {
         std::fs::write(path, serde_json::to_string_pretty(&stored).expect("serialises"))
     }
 
-    /// The overlay `reflect` saved; a missing or damaged file is no overlay.
+    /// What `reflect` saved plus the outcomes of fresh annotations; missing or damaged files count as nothing.
     pub fn load(repo: &Path) -> Option<Self> {
-        let stored: Stored = serde_json::from_str(&std::fs::read_to_string(cache_path(repo)).ok()?).ok()?;
+        let read = |path: PathBuf| -> Stored { std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default() };
         let ids = |list: &[String]| list.iter().filter_map(|h| unhex(h)).collect::<HashSet<_>>();
-        let overlay = Self { boost: ids(&stored.boost), penalty: ids(&stored.penalty) };
+        let (memory, outcomes) = (read(cache_path(repo)), read(outcomes_path(repo)));
+        let mut overlay = Self { boost: ids(&memory.boost), penalty: ids(&memory.penalty) };
+        overlay.boost.extend(ids(&outcomes.boost));
+        overlay.penalty.extend(ids(&outcomes.penalty));
+        // Being in both means the signals disagree; the careful reading wins.
+        overlay.boost.retain(|id| !overlay.penalty.contains(id));
         (!overlay.is_empty()).then_some(overlay)
+    }
+
+    /// Saves the nodes annotations call useful and the ones they call dead ends (or corrected); removes the file when there are none.
+    pub fn save_outcomes(repo: &Path, boost: &[StableId], penalty: &[StableId]) -> std::io::Result<()> {
+        let path = outcomes_path(repo);
+        if boost.is_empty() && penalty.is_empty() {
+            return match std::fs::remove_file(&path) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+                _ => Ok(()),
+            };
+        }
+        std::fs::create_dir_all(path.parent().expect("has a parent"))?;
+        let mut stored = Stored { boost: boost.iter().map(hex).collect(), penalty: penalty.iter().map(hex).collect() };
+        stored.boost.sort();
+        stored.penalty.sort();
+        std::fs::write(path, serde_json::to_string_pretty(&stored).expect("serialises"))
     }
 
     /// Multiplies the scores of remembered nodes and re-sorts (highest first; equal scores keep their order).

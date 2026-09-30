@@ -1,0 +1,48 @@
+---
+title: "Phase 18 · Semantic Annotations"
+description: Conclusions the agent leaves on the graph, community names, and embedding similarity, without an LLM of our own.
+---
+
+What an agent learns while exploring (what a community does, that a doc explains a symbol, that a path went nowhere) used to vanish with the session. `annotate` keeps it, with provenance, next to the code; `sync --similar` adds neighbours found by the local embedding model. No provider, no key, no cost per call.
+
+Source: `.specs/features/semantic-annotations/`
+
+```bash
+nexspec annotate alphaInvoiceHandler --label "Billing entry" --note "Charges residents; nightly job calls it."
+nexspec annotate src/invoice/legacy.ts --relation references --to src/invoice/current.ts
+nexspec annotate community:2 --label "Billing core"        # number from `nexspec report`
+nexspec annotate alphaInvoiceHandlerLegacy --outcome dead_end --note "Old code, do not start here."
+nexspec annotate list [--target T] [--state fresh|stale|dangling] [--max-tokens N]
+nexspec annotate show <id> | remove <id> | lint
+nexspec sync --similar        # real embeddings + SimilarTo edges (needs the model in .models/)
+```
+
+## The file is the truth
+
+Annotations live in `.specs/.memory/annotations.jsonl`: one JSON object per line, sorted by target, time and id, meant for Git. Each one records who (`author`: `agent` or `user`, optionally `model`), when, the hash of the target at that time and `confidence: INFERRED`. Targets are stored by a **stable key**, never by an internal id: a file path, `path::Name` for a symbol, `REQ-1`, `table:public.tb_x`, `package:name`, `endpoint:GET /x`, `community:<label>`. The index is derived: `sync` reads the file and makes `Annotation` nodes and edges match, and deleting `.specs/.index/` loses nothing. Saying the same thing again is the same annotation (its time is renewed).
+
+## Fresh, stale, dangling
+
+| State | Meaning | In the graph |
+| --- | --- | --- |
+| fresh | the target is what it was when annotated | node, `AnnotatedBy` edge, findable in search, its relation edge, its outcome in the ranking |
+| stale | the file holding the target changed (for a requirement: its title or body) | node marked `stale`, still in `explain`, but out of search, relations and ranking |
+| dangling | the target no longer exists | not in the graph; shows in `annotate list` and `lint` |
+
+## Never beats the deterministic graph
+
+An annotation adds a node and an `AnnotatedBy` edge (not a dependency, so `affected` ignores it). A `--relation` becomes its own edge, `INFERRED`, with context `annotation`: it never replaces or edits an extracted edge, and `--min-confidence extracted` leaves it out.
+
+## Where they show
+
+`explain` lists them (`[fresh] agent, 2026-09-30: Billing entry: …`); `query` and `affected` add a `notes:` line under a node that has fresh ones. A community label replaces the derived one in `report` and in the wiki export. An outcome nudges `search` like the [work memory](/docs/features/work-memory) does (`useful` up, `dead_end` and `corrected` down; `--no-memory` turns both off).
+
+## Governance
+
+`annotate lint` exits 8 when it finds stale or dangling annotations, duplicates, notes over 500 characters, text that looks like a key or token, relations pointing nowhere, or lines that are not annotations. `annotate` itself refuses secrets (naming the kind, never the value), refuses notes over 500 characters, and needs something to say (a label, a note, a relation with `--to`, or an outcome). The MCP tool `annotate_node` says when to annotate: after understanding something, when naming a community, when discarding a path.
+
+## SimilarTo
+
+`sync --embed` computes real embeddings (documents, requirements, symbols, tables, fresh annotations; new or changed ones only) and `--similar` links each node to up to 3 neighbours with similarity of at least 0.75 (`--similar-k`, `--similar-threshold`): `SimilarTo` edges, `INFERRED`, context `embedding`, the score kept in the edge (`explain` lists them). The pass costs about 10 ms per node (3700 nodes: 37 s on the reference repository), so it is opt-in; a `lean` build refuses it and without the model it says so and does nothing.
+
+> Until this phase the vector index was fed the serialized bytes of each node instead of embeddings, so vector search ranked on meaningless points. Vectors now travel in their own channel and only `sync --embed` produces them; without it, search is BM25 alone.

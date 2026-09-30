@@ -24,7 +24,7 @@ fn an_execution_error_exits_1_with_a_message_on_stderr() {
 #[test]
 fn the_readme_documents_every_exit_code() {
     let readme = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md")).unwrap();
-    for code in ["0", "1", "2", "3", "4", "5", "6", "7"] {
+    for code in ["0", "1", "2", "3", "4", "5", "6", "7", "8"] {
         let has_row = readme.lines().any(|l| l.split('|').nth(1).is_some_and(|c| c.trim() == format!("`{code}`")));
         assert!(has_row, "README has no row for exit code {code}");
     }

@@ -100,6 +100,8 @@ fn trace_response(result: TraceResult) -> TraceResponse {
                     crate::graph::edge::EdgeContext::TypeOnly => "type-only",
                     crate::graph::edge::EdgeContext::Test => "test",
                     crate::graph::edge::EdgeContext::Spec => "spec",
+                    crate::graph::edge::EdgeContext::Annotation => "annotation",
+                    crate::graph::edge::EdgeContext::Embedding => "embedding",
                 },
                 path: hop.path.clone(),
             })
@@ -326,6 +328,24 @@ pub struct SaveResultArgs {
 }
 
 #[derive(Deserialize, JsonSchema)]
+pub struct AnnotateNodeArgs {
+    /// What to annotate: a name, `path:Name`, `REQ-1`, an id, or `community:<n>` from the report.
+    pub target: String,
+    /// A short name (for a community: its label in the report and the wiki).
+    pub label: Option<String>,
+    /// A short conclusion, at most 500 characters, no secrets.
+    pub note: Option<String>,
+    /// A relation to `to` (references, depends_on, calls…): an inferred edge.
+    pub relation: Option<String>,
+    pub to: Option<String>,
+    /// `useful`, `dead_end` or `corrected`.
+    pub outcome: Option<String>,
+    /// The model writing this, for provenance.
+    pub model: Option<String>,
+    pub pick: Option<usize>,
+}
+
+#[derive(Deserialize, JsonSchema)]
 pub struct ReflectArgs {
     /// Cut the summary to this many tokens (default 600).
     pub max_tokens: Option<u32>,
@@ -443,6 +463,23 @@ impl NexSpecMcp {
             filter: args.filter.build()?,
         };
         crate::query::api::affected(&self.engine, &args.target, options, &common).map_err(|e| e.to_string())
+    }
+
+    #[tool(description = "Record a short conclusion about a node after you understood something: what a community does (target community:<n> with a label), that a doc explains a symbol (relation + to), that a path was a dead end (outcome). Keep notes under 500 characters; never put secrets in them. Annotations carry provenance, are marked stale when the target changes, and never override extracted facts")]
+    async fn annotate_node(&self, Parameters(args): Parameters<AnnotateNodeArgs>) -> Result<String, String> {
+        let request = crate::annotate::api::Request {
+            target: args.target,
+            label: args.label,
+            note: args.note,
+            relation: args.relation,
+            to: args.to,
+            outcome: args.outcome,
+            author: "agent".to_string(),
+            model: args.model,
+            pick: args.pick,
+        };
+        let (annotation, _) = crate::annotate::api::annotate(&self.engine, self.engine.repo_root(), &request).map_err(|e| e.to_string())?;
+        Ok(format!("annotated `{}` ({})", annotation.target, annotation.id))
     }
 
     #[tool(description = "Remember how an answer went (useful, dead_end or corrected) and the nodes it cited, so later sessions can prefer what worked and avoid dead ends")]

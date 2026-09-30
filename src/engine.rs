@@ -76,6 +76,8 @@ pub enum EngineError {
     Codec(String),
     #[error("export error: {0}")]
     Export(String),
+    #[error("{0}")]
+    Unavailable(String),
     #[error("no node found for target {0:?}")]
     TargetNotFound(String),
 }
@@ -176,8 +178,19 @@ pub struct BlameResult {
 /// 5 = `Edge.meta` and the dependency edge types,
 /// 6 = per-language `summary_*` fields in the lexical index (Fase 19),
 /// 7 = table/column/constraint/package nodes (Fase 14),
-/// 8 = package dependencies and endpoint nodes (Fase 13).
-pub const INDEX_FORMAT: u64 = 8;
+/// 8 = package dependencies and endpoint nodes (Fase 13),
+/// 9 = annotation nodes, `AnnotatedBy`/`SimilarTo` edges and their contexts (Fase 18).
+pub const INDEX_FORMAT: u64 = 9;
+
+/// What `sync --embed` did (Fase 18).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EmbedReport {
+    pub embedded: usize,
+    pub up_to_date: usize,
+    pub removed: usize,
+    /// `false` when the embedding model is not in `.models/`: nothing was done.
+    pub model_available: bool,
+}
 
 /// Dependents appended to a search result after the seeds and their own
 /// neighbours (REQ-707: bounded, so a widely used type cannot flood an answer).
@@ -399,7 +412,154 @@ impl Engine {
         if force_domain {
             orchestrator = orchestrator.force_domain_pass();
         }
-        Ok(orchestrator.run_once()?)
+        let mut report = orchestrator.run_once()?;
+        drop(orchestrator);
+        // Annotations are resolved against the graph as this cycle left it (Fase 18).
+        if let Some(version) = self.materialize_annotations()? {
+            report.target_version = Some(version);
+        }
+        Ok(report)
+    }
+
+    /// Makes the annotation nodes and edges of the index match `.specs/.memory/annotations.jsonl` (Fase 18): resolves each
+    /// target key against the graph, marks annotations `stale` when the target changed, leaves `dangling` ones out, and
+    /// records which nodes annotations call useful or dead ends for the ranking. One coordinator cycle, and only if
+    /// something differs. Free for a repository that has no annotations.
+    pub fn materialize_annotations(&self) -> Result<Option<u64>, EngineError> {
+        use crate::annotate::{materialize, store};
+        if self.revision.is_some() {
+            return Ok(None);
+        }
+        let marker = self.index_dir.join("annotations.present");
+        let (annotations, _) = store::load(&self.repo_root);
+        if annotations.is_empty() && !marker.exists() {
+            return Ok(None);
+        }
+        let snapshot = self.snapshot()?;
+        let evaluated = materialize::evaluate(&self.repo_root, &snapshot, &annotations);
+        let desired = materialize::desired(&evaluated);
+        let existing_nodes: std::collections::BTreeMap<StableId, NodePayload> =
+            snapshot.nodes.iter().filter(|(_, p)| matches!(p, NodePayload::Annotation { .. })).map(|(id, p)| (*id, p.clone())).collect();
+        let existing_edges: std::collections::BTreeSet<StableId> = snapshot
+            .edges
+            .iter()
+            .filter(|e| e.edge_type == EdgeType::AnnotatedBy || e.context() == crate::graph::edge::EdgeContext::Annotation)
+            .map(|e| e.id)
+            .collect();
+        let set = materialize::reconcile(&desired, &existing_nodes, &existing_edges);
+        let version = if set.nodes.is_empty() && set.edges.is_empty() { None } else { self.apply_mutations(set)? };
+
+        // The ranking hears only fresh outcomes.
+        let (mut boost, mut penalty) = (Vec::new(), Vec::new());
+        for e in evaluated.iter().filter(|e| e.state == materialize::State::Fresh) {
+            let (Some(target), Some(outcome)) = (e.target, e.annotation.outcome.as_deref()) else { continue };
+            if outcome == "useful" { boost.push(target) } else { penalty.push(target) }
+        }
+        crate::memory::overlay::Overlay::save_outcomes(&self.repo_root, &boost, &penalty)?;
+        if desired.nodes.is_empty() {
+            let _ = std::fs::remove_file(&marker);
+        } else {
+            std::fs::write(&marker, b"")?;
+        }
+        Ok(version)
+    }
+
+    /// Real embeddings for the nodes worth one (Fase 18, `sync --embed`): documents, requirements, symbols, tables
+    /// and fresh annotations. Only nodes without a vector, or whose text changed, are embedded; vectors of nodes
+    /// that are gone are dropped. Needs a `full` build and the model in `.models/`; reports how many were done.
+    #[cfg(feature = "full")]
+    pub fn embed_nodes(&self) -> Result<EmbedReport, EngineError> {
+        use crate::annotate::similar::text_for;
+        let snapshot = self.snapshot()?;
+        let sidecar = self.index_dir.join("embeddings.json");
+        let mut known: std::collections::BTreeMap<String, String> = std::fs::read_to_string(&sidecar).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        let mut wanted: std::collections::BTreeMap<String, (StableId, String, String)> = std::collections::BTreeMap::new();
+        for id in snapshot.nodes.keys() {
+            if let Some(text) = text_for(&snapshot, id) {
+                let hash = blake3::hash(text.as_bytes()).to_hex()[..16].to_string();
+                wanted.insert(id_hex(id), (*id, text, hash));
+            }
+        }
+        let mut set = crate::sync::MutationSet::default();
+        let (mut embedded, mut up_to_date) = (0usize, 0usize);
+        for (key, (id, text, hash)) in &wanted {
+            if known.get(key) == Some(hash) {
+                up_to_date += 1;
+                continue;
+            }
+            match self.embedder.embed(text) {
+                Ok(vector) => {
+                    set.docs.push(crate::sync::DocMutation::Upsert { id: *id, payload: crate::vector::encode_vector(&vector) });
+                    known.insert(key.clone(), hash.clone());
+                    embedded += 1;
+                }
+                Err(VectorError::ModelNotAvailable(_)) => {
+                    return Ok(EmbedReport { embedded: 0, up_to_date: 0, removed: 0, model_available: false });
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+        let gone: Vec<String> = known.keys().filter(|k| !wanted.contains_key(*k)).cloned().collect();
+        for key in &gone {
+            if let Some(id) = unhex(key) {
+                set.docs.push(crate::sync::DocMutation::Remove { id });
+            }
+            known.remove(key);
+        }
+        if !set.docs.is_empty() {
+            self.apply_mutations(set)?;
+        }
+        std::fs::write(&sidecar, serde_json::to_string(&known).expect("serialises"))?;
+        Ok(EmbedReport { embedded, up_to_date, removed: gone.len(), model_available: true })
+    }
+
+    #[cfg(not(feature = "full"))]
+    pub fn embed_nodes(&self) -> Result<EmbedReport, EngineError> {
+        Err(EngineError::Unavailable("this is a lean build: it has no embedding model (build with the default `full` features)".to_string()))
+    }
+
+    /// `SimilarTo` edges from the committed vectors (Fase 18, `sync --similar`): up to `k` neighbours per node with
+    /// similarity of at least `threshold`, replacing the previous set. Returns how many edges the graph now has.
+    #[cfg(feature = "full")]
+    pub fn update_similarity(&self, k: usize, threshold: f32) -> Result<usize, EngineError> {
+        use crate::annotate::similar;
+        let hnsw = HnswParticipant::new(&self.hnsw_path())?;
+        let points = hnsw.points();
+        let found = similar::neighbours(hnsw.index(), &points, k, threshold);
+        let existing: std::collections::BTreeMap<StableId, u8> = self.csr.all_edges().iter().filter(|e| e.edge_type == EdgeType::SimilarTo).map(|e| (e.id, e.meta)).collect();
+        let set = similar::reconcile(&found, &existing);
+        if !set.edges.is_empty() {
+            self.apply_mutations(set)?;
+        }
+        Ok(found.len())
+    }
+
+    #[cfg(not(feature = "full"))]
+    pub fn update_similarity(&self, _k: usize, _threshold: f32) -> Result<usize, EngineError> {
+        Err(EngineError::Unavailable("this is a lean build: it has no embedding model (build with the default `full` features)".to_string()))
+    }
+
+    /// The community an `annotate community:<id or label>` refers to, as the stable key `community:<derived label>`.
+    pub fn community_key(&self, spec: &str) -> Result<Option<String>, EngineError> {
+        let snapshot = self.snapshot()?;
+        let communities = crate::report::communities::communities(&snapshot, 5, 0);
+        let wanted = spec.trim().trim_start_matches("community:");
+        Ok(communities
+            .listed
+            .iter()
+            .find(|c| c.id.to_string() == wanted || c.label == wanted)
+            .map(|c| format!("community:{}", c.label)))
+    }
+
+    /// Replaces the derived label of a community with the newest annotation that names it (Fase 18).
+    pub fn apply_community_labels(&self, communities: &mut crate::report::communities::Communities) {
+        let (annotations, _) = crate::annotate::store::load(&self.repo_root);
+        for community in &mut communities.listed {
+            let key = format!("community:{}", community.label);
+            if let Some(label) = annotations.iter().filter(|a| a.target == key).filter_map(|a| a.label.as_ref().map(|l| (&a.at, l))).max().map(|(_, l)| l.clone()) {
+                community.label = label;
+            }
+        }
     }
 
     /// The schema the changesets add up to, without anything read from a live database.
@@ -416,7 +576,8 @@ impl Engine {
     /// The graph in its portable form (Fase 12): nodes, edges and communities, filtered and in a stable order.
     pub fn export_graph(&self, filter: &crate::export::ExportFilter) -> Result<crate::export::ExportGraph, EngineError> {
         let snapshot = self.snapshot()?;
-        let communities = crate::report::communities::communities(&snapshot, 5, 0);
+        let mut communities = crate::report::communities::communities(&snapshot, 5, 0);
+        self.apply_community_labels(&mut communities);
         crate::export::ExportGraph::from_snapshot(&snapshot, &communities, filter).map_err(|e| EngineError::Export(e.to_string()))
     }
 
@@ -601,7 +762,7 @@ impl Engine {
             | NodePayload::Adr { title, body, .. } => (format!("{title}\n{body}"), Some("markdown")),
             NodePayload::DocSection { title, .. } => (title.clone(), Some("markdown")),
             NodePayload::File { path, .. } => (path.clone(), None),
-            NodePayload::Table { .. } | NodePayload::Column { .. } | NodePayload::Constraint { .. } | NodePayload::Package { .. } | NodePayload::Endpoint { .. } => {
+            NodePayload::Table { .. } | NodePayload::Column { .. } | NodePayload::Constraint { .. } | NodePayload::Package { .. } | NodePayload::Endpoint { .. } | NodePayload::Annotation { .. } => {
                 (payload.domain_label().map(|(kind, label)| format!("{kind} {label}")).unwrap_or_default(), None)
             }
             NodePayload::Symbol { name, line_start, line_end, .. } => {
@@ -915,7 +1076,9 @@ impl Engine {
 
     /// The structural report (Fase 10).
     pub fn report(&self, options: crate::report::ReportOptions) -> Result<crate::report::Report, EngineError> {
-        Ok(crate::report::build(&self.snapshot()?, self.index_info()?, options))
+        let mut report = crate::report::build(&self.snapshot()?, self.index_info()?, options);
+        self.apply_community_labels(&mut report.communities);
+        Ok(report)
     }
 
     /// The whole graph as plain data, for the report.
@@ -989,7 +1152,7 @@ impl Engine {
             }
             NodePayload::DocSection { .. } => Ok(Vec::new()),
             // Database objects and packages are not code locations.
-            NodePayload::Table { .. } | NodePayload::Column { .. } | NodePayload::Constraint { .. } | NodePayload::Package { .. } | NodePayload::Endpoint { .. } => Ok(Vec::new()),
+            NodePayload::Table { .. } | NodePayload::Column { .. } | NodePayload::Constraint { .. } | NodePayload::Package { .. } | NodePayload::Endpoint { .. } | NodePayload::Annotation { .. } => Ok(Vec::new()),
         }
     }
 

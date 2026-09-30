@@ -3,19 +3,18 @@
 //! real `SyncParticipant`, after `RedbParticipant`, `CsrParticipant`, and
 //! `TantivyParticipant`.
 //!
-//! **Vector convention (Fase 4-specific, not a `NodePayload` variant):**
-//! `instant-distance` builds its index once from a full point set rather
-//! than supporting incremental insertion, so — unlike the CSR's real
-//! base+delta split — this participant simply rebuilds the whole index on
-//! every `commit()` from its complete committed point set. That's cheap at
-//! the vector counts this crate deals with; revisit if profiling ever says
-//! otherwise. Each staged [`crate::sync::mutation::NodeMutation::Upsert`]'s
-//! `payload` is interpreted as a raw little-endian `f32` vector (via
-//! [`encode_vector`]/[`decode_vector`]) — `NodePayload` has no embedding
-//! variant yet, and nothing else gives universal meaning to node-payload
-//! bytes at the coordinator level (`RedbParticipant` stores them opaquely;
-//! `CsrParticipant` never looks at node payloads at all). Revisit once
-//! real embedding generation (T-406) is wired into `SyncOrchestrator`.
+//! **Vector convention:** `instant-distance` builds its index once from a
+//! full point set rather than supporting incremental insertion, so — unlike
+//! the CSR's real base+delta split — this participant simply rebuilds the
+//! whole index on every `commit()` from its complete committed point set.
+//! That's cheap at the vector counts this crate deals with.
+//!
+//! Vectors travel in the **`docs` channel** of a mutation set, never in `nodes`:
+//! a [`crate::sync::mutation::DocMutation::Upsert`] with `id` = the node's id and
+//! `payload` = a raw little-endian `f32` vector ([`encode_vector`]/[`decode_vector`]),
+//! a `Remove` drops the point. (Until Fase 18 this participant read *node*
+//! payloads as vectors, which are serialized `NodePayload` bytes, not embeddings:
+//! the points were meaningless. `nexspec sync --embed` now computes real ones.)
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -24,7 +23,7 @@ use std::sync::{Mutex, RwLock};
 
 use instant_distance::{Builder, HnswMap, Search};
 
-use crate::sync::mutation::{MutationSet, NodeMutation, StableId};
+use crate::sync::mutation::{DocMutation, MutationSet, StableId};
 use crate::sync::participant::{SyncError, SyncParticipant};
 
 #[derive(Debug, thiserror::Error)]
@@ -146,8 +145,8 @@ struct PersistedPoint {
     vector: Vec<f32>,
 }
 
-/// A staged sync cycle: its target version plus the points to commit.
-type StagedPoints = (u64, Vec<(StableId, Vec<f32>)>);
+/// A staged sync cycle: its target version, the points to add or replace, and the ones to drop.
+type StagedPoints = (u64, Vec<(StableId, Vec<f32>)>, Vec<StableId>);
 
 pub struct HnswParticipant {
     index: HnswIndex,
@@ -187,6 +186,13 @@ impl HnswParticipant {
         })
     }
 
+    /// Every committed point (a copy): what `SimilarTo` walks.
+    pub fn points(&self) -> Vec<(StableId, Vec<f32>)> {
+        let mut points: Vec<(StableId, Vec<f32>)> = self.committed_points.lock().unwrap().iter().map(|(id, v)| (*id, v.clone())).collect();
+        points.sort_by_key(|(id, _)| *id);
+        points
+    }
+
     /// The search index, (re)built first if points changed since the last build.
     pub fn index(&self) -> &HnswIndex {
         if self.index_stale.swap(false, Ordering::SeqCst) {
@@ -215,15 +221,15 @@ impl SyncParticipant for HnswParticipant {
         if self.committed_version()? >= target_version {
             return Ok(());
         }
-        let points: Vec<(StableId, Vec<f32>)> = mutations
-            .nodes
-            .iter()
-            .filter_map(|m| match m {
-                NodeMutation::Upsert { id, payload } => Some((*id, decode_vector(payload))),
-                NodeMutation::Remove { .. } => None,
-            })
-            .collect();
-        *self.staged.lock().unwrap() = Some((target_version, points));
+        let mut points: Vec<(StableId, Vec<f32>)> = Vec::new();
+        let mut removed: Vec<StableId> = Vec::new();
+        for m in &mutations.docs {
+            match m {
+                DocMutation::Upsert { id, payload } => points.push((*id, decode_vector(payload))),
+                DocMutation::Remove { id } => removed.push(*id),
+            }
+        }
+        *self.staged.lock().unwrap() = Some((target_version, points, removed));
         Ok(())
     }
 
@@ -236,7 +242,7 @@ impl SyncParticipant for HnswParticipant {
             return Ok(());
         }
         let staged = self.staged.lock().unwrap().take();
-        let Some((staged_version, points)) = staged else {
+        let Some((staged_version, points, removed)) = staged else {
             return Err(SyncError::Storage(format!(
                 "commit({target_version}) called with nothing staged"
             )));
@@ -248,6 +254,9 @@ impl SyncParticipant for HnswParticipant {
         }
 
         let mut committed = self.committed_points.lock().unwrap();
+        for id in removed {
+            committed.remove(&id);
+        }
         for (id, vector) in points {
             committed.insert(id, vector);
         }
@@ -259,7 +268,7 @@ impl SyncParticipant for HnswParticipant {
 
     fn abort(&self, target_version: u64) -> Result<(), SyncError> {
         let mut staged = self.staged.lock().unwrap();
-        if matches!(&*staged, Some((v, _)) if *v == target_version) {
+        if matches!(&*staged, Some((v, _, _)) if *v == target_version) {
             *staged = None;
         }
         Ok(())
@@ -273,12 +282,12 @@ mod tests {
 
     fn upsert(id: StableId, vector: Vec<f32>) -> MutationSet {
         MutationSet {
-            nodes: vec![NodeMutation::Upsert {
+            nodes: vec![],
+            edges: vec![],
+            docs: vec![DocMutation::Upsert {
                 id,
                 payload: encode_vector(&vector),
             }],
-            edges: vec![],
-            docs: vec![],
         }
     }
 
@@ -314,6 +323,21 @@ mod tests {
         let hits = reopened.index().search(&[1.0, 0.0, 0.0], 5);
         assert_eq!(hits.len(), 2, "both persisted points are searchable after reopen");
         assert_eq!(hits[0].0, [1u8; 32]);
+    }
+
+    #[test]
+    fn a_doc_removal_drops_the_point_and_node_payloads_are_never_read_as_vectors() {
+        let file = NamedTempFile::new().unwrap();
+        let p = HnswParticipant::new(file.path()).unwrap();
+        p.stage(1, &upsert([1u8; 32], vec![1.0, 0.0])).unwrap();
+        p.commit(1).unwrap();
+        // A node mutation (what every sync carries) must not become a vector.
+        let mut set = MutationSet::default();
+        set.nodes.push(crate::sync::mutation::NodeMutation::Upsert { id: [9u8; 32], payload: vec![7u8; 64] });
+        set.docs.push(DocMutation::Remove { id: [1u8; 32] });
+        p.stage(2, &set).unwrap();
+        p.commit(2).unwrap();
+        assert!(p.index().search(&[1.0, 0.0], 5).is_empty(), "the removed point is gone and the node payload added nothing");
     }
 
     #[test]
@@ -359,8 +383,8 @@ mod tests {
         let b_vec = decode_vector(&b_bytes);
 
         let mut set = MutationSet::default();
-        set.nodes.push(NodeMutation::Upsert { id: [1u8; 32], payload: a_bytes });
-        set.nodes.push(NodeMutation::Upsert { id: [2u8; 32], payload: b_bytes });
+        set.docs.push(DocMutation::Upsert { id: [1u8; 32], payload: a_bytes });
+        set.docs.push(DocMutation::Upsert { id: [2u8; 32], payload: b_bytes });
         p.stage(1, &set).unwrap();
         p.commit(1).unwrap();
 
@@ -377,15 +401,15 @@ mod tests {
         let file = NamedTempFile::new().unwrap();
         let p = HnswParticipant::new(file.path()).unwrap();
         let mut set = MutationSet::default();
-        set.nodes.push(NodeMutation::Upsert {
+        set.docs.push(DocMutation::Upsert {
             id: [10u8; 32],
             payload: encode_vector(&[1.0, 0.0]),
         });
-        set.nodes.push(NodeMutation::Upsert {
+        set.docs.push(DocMutation::Upsert {
             id: [20u8; 32],
             payload: encode_vector(&[0.0, 1.0]),
         });
-        set.nodes.push(NodeMutation::Upsert {
+        set.docs.push(DocMutation::Upsert {
             id: [30u8; 32],
             payload: encode_vector(&[-1.0, 0.0]),
         });

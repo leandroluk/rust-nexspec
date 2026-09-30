@@ -54,6 +54,11 @@ impl GraphSnapshot {
                             map.entry(edge.from).or_insert(tag);
                         }
                     }
+                    EdgeType::AnnotatedBy => {
+                        if let Some(tag) = map.get(&edge.from).cloned() {
+                            map.entry(edge.to).or_insert(tag);
+                        }
+                    }
                     EdgeType::Calls => {
                         if let (Some(tag), Some(NodePayload::Endpoint { external: true, .. })) = (map.get(&edge.from).cloned(), self.nodes.get(&edge.to)) {
                             map.entry(edge.to).or_insert(tag);

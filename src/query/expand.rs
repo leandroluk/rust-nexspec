@@ -95,6 +95,9 @@ pub fn to_lines(
     lines.push("## Starting points".to_string());
     for seed in seeds {
         lines.push(format!("- `{}` ({})", view.snapshot.label(seed), view.snapshot.kind_name(seed)));
+        if let Some(notes) = crate::query::notes::inline(view, seed) {
+            lines.push(format!("  notes: {notes}"));
+        }
         if let Some(snippet) = snippets.get(seed) {
             lines.push("  ```".to_string());
             lines.extend(snippet.lines().map(|l| format!("  {l}")));
@@ -118,6 +121,9 @@ pub fn to_lines(
             view.snapshot.label(&r.id),
             flags(r.meta)
         ));
+        if let Some(notes) = crate::query::notes::inline(view, &r.id) {
+            lines.push(format!("  notes: {notes}"));
+        }
     }
     lines
 }

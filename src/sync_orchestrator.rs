@@ -296,7 +296,12 @@ impl<'a> SyncOrchestrator<'a> {
             let (existing_nodes, existing_edges) = match (&self.domain_state, &self.csr) {
                 (Some(existing), Some(csr)) => (
                     existing(),
-                    csr.all_edges().iter().map(|e| (e.id, e.from, e.to, e.edge_type == EdgeType::DependsOn)).collect::<Vec<_>>(),
+                    csr.all_edges()
+                        .iter()
+                        // Annotations and similarity edges hang off domain nodes too, but they are not the domain pass's to remove.
+                        .filter(|e| !matches!(e.edge_type, EdgeType::AnnotatedBy | EdgeType::SimilarTo) && e.context() != crate::graph::edge::EdgeContext::Annotation)
+                        .map(|e| (e.id, e.from, e.to, e.edge_type == EdgeType::DependsOn))
+                        .collect::<Vec<_>>(),
                 ),
                 _ => (HashSet::new(), Vec::new()),
             };

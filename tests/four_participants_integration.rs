@@ -17,7 +17,7 @@ use nexspec::graph::edge::EdgeType;
 use nexspec::graph::node::NodePayload;
 use nexspec::search::{TantivyParticipant, find_by_id, search_text};
 use nexspec::sync::{Coordinator, EdgeMutation, MutationSet, NodeMutation, RedbParticipant, VersionPointer, Wal};
-use nexspec::vector::{HnswParticipant, decode_vector};
+use nexspec::vector::{HnswParticipant, decode_vector, encode_vector};
 use redb::Database;
 use tempfile::{NamedTempFile, TempDir};
 
@@ -57,6 +57,9 @@ fn four_participants_stay_consistent_after_one_sync_cycle() {
         id: symbol_id,
         payload: symbol_payload,
     });
+    // Vectors go through the docs channel.
+    set.docs.push(nexspec::sync::DocMutation::Upsert { id: requirement_id, payload: encode_vector(&requirement_vector) });
+    set.docs.push(nexspec::sync::DocMutation::Upsert { id: symbol_id, payload: encode_vector(&symbol_vector) });
     set.edges.push(EdgeMutation::Upsert {
         id: [9u8; 32],
         from: symbol_id,

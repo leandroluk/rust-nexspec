@@ -43,6 +43,11 @@ pub fn endpoint_node_id(method: &str, path: &str, external: bool) -> StableId {
     *blake3::hash(format!("endpoint:{}:{method} {path}", if external { "external" } else { "defined" }).as_bytes()).as_bytes()
 }
 
+/// One annotation, by its content key (Fase 18).
+pub fn annotation_node_id(key: &str) -> StableId {
+    *blake3::hash(format!("annotation:{key}").as_bytes()).as_bytes()
+}
+
 pub fn package_node_id(name: &str) -> StableId {
     *blake3::hash(format!("package:{name}").as_bytes()).as_bytes()
 }
@@ -60,6 +65,7 @@ pub enum NodeType {
     Constraint,
     Package,
     Endpoint,
+    Annotation,
 }
 
 /// One variant per [`NodeType`], serialized with `rkyv` for consistency with
@@ -134,6 +140,21 @@ pub enum NodePayload {
         /// `false`: served (OpenAPI). `true`: called by client code in this repository.
         external: bool,
     },
+    /// What an agent or a person concluded about a node (Fase 18). Derived from `.specs/.memory/annotations.jsonl`.
+    Annotation {
+        /// Stable key of the annotated target (`path`, `path::Name`, `REQ-1`, `table:public.tb_x`…).
+        target: String,
+        label: String,
+        note: String,
+        /// `agent` or `user`.
+        author: String,
+        /// ISO 8601 UTC.
+        at: String,
+        /// `fresh` or `stale` (dangling annotations are not in the graph).
+        state: String,
+        /// `useful`, `dead_end`, `corrected` or empty.
+        outcome: String,
+    },
 }
 
 impl NodePayload {
@@ -145,13 +166,17 @@ impl NodePayload {
             NodePayload::Constraint { table, name, .. } => Some(("constraint", format!("{name} ({table})"))),
             NodePayload::Package { name, .. } => Some(("package", name.clone())),
             NodePayload::Endpoint { method, path, .. } => Some(("endpoint", format!("{method} {path}"))),
+            NodePayload::Annotation { target, label, state, .. } => {
+                Some(("annotation", format!("{} on {target}{}", if label.is_empty() { "note" } else { label }, if state == "stale" { " (stale)" } else { "" })))
+            }
             _ => None,
         }
     }
 
-    /// Whether the node belongs to the domain pass (added and removed by it as a whole).
+    /// Whether the node belongs to the domain pass (added and removed by it as a whole). Annotations have a
+    /// label too, but they are derived from their own file and must not be swept away by the domain pass.
     pub fn is_domain(&self) -> bool {
-        self.domain_label().is_some()
+        matches!(self, NodePayload::Table { .. } | NodePayload::Column { .. } | NodePayload::Constraint { .. } | NodePayload::Package { .. } | NodePayload::Endpoint { .. })
     }
 
     pub fn node_type(&self) -> NodeType {
@@ -167,6 +192,7 @@ impl NodePayload {
             NodePayload::Constraint { .. } => NodeType::Constraint,
             NodePayload::Package { .. } => NodeType::Package,
             NodePayload::Endpoint { .. } => NodeType::Endpoint,
+            NodePayload::Annotation { .. } => NodeType::Annotation,
         }
     }
 }

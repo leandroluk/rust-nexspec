@@ -34,6 +34,8 @@ pub fn relation_types(name: &str) -> Option<Vec<EdgeType>> {
         "defined_in" | "defined-in" => vec![EdgeType::DefinedIn],
         "depends_on" | "depends-on" => vec![EdgeType::DependsOn],
         "cochanges" | "co_changes" | "co-changes" => vec![EdgeType::CoChanges],
+        "annotated_by" | "annotated-by" => vec![EdgeType::AnnotatedBy],
+        "similar_to" | "similar-to" => vec![EdgeType::SimilarTo],
         "dependencies" | "dependency" => EdgeType::DEPENDENCY_TYPES.to_vec(),
         _ => return None,
     })
@@ -53,6 +55,8 @@ pub fn relation_name(edge_type: EdgeType) -> &'static str {
         EdgeType::DefinedIn => "defined_in",
         EdgeType::DependsOn => "depends_on",
         EdgeType::CoChanges => "cochanges",
+        EdgeType::AnnotatedBy => "annotated_by",
+        EdgeType::SimilarTo => "similar_to",
     }
 }
 
@@ -62,6 +66,8 @@ pub fn context_name(context: EdgeContext) -> &'static str {
         EdgeContext::TypeOnly => "type-only",
         EdgeContext::Test => "test",
         EdgeContext::Spec => "spec",
+        EdgeContext::Annotation => "annotation",
+        EdgeContext::Embedding => "embedding",
     }
 }
 

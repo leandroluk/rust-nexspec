@@ -27,6 +27,10 @@ pub enum EdgeType {
     Extends,
     /// Symbol -> symbol: any other use (types, decorators, values).
     References,
+    /// Any node -> the annotation an agent or a person left on it (Fase 18). Not a dependency.
+    AnnotatedBy,
+    /// Two documents or symbols whose embeddings are close (Fase 18, `sync --similar`). Not a dependency.
+    SimilarTo,
 }
 
 impl EdgeType {
@@ -46,6 +50,8 @@ impl EdgeType {
             EdgeType::Instantiates => 8,
             EdgeType::Extends => 9,
             EdgeType::References => 10,
+            EdgeType::AnnotatedBy => 11,
+            EdgeType::SimilarTo => 12,
         }
     }
 
@@ -89,6 +95,8 @@ impl EdgeType {
             8 => Some(EdgeType::Instantiates),
             9 => Some(EdgeType::Extends),
             10 => Some(EdgeType::References),
+            11 => Some(EdgeType::AnnotatedBy),
+            12 => Some(EdgeType::SimilarTo),
             _ => None,
         }
     }
@@ -113,11 +121,15 @@ pub enum EdgeContext {
     Test,
     /// Source file is a spec/e2e file.
     Spec,
+    /// Left by an annotation (Fase 18).
+    Annotation,
+    /// Found by embedding similarity (Fase 18).
+    Embedding,
 }
 
 /// Packs [`Confidence`] and [`EdgeContext`] into the one byte stored in
 /// [`Edge::meta`] and sent as `EdgeMutation::payload[0]`: bit 0 = confidence
-/// (`1` inferred), bits 1-2 = context.
+/// (`1` inferred), bits 1-3 = context, bits 4-7 = similarity score (Fase 18).
 pub fn encode_meta(confidence: Confidence, context: EdgeContext) -> u8 {
     let c = match confidence {
         Confidence::Extracted => 0,
@@ -128,17 +140,27 @@ pub fn encode_meta(confidence: Confidence, context: EdgeContext) -> u8 {
         EdgeContext::TypeOnly => 1,
         EdgeContext::Test => 2,
         EdgeContext::Spec => 3,
+        EdgeContext::Annotation => 4,
+        EdgeContext::Embedding => 5,
     };
     c | (x << 1)
 }
 
+/// [`encode_meta`] plus a similarity score in the four high bits (`score` in 0..=1, steps of 1/15).
+pub fn encode_meta_with_score(confidence: Confidence, context: EdgeContext, score: f32) -> u8 {
+    let steps = (score.clamp(0.0, 1.0) * 15.0).round() as u8;
+    encode_meta(confidence, context) | (steps << 4)
+}
+
 pub fn decode_meta(meta: u8) -> (Confidence, EdgeContext) {
     let confidence = if meta & 1 == 0 { Confidence::Extracted } else { Confidence::Inferred };
-    let context = match (meta >> 1) & 0b11 {
-        0 => EdgeContext::Runtime,
+    let context = match (meta >> 1) & 0b111 {
         1 => EdgeContext::TypeOnly,
         2 => EdgeContext::Test,
-        _ => EdgeContext::Spec,
+        3 => EdgeContext::Spec,
+        4 => EdgeContext::Annotation,
+        5 => EdgeContext::Embedding,
+        _ => EdgeContext::Runtime,
     };
     (confidence, context)
 }
@@ -160,6 +182,12 @@ impl Edge {
 
     pub fn context(&self) -> EdgeContext {
         decode_meta(self.meta).1
+    }
+
+    /// The similarity score of a `SimilarTo` edge (0..=1, steps of 1/15); `None` for every other edge.
+    pub fn score(&self) -> Option<f32> {
+        let steps = self.meta >> 4;
+        (steps > 0).then(|| f32::from(steps) / 15.0)
     }
 }
 
@@ -192,16 +220,27 @@ mod tests {
         }
         assert_eq!(EdgeType::Imports.to_code(), 5);
         assert_eq!(EdgeType::References.to_code(), 10);
-        assert_eq!(EdgeType::from_code(11), None);
-        for ty in [EdgeType::Satisfies, EdgeType::DefinedIn, EdgeType::Implements, EdgeType::CoChanges] {
+        assert_eq!(EdgeType::from_code(13), None);
+        for ty in [EdgeType::Satisfies, EdgeType::DefinedIn, EdgeType::Implements, EdgeType::CoChanges, EdgeType::AnnotatedBy, EdgeType::SimilarTo] {
             assert!(!ty.is_dependency(), "{ty:?} is not a dependency");
         }
     }
 
     #[test]
+    fn the_similarity_score_lives_in_the_high_bits_without_touching_confidence_or_context() {
+        let meta = encode_meta_with_score(Confidence::Inferred, EdgeContext::Embedding, 0.8);
+        assert_eq!(decode_meta(meta), (Confidence::Inferred, EdgeContext::Embedding));
+        let edge = Edge { id: [0; 32], from: [1; 32], to: [2; 32], edge_type: EdgeType::SimilarTo, meta };
+        assert!((edge.score().unwrap() - 0.8).abs() < 0.04, "{:?}", edge.score());
+        let plain = Edge { meta: encode_meta(Confidence::Extracted, EdgeContext::Spec), ..edge };
+        assert_eq!(plain.score(), None, "an ordinary edge has no score");
+        assert_eq!(encode_meta_with_score(Confidence::Extracted, EdgeContext::Runtime, 2.0) >> 4, 15, "clamped to 1.0");
+    }
+
+    #[test]
     fn meta_packs_confidence_and_context_losslessly() {
         for confidence in [Confidence::Extracted, Confidence::Inferred] {
-            for context in [EdgeContext::Runtime, EdgeContext::TypeOnly, EdgeContext::Test, EdgeContext::Spec] {
+            for context in [EdgeContext::Runtime, EdgeContext::TypeOnly, EdgeContext::Test, EdgeContext::Spec, EdgeContext::Annotation, EdgeContext::Embedding] {
                 assert_eq!(decode_meta(encode_meta(confidence, context)), (confidence, context));
             }
         }

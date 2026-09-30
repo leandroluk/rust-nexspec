@@ -139,6 +139,9 @@ pub fn to_lines(view: &GraphView, target: &StableId, result: &AffectedResult, co
             }
             let flags = if flags.is_empty() { String::new() } else { format!(" [{}]", flags.join(", ")) };
             lines.push(format!("- depth {} `{}` ({}){flags}", node.depth, node.label, node.relation));
+            if let Some(notes) = crate::search::unhex(&node.id).and_then(|id| crate::query::notes::inline(view, &id)) {
+                lines.push(format!("  notes: {notes}"));
+            }
         }
     }
     for (depth, count) in &result.omitted_by_depth {

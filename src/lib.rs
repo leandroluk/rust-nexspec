@@ -3,6 +3,7 @@
 //! See `.specs/project/PROJECT.md` for the product overview and
 //! `.specs/project/ROADMAP.md` for the phase-by-phase build plan.
 
+pub mod annotate;
 pub mod bench;
 pub mod code;
 pub mod domain;

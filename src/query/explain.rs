@@ -46,6 +46,10 @@ pub struct Explanation {
     pub requirements: Vec<String>,
     pub community: Option<String>,
     pub authors: Vec<String>,
+    /// Annotations on the node, newest first: `[state] author, date: text` (Fase 18).
+    pub annotations: Vec<String>,
+    /// Nodes whose embedding is close (`sync --similar`), strongest first: `label (0.87)`.
+    pub similar: Vec<String>,
 }
 
 fn neighbor(view: &GraphView, other: &StableId, edge: &Edge) -> Neighbor {
@@ -64,7 +68,7 @@ fn neighbor(view: &GraphView, other: &StableId, edge: &Edge) -> Neighbor {
 
 fn ranked<'a>(mut edges: Vec<(&'a StableId, &'a Edge)>, view: &GraphView) -> Vec<(&'a StableId, &'a Edge)> {
     edges.sort_by(|a, b| {
-        (a.1.meta & 1, (a.1.meta >> 1) & 0b11, view.snapshot.label(a.0), a.0).cmp(&(b.1.meta & 1, (b.1.meta >> 1) & 0b11, view.snapshot.label(b.0), b.0))
+        (a.1.meta & 1, (a.1.meta >> 1) & 0b111, view.snapshot.label(a.0), a.0).cmp(&(b.1.meta & 1, (b.1.meta >> 1) & 0b111, view.snapshot.label(b.0), b.0))
     });
     edges
 }
@@ -128,7 +132,19 @@ pub fn explain(view: &GraphView, id: &StableId, context: &ExplainContext, filter
         requirements,
         community: context.community.as_ref().map(|(label, id, cohesion)| format!("{label} (community {id}, cohesion {cohesion:.2})")),
         authors: context.authors.clone(),
+        annotations: crate::query::notes::notes_for(view, id).iter().map(crate::query::notes::line).collect(),
+        similar: similar_to(view, id),
     })
+}
+
+fn similar_to(view: &GraphView, id: &StableId) -> Vec<String> {
+    let mut found: Vec<(f32, String)> = view
+        .out_edges(id)
+        .filter(|e| e.edge_type == EdgeType::SimilarTo && view.contains(&e.to))
+        .map(|e| (e.score().unwrap_or(0.0), view.snapshot.label(&e.to)))
+        .collect();
+    found.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.1.cmp(&b.1)));
+    found.into_iter().take(5).map(|(score, label)| format!("{label} ({score:.2})")).collect()
 }
 
 fn flags(n: &Neighbor) -> String {
@@ -157,6 +173,16 @@ pub fn to_lines(e: &Explanation) -> Vec<String> {
     }
     if !e.authors.is_empty() {
         lines.push(format!("- Recent authors: {}", e.authors.join(", ")));
+    }
+    if !e.annotations.is_empty() {
+        lines.push(String::new());
+        lines.push("## Annotations".to_string());
+        lines.extend(e.annotations.iter().map(|a| format!("- {a}")));
+    }
+    if !e.similar.is_empty() {
+        lines.push(String::new());
+        lines.push("## Similar (embeddings, inferred)".to_string());
+        lines.extend(e.similar.iter().map(|s| format!("- {s}")));
     }
     if !e.requirements.is_empty() {
         lines.push(String::new());

@@ -209,6 +209,61 @@ struct ExportArgs {
 }
 
 #[derive(clap::Args)]
+#[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
+struct AnnotateCmd {
+    #[command(subcommand)]
+    action: Option<AnnotateAction>,
+    /// What to annotate, as accepted by `explain` (a name, `path:Name`, `REQ-1`, an id) or `community:<n>` from `report`.
+    #[arg(required = true)]
+    target: Option<String>,
+    /// A short name (for a community: its label in `report` and the wiki).
+    #[arg(long)]
+    label: Option<String>,
+    /// A short conclusion (at most 500 characters; no secrets).
+    #[arg(long)]
+    note: Option<String>,
+    /// A relation to `--to` (references, depends_on, calls…): an inferred edge that never overrides an extracted one.
+    #[arg(long, requires = "to")]
+    relation: Option<String>,
+    #[arg(long, requires = "relation")]
+    to: Option<String>,
+    /// How it went: `useful`, `dead_end` or `corrected` (nudges the ranking like the work memory does).
+    #[arg(long)]
+    outcome: Option<String>,
+    /// `user` (default) or `agent`.
+    #[arg(long, default_value = "user")]
+    author: String,
+    /// The model that wrote it, when an agent did.
+    #[arg(long)]
+    model: Option<String>,
+    /// Choose among ambiguous matches (1-based).
+    #[arg(long)]
+    pick: Option<usize>,
+}
+
+#[derive(Subcommand)]
+enum AnnotateAction {
+    /// List annotations with their state today (`fresh`, `stale`, `dangling`).
+    List {
+        /// Only those whose target contains this text.
+        #[arg(long)]
+        target: Option<String>,
+        /// Only this state.
+        #[arg(long)]
+        state: Option<String>,
+        /// Cut the list to this budget.
+        #[arg(long = "max-tokens")]
+        max_tokens: Option<u32>,
+    },
+    /// Everything about one annotation (an id prefix is enough).
+    Show { id: String },
+    /// Remove an annotation (an id prefix is enough).
+    Remove { id: String },
+    /// Report stale and dangling annotations, duplicates, overlong notes, secrets and broken relations (exit 8 if any).
+    Lint,
+}
+
+#[derive(clap::Args)]
 struct SaveResultArgs {
     /// The question that was asked.
     #[arg(long)]
@@ -299,6 +354,18 @@ enum Command {
         /// Print time per phase and staged node/edge counts.
         #[arg(long)]
         verbose: bool,
+        /// Also compute real embeddings for new or changed documents and symbols (needs the model in `.models/`).
+        #[arg(long)]
+        embed: bool,
+        /// Also add `SimilarTo` edges between nodes whose embeddings are close (implies `--embed`; also `NEXSPEC_SIMILAR=1`).
+        #[arg(long)]
+        similar: bool,
+        /// Neighbours per node for `--similar`.
+        #[arg(long, default_value_t = nexspec::annotate::similar::DEFAULT_K)]
+        similar_k: usize,
+        /// Minimum similarity (0..1) for `--similar`.
+        #[arg(long, default_value_t = nexspec::annotate::similar::DEFAULT_THRESHOLD)]
+        similar_threshold: f32,
     },
     /// Force CSR delta-layer compaction.
     Compact,
@@ -429,6 +496,8 @@ enum Command {
     /// Compare the changesets with a live PostgreSQL database (read-only, opt-in) and add the objects that
     /// exist only there to the graph. Prints `drift: none` or `drift: N difference(s)` first.
     Extract(ExtractArgs),
+    /// Record a conclusion about a node (or name a community), with provenance; `annotate list|show|remove|lint` manage them.
+    Annotate(AnnotateCmd),
     /// Remember how an answer went (`useful`, `dead_end`, `corrected`) and which nodes it cited, in `.specs/.memory/`.
     SaveResult(SaveResultArgs),
     /// Turn the saved results into lessons (`.specs/.memory/LESSONS.md`) and a light nudge for ranking.
@@ -621,6 +690,48 @@ fn run_enrich(repo: &Path, index_dir: &Path, args: &EnrichArgs) -> Result<i32, B
         if report.interrupted { "; interrupted, progress saved" } else { "" },
     );
     Ok(if report.failed.is_empty() { 0 } else { EXIT_PARTIAL })
+}
+
+/// Exit code of `annotate lint` when it found something.
+const EXIT_LINT_FINDINGS: i32 = 8;
+
+fn run_annotate(repo: &Path, index_dir: &Path, cmd: AnnotateCmd) -> Result<i32, Box<dyn std::error::Error>> {
+    use nexspec::annotate::api;
+    let engine = Engine::open(index_dir, repo)?;
+    match cmd.action {
+        Some(AnnotateAction::List { target, state, max_tokens }) => print!("{}", api::list(&engine, repo, target.as_deref(), state.as_deref(), max_tokens)?),
+        Some(AnnotateAction::Show { id }) => print!("{}", api::show(&engine, repo, &id)?),
+        Some(AnnotateAction::Remove { id }) => {
+            let removed = api::remove(&engine, repo, &id)?;
+            println!("removed {} on `{}`", removed.id, removed.target);
+        }
+        Some(AnnotateAction::Lint) => {
+            let findings = api::lint(&engine, repo)?;
+            println!("lint: {} finding(s)", findings.len());
+            for finding in &findings {
+                println!("  {finding}");
+            }
+            if !findings.is_empty() {
+                return Ok(EXIT_LINT_FINDINGS);
+            }
+        }
+        None => {
+            let request = api::Request {
+                target: cmd.target.unwrap_or_default(),
+                label: cmd.label,
+                note: cmd.note,
+                relation: cmd.relation,
+                to: cmd.to,
+                outcome: cmd.outcome,
+                author: cmd.author,
+                model: cmd.model,
+                pick: cmd.pick,
+            };
+            let (annotation, path) = api::annotate(&engine, repo, &request)?;
+            println!("annotated `{}` ({}): {} -> {}", annotation.target, annotation.id, annotation.summary(), path.display());
+        }
+    }
+    Ok(0)
 }
 
 /// Exit code of `export --check` when the export on disk is out of date.
@@ -829,6 +940,12 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+        Command::Annotate(cmd) => {
+            let code = run_annotate(&repo, &index_dir, cmd)?;
+            if code != 0 {
+                std::process::exit(code);
+            }
+        }
         Command::SaveResult(args) => {
             let engine = Engine::open(&index_dir, &repo)?;
             let (note, path) = nexspec::memory::api::save_result(
@@ -954,7 +1071,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 println!("added {added} to .gitignore");
             }
         }
-        Command::Sync { resume, verbose } => {
+        Command::Sync { resume, verbose, embed, similar, similar_k, similar_threshold } => {
             let engine = Engine::open(&index_dir, &repo)?;
             if resume {
                 engine.resume()?;
@@ -965,6 +1082,25 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 "sync: target_version={:?} added={} modified={} deleted={} dirty={}",
                 report.target_version, report.files_added, report.files_modified, report.files_deleted, report.files_dirty
             );
+            let similar = similar || std::env::var("NEXSPEC_SIMILAR").is_ok_and(|v| v == "1");
+            if embed || similar {
+                let started = std::time::Instant::now();
+                let embedded = engine.embed_nodes()?;
+                if embedded.model_available {
+                    println!(
+                        "embed: {} node(s) embedded, {} already up to date, {} removed ({:.1}s)",
+                        embedded.embedded,
+                        embedded.up_to_date,
+                        embedded.removed,
+                        started.elapsed().as_secs_f64()
+                    );
+                    if similar {
+                        println!("similar: {} SimilarTo edge(s) (k={similar_k}, threshold {similar_threshold})", engine.update_similarity(similar_k, similar_threshold)?);
+                    }
+                } else {
+                    println!("embed: skipped, the embedding model is not in .models/ (see the README)");
+                }
+            }
             // Only when there already is an enrichment cache: a hint, no network, never an error.
             if nexspec::enrich::cache::cache_path(&repo).is_file()
                 && let Ok(status) = nexspec::enrich::run::status(&engine, &repo, &[])
@@ -1021,6 +1157,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     nexspec::graph::edge::EdgeContext::TypeOnly => flags.push_str(" [type-only]"),
                     nexspec::graph::edge::EdgeContext::Test => flags.push_str(" [test]"),
                     nexspec::graph::edge::EdgeContext::Spec => flags.push_str(" [spec]"),
+                    nexspec::graph::edge::EdgeContext::Annotation => flags.push_str(" [annotation]"),
+                    nexspec::graph::edge::EdgeContext::Embedding => flags.push_str(" [embedding]"),
                 }
                 let location = match (&hop.path, &hop.payload) {
                     (Some(path), nexspec::NodePayload::Symbol { .. }) => format!(" ({path})"),

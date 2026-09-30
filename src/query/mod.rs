@@ -8,6 +8,7 @@ pub mod budget;
 pub mod expand;
 pub mod explain;
 pub mod filter;
+pub mod notes;
 pub mod path;
 pub mod target;
 pub mod view;

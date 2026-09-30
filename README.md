@@ -76,6 +76,8 @@ Use `--repo <path>` to operate on another repository.
 | `merge-driver BASE OURS THEIRS` | Git merge driver for `*.graph.json` (registered by `hook install`). |
 | `save-result --question Q --nodes N… --outcome useful\|dead_end\|corrected [--correction C]` | Remember how an answer went and which nodes it cited (`.specs/.memory/notes/`). |
 | `reflect [--max-tokens N]` | Lessons from the saved results (`.specs/.memory/LESSONS.md`) and a light nudge for ranking; with `--max-tokens`, only the short session summary. |
+| `annotate <target> [--label L] [--note N] [--relation R --to T] [--outcome O]` | Record a conclusion about a node with provenance (`.specs/.memory/annotations.jsonl`); `community:<n>` names a community; `annotate list\|show\|remove\|lint` manage them. |
+| `sync --embed [--similar]` | Real embeddings for new or changed documents and symbols; `--similar` adds `SimilarTo` edges (needs the model). |
 | `watch [--debounce MS]`                                                                | Sync after each burst of file changes (one watcher per repository; Ctrl+C stops it).            |
 | `hook install\|uninstall\|status`                                                      | Git hooks (`post-commit`, `post-merge`, `post-checkout`) that run `sync` in the background.     |
 | `check-update`                                                                         | `up-to-date`, `stale: <reason>` or `no-index` on the first line; never writes.                  |
@@ -95,6 +97,7 @@ Use `--repo <path>` to operate on another repository.
 | `5`  | `doctor`: at least one check failed.                                                 |
 | `6`  | `enrich`: some files could not be summarised (the rest were kept).                   |
 | `7`  | `export --check`: the export on disk is out of date.                                  |
+| `8`  | `annotate lint`: it found something (stale, dangling, duplicate, overlong or secret-looking annotations). |
 
 ## Retrieval enrichment
 
@@ -122,6 +125,10 @@ Files that look like they hold a secret, `.env*`, keys and generated code are ne
 ## Work memory
 
 `nexspec save-result` records how an answer went (`useful`, `dead_end`, `corrected`) and the nodes it cited; `nexspec reflect` turns the notes into lessons (preferred sources, dead ends, corrections, with a 30-day half-life) in `.specs/.memory/LESSONS.md`, and `search`/`query` lean towards preferred nodes and away from dead ends unless `--no-memory`. `nexspec reflect --max-tokens 400` prints the short summary a skill loads at session start. Raw notes stay out of Git, lessons can be versioned. See [the docs page](docs/content/docs/features/work-memory.mdx).
+
+## Annotations
+
+`nexspec annotate` keeps what an agent or a person concluded about a node (what a community does, that a doc explains a symbol, that a path was a dead end) in `.specs/.memory/annotations.jsonl`, with author, date and the hash of the target; the index is derived from it. An annotation turns `stale` when its target changes and `dangling` when the target disappears; it shows in `explain`, `query` and `affected`, names communities in `report` and the wiki, and its outcome nudges ranking. `nexspec sync --similar` adds embedding-based `SimilarTo` edges. See [the docs page](docs/content/docs/features/semantic-annotations.mdx).
 
 ## MCP
 

@@ -30,7 +30,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 pub enum ExportError {
     #[error("invalid path pattern `{0}`: {1}")]
     Glob(String, String),
-    #[error("unknown node kind `{0}` (file, symbol, requirement, task, adr, doc_section, table, view, column, constraint, package, endpoint)")]
+    #[error("unknown node kind `{0}` (file, symbol, requirement, task, adr, doc_section, table, view, column, constraint, package, endpoint, annotation)")]
     Kind(String),
     #[error("{0}")]
     Json(String),
@@ -38,7 +38,7 @@ pub enum ExportError {
     Version(u32),
 }
 
-const KINDS: [&str; 12] = ["file", "symbol", "requirement", "task", "adr", "doc_section", "table", "view", "column", "constraint", "package", "endpoint"];
+const KINDS: [&str; 13] = ["file", "symbol", "requirement", "task", "adr", "doc_section", "table", "view", "column", "constraint", "package", "endpoint", "annotation"];
 
 /// A node payload with every field, hashes as hex; the mirror of [`NodePayload`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -55,6 +55,7 @@ pub enum ExportPayload {
     Constraint { table: String, name: String, kind: String },
     Package { name: String, version: String, dir: String, #[serde(default)] dependencies: Vec<String> },
     Endpoint { method: String, path: String, operation_id: String, external: bool },
+    Annotation { target: String, label: String, note: String, author: String, at: String, state: String, outcome: String },
 }
 
 impl From<&NodePayload> for ExportPayload {
@@ -72,6 +73,15 @@ impl From<&NodePayload> for ExportPayload {
             NodePayload::Column { table, name, sql_type, nullable } => Self::Column { table: table.clone(), name: name.clone(), sql_type: sql_type.clone(), nullable: *nullable },
             NodePayload::Constraint { table, name, kind } => Self::Constraint { table: table.clone(), name: name.clone(), kind: kind.clone() },
             NodePayload::Package { name, version, dir, dependencies } => Self::Package { name: name.clone(), version: version.clone(), dir: dir.clone(), dependencies: dependencies.clone() },
+            NodePayload::Annotation { target, label, note, author, at, state, outcome } => Self::Annotation {
+                target: target.clone(),
+                label: label.clone(),
+                note: note.clone(),
+                author: author.clone(),
+                at: at.clone(),
+                state: state.clone(),
+                outcome: outcome.clone(),
+            },
             NodePayload::Endpoint { method, path, operation_id, external } => Self::Endpoint { method: method.clone(), path: path.clone(), operation_id: operation_id.clone(), external: *external },
         }
     }
@@ -94,6 +104,15 @@ impl ExportPayload {
             Self::Column { table, name, sql_type, nullable } => NodePayload::Column { table: table.clone(), name: name.clone(), sql_type: sql_type.clone(), nullable: *nullable },
             Self::Constraint { table, name, kind } => NodePayload::Constraint { table: table.clone(), name: name.clone(), kind: kind.clone() },
             Self::Package { name, version, dir, dependencies } => NodePayload::Package { name: name.clone(), version: version.clone(), dir: dir.clone(), dependencies: dependencies.clone() },
+            Self::Annotation { target, label, note, author, at, state, outcome } => NodePayload::Annotation {
+                target: target.clone(),
+                label: label.clone(),
+                note: note.clone(),
+                author: author.clone(),
+                at: at.clone(),
+                state: state.clone(),
+                outcome: outcome.clone(),
+            },
             Self::Endpoint { method, path, operation_id, external } => NodePayload::Endpoint { method: method.clone(), path: path.clone(), operation_id: operation_id.clone(), external: *external },
         })
     }
