@@ -90,3 +90,23 @@ notes = "caso real que falhou em 2026-09-29"
 - **Auto-referência:** medir o repo do próprio nexspec com um índice construído por ele mesmo pode premiar ajustes específicos deste repo; por isso o corpus externo (condominium) é o juiz final.
 - **`behavior` subestimado:** a busca localiza, não explica. O relatório separa localização de comportamento (REQ-807) e mostra o custo fixo por sessão (~10 k tokens do STATE.md medidos antes) à parte.
 - **Ruído de latência** em CI: a latência é informativa, não entra no portão.
+
+## Resultados da T-808 (2026-09-30)
+
+Todas as medições: `nexspec bench --no-vector` (BM25) salvo onde dito; recall@5 / MRR por `kind`. Corpora: `bench/self.toml` (22 perguntas) e o corpus do condominium-management-system (24 perguntas, clone local @ `83fdcd3`). O repo próprio muda enquanto é editado, então a MRR de `locate` no corpus próprio oscila (0,71–0,91) entre execuções; os deltas abaixo são lidos sobre recall, que é o que o portão usa.
+
+| Etapa | self locate r5 | condo locate r5 | condo traceability r5 | Observação |
+|---|---:|---:|---:|---|
+| Ponto de partida (BM25) | 0,87 | 0,94 | **0,00** | `outbox` já estava em 1º lugar: a falha de 2026-09-29 foi corrigida pelos ajustes de ids da sessão anterior |
+| (f) formatos reais de requisito em Markdown | 0,87 | 0,94 | **1,00** | `### REQ-x:`, `- **REQ-x (Rótulo)**:`, bullets aninhados como corpo. Custo: respostas maiores (+65% de tokens no condominium) |
+| (a) tokenizador ciente de identificadores | **0,93** | **1,00** | 1,00 | `CsrDelta` ⇄ "csr delta". Subiu `INDEX_FORMAT` para 3 |
+| (g) sem nós `File` para binários/lockfiles | 0,93 | 1,00 | 1,00 | MRR de locate 0,81 → 0,91 (um PNG aparecia nos resultados). `INDEX_FORMAT` 4 |
+| (d) peso do vetor no RRF | 0,93 | 1,00 | 1,00 | ver abaixo |
+
+**(d) Peso BM25 × vetor** (com o modelo ONNX presente, recall@5 locate self/condo e MRR condo): peso 1,0 (o default antigo) → 0,93/0,94, MRR condo **0,64**; 0,5 → 0,93/1,00, 0,84; 0,25 → 0,93/1,00, 0,84; 0,1 → 0,93/1,00, **0,87**; sem vetor → 0,93/1,00, 0,87. O embedding (MiniLM) ordena mal texto cheio de identificadores; o vetor com peso igual *piorava* a ordem. Default novo: **0,1** (assistente de baixo peso: não passa um acerto lexical forte, mas ainda traz o que o BM25 não alcança). Ganho do vetor **não demonstrado** por este corpus; ele só aparece em paráfrases (`locate-wal`: "write ahead log" não contém "wal"), que o corpus quase não cobre. Reavaliar com mais perguntas semânticas.
+
+**(e) Expansão por co-change** (resolve a Q3 herdada da Fase 9): incluir `CoChanges` na expansão de 1 salto não mudou recall nem MRR em nenhum `kind`, e elevou os tokens da resposta (condominium 23,7 mil → 43,5 mil). **Decisão: não usar co-change na busca.** Consequência: `COCHANGE_MAX_FILES`/`COCHANGE_MAX_PAIRS` não afetam o ranking de `search`; só alimentam `blame` (co-changed files). Os tetos ficam como estão (proteção de escala).
+
+**(b) campos `name`/`path` separados com boost** e **(c) penalização de arquivos genéricos**: **não implementados.** Depois de (a) e (g) o único `locate` fora do top-5 é `locate-wal` (lacuna semântica, não lexical) e o `login-usecase` do condominium voltou ao 1º–2º lugar; nenhuma falha restante se explica por caminho ou por arquivos genéricos. Reabrir se um corpus futuro mostrar o contrário.
+
+**O que ainda não funciona (e por quê):** `structure` = 0,00 nos dois corpora. "Quem usa X" precisa de arestas de import/chamada entre arquivos, que só existem na Fase 7. O benchmark já mede isso: essas perguntas estão no corpus como MISS esperados.

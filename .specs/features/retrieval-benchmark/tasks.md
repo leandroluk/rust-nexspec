@@ -58,7 +58,7 @@
 - **Done when**: teste: baseline artificialmente alto → `--check` sai com código ≠ 0 e mensagem com os deltas; baseline igual → 0. Nesta tarefa o baseline grava o **estado atual, mesmo abaixo de 0,8** (o portão de 0,8 passa a valer ao fim da T-808).
 - **Gate**: `cargo test --test bench_check`
 
-## T-808: Melhorias de ranking medidas (REQ-806) [ ]
+## T-808: Melhorias de ranking medidas (REQ-806) [x]
 - **REQ**: REQ-806
 - **What**: em sequência, cada uma com delta no benchmark (corpus próprio + condominium) registrado no design.md: (a) tokenização ciente de identificadores (camelCase/snake/Pascal, tokenizador customizado no Tantivy); (b) campos `name` e `path` separados com boost; (c) penalização de arquivos genéricos do mesmo padrão; (d) pesos BM25×vetor no RRF; (e) variante "expansão por co-change" (resolve a Q3 herdada da Fase 9). Mudanças que alteram o índice sobem `INDEX_FORMAT`. Meta: `recall@5 ≥ 0,8` em `locate` no corpus próprio.
 - **Where**: `src/search/*`, `src/hybrid.rs`, `src/engine.rs`
