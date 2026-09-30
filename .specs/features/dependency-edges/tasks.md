@@ -25,7 +25,7 @@
 - **Done when**: testes por construção (cada forma de import/export; alias; type-only; namespace; `require`; dynamic import; `obj.name` não conta como uso).
 - **Gate**: `cargo test code::facts`
 
-## T-704: Resolução de especificadores (REQ-702) [ ]
+## T-704: Resolução de especificadores (REQ-702) [x]
 - **REQ**: REQ-702
 - **What**: `SpecifierResolver::new(tracked_paths, read_file)` resolve relativo + extensões + `index.*`, `tsconfig` (`paths`, `baseUrl`, `extends`), `package.json#imports` (`#/*`) e pacotes do workspace; externo → `None`.
 - **Where**: `src/code/resolve.rs`
