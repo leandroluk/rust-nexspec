@@ -35,7 +35,7 @@ Primeiro corte = T-901…T-906 incluindo T-903b, T-904b, T-904c (aprovado em 202
 - **Done when**: teste unitário garante que as queries são compiladas uma vez por linguagem; suíte inteira verde; `code` no repo real < 1 s (medido: 11,9 s → 0,6 s).
 - **Gate**: `cargo test`
 
-## T-904: Teto de co-change (REQ-903) [ ]
+## T-904: Teto de co-change (REQ-903) [x]
 - **REQ**: REQ-903
 - **What**: `CoChangeWindow` ganha `max_files_per_commit` (default 200, `COCHANGE_MAX_FILES`) e `max_pairs_per_file` (default 50). `co_change_edges` ignora commits acima do teto e limita parceiros por arquivo, priorizando commits recentes. Documentar o trade-off no doc comment e em `docs/`. Reindexação tratada por T-904b.
 - **Where**: `src/git/cochange.rs`, `src/sync_orchestrator.rs`, `docs/`

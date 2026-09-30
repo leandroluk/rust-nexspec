@@ -2,12 +2,19 @@
 //! files that tend to appear together in the same commits, over a bounded
 //! window (default: last 500 commits or 6 months, whichever is smaller).
 //!
+//! Bounded on both axes (REQ-903 in `.specs/features/performance-guard/spec.md`):
+//! a commit touching more than [`CoChangeWindow::max_files_per_commit`] files
+//! (bulk renames, formatting passes, initial imports) is ignored as noise, and
+//! each file keeps at most [`CoChangeWindow::max_pairs_per_file`] distinct
+//! partners, favouring the most recent commits. Without the caps one
+//! 800-file commit alone produced ~640k edges.
+//!
 //! Implemented as a method on [`GitSource`] (not a free function taking
 //! `&GitSource`, as `.specs/features/git-integration/tasks.md` sketched) so
 //! that the "every `gix` call goes through `GitSource`" boundary from
 //! REQ-201 holds without exposing `GitSource`'s internal `gix::Repository`.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
@@ -22,13 +29,41 @@ use crate::sync::mutation::{EdgeMutation, StableId};
 pub struct CoChangeWindow {
     pub max_commits: usize,
     pub max_age: Duration,
+    /// Commits touching more files than this contribute no edges at all.
+    pub max_files_per_commit: usize,
+    /// Distinct co-change partners kept per file (newest commits win).
+    pub max_pairs_per_file: usize,
 }
+
+pub const DEFAULT_MAX_FILES_PER_COMMIT: usize = 200;
+pub const DEFAULT_MAX_PAIRS_PER_FILE: usize = 50;
 
 impl Default for CoChangeWindow {
     fn default() -> Self {
         Self {
             max_commits: 500,
             max_age: Duration::from_secs(60 * 60 * 24 * 30 * 6), // ~6 months
+            max_files_per_commit: DEFAULT_MAX_FILES_PER_COMMIT,
+            max_pairs_per_file: DEFAULT_MAX_PAIRS_PER_FILE,
+        }
+    }
+}
+
+impl CoChangeWindow {
+    /// Defaults, overridden by `COCHANGE_MAX_FILES` / `COCHANGE_MAX_PAIRS`
+    /// when set to a positive integer.
+    pub fn from_env() -> Self {
+        let read = |name: &str, default: usize| {
+            std::env::var(name)
+                .ok()
+                .and_then(|v| v.trim().parse::<usize>().ok())
+                .filter(|n| *n > 0)
+                .unwrap_or(default)
+        };
+        Self {
+            max_files_per_commit: read("COCHANGE_MAX_FILES", DEFAULT_MAX_FILES_PER_COMMIT),
+            max_pairs_per_file: read("COCHANGE_MAX_PAIRS", DEFAULT_MAX_PAIRS_PER_FILE),
+            ..Self::default()
         }
     }
 }
@@ -56,6 +91,7 @@ impl GitSource {
             - window.max_age.as_secs() as i64;
 
         let mut seen_pairs: HashSet<(StableId, StableId)> = HashSet::new();
+        let mut partners: HashMap<StableId, usize> = HashMap::new();
         let mut edges = Vec::new();
 
         let walk = head_id.ancestors().all().map_err(op_err)?;
@@ -77,21 +113,31 @@ impl GitSource {
                 .iter()
                 .map(|p| file_node_id(&p.to_string_lossy()))
                 .collect();
-            if node_ids.len() < 2 {
+            if node_ids.len() < 2 || node_ids.len() > window.max_files_per_commit {
                 continue;
             }
 
             for i in 0..node_ids.len() {
-                for j in 0..node_ids.len() {
-                    if i == j {
+                for j in (i + 1)..node_ids.len() {
+                    let (a, b) = (node_ids[i], node_ids[j]);
+                    if seen_pairs.contains(&(a, b)) || seen_pairs.contains(&(b, a)) {
                         continue;
                     }
-                    let pair = (node_ids[i], node_ids[j]);
-                    if seen_pairs.insert(pair) {
+                    // Both directions are added together, so the cap is
+                    // checked on both endpoints to keep the graph symmetric.
+                    let a_full = partners.get(&a).copied().unwrap_or(0) >= window.max_pairs_per_file;
+                    let b_full = partners.get(&b).copied().unwrap_or(0) >= window.max_pairs_per_file;
+                    if a_full || b_full {
+                        continue;
+                    }
+                    seen_pairs.insert((a, b));
+                    *partners.entry(a).or_default() += 1;
+                    *partners.entry(b).or_default() += 1;
+                    for (from, to) in [(a, b), (b, a)] {
                         edges.push(EdgeMutation::Upsert {
-                            id: stable_edge_id(&pair.0, &pair.1),
-                            from: pair.0,
-                            to: pair.1,
+                            id: stable_edge_id(&from, &to),
+                            from,
+                            to,
                             edge_type: EdgeType::CoChanges.to_code(),
                             payload: vec![],
                         });
@@ -238,8 +284,80 @@ mod tests {
         let window = CoChangeWindow {
             max_commits: 1, // only the newest commit is visited
             max_age: Duration::from_secs(u64::MAX / 2),
+            ..CoChangeWindow::default()
         };
         let edges = source.co_change_edges(&window).unwrap();
         assert!(edges.is_empty(), "the co-changing commit is outside the 1-commit window");
+    }
+
+    fn write_many(dir: &Path, prefix: &str, count: usize, content: &str) {
+        for i in 0..count {
+            write(dir, &format!("{prefix}{i:03}.md"), content);
+        }
+    }
+
+    fn edge_count(source: &GitSource, window: &CoChangeWindow) -> usize {
+        source.co_change_edges(window).unwrap().len()
+    }
+
+    #[test]
+    fn commit_over_the_file_cap_is_ignored_and_at_the_cap_is_kept() {
+        let window = CoChangeWindow { max_pairs_per_file: usize::MAX, ..CoChangeWindow::default() };
+
+        let at_cap = init_repo();
+        write_many(at_cap.path(), "f", 200, "v1");
+        commit(at_cap.path(), "chore: exactly at the cap");
+        let source = GitSource::open(at_cap.path()).unwrap();
+        assert_eq!(edge_count(&source, &window), 200 * 199, "every ordered pair of 200 files");
+
+        let over = init_repo();
+        write_many(over.path(), "f", 201, "v1");
+        commit(over.path(), "chore: one file over the cap");
+        let source = GitSource::open(over.path()).unwrap();
+        assert_eq!(edge_count(&source, &window), 0, "201-file commit is treated as noise");
+    }
+
+    #[test]
+    fn each_file_keeps_at_most_max_pairs_partners_favouring_recent_commits() {
+        let dir = init_repo();
+        // hub.md changes together with 6 different files, one per commit.
+        for i in 0..6 {
+            write(dir.path(), "hub.md", &format!("hub{i}"));
+            write(dir.path(), &format!("p{i}.md"), "x");
+            commit(dir.path(), &format!("chore: hub with p{i}"));
+        }
+        let source = GitSource::open(dir.path()).unwrap();
+        let window = CoChangeWindow { max_pairs_per_file: 3, ..CoChangeWindow::default() };
+        let edges = source.co_change_edges(&window).unwrap();
+
+        let hub = file_node_id("hub.md");
+        let partners_of_hub: Vec<StableId> = edges
+            .iter()
+            .filter_map(|e| match e {
+                EdgeMutation::Upsert { from, to, .. } if *from == hub => Some(*to),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(partners_of_hub.len(), 3);
+        for recent in ["p5.md", "p4.md", "p3.md"] {
+            assert!(partners_of_hub.contains(&file_node_id(recent)), "{recent} is recent, must be kept");
+        }
+        assert!(!partners_of_hub.contains(&file_node_id("p0.md")), "oldest partner is dropped");
+    }
+
+    #[test]
+    fn env_overrides_are_respected_and_invalid_values_fall_back() {
+        // Single test touching the environment: no other test reads these vars.
+        unsafe {
+            std::env::set_var("COCHANGE_MAX_FILES", "5");
+            std::env::set_var("COCHANGE_MAX_PAIRS", "not-a-number");
+        }
+        let window = CoChangeWindow::from_env();
+        unsafe {
+            std::env::remove_var("COCHANGE_MAX_FILES");
+            std::env::remove_var("COCHANGE_MAX_PAIRS");
+        }
+        assert_eq!(window.max_files_per_commit, 5);
+        assert_eq!(window.max_pairs_per_file, DEFAULT_MAX_PAIRS_PER_FILE);
     }
 }

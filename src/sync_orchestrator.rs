@@ -187,7 +187,7 @@ impl<'a> SyncOrchestrator<'a> {
             || !(diff.added.is_empty() && diff.modified.is_empty() && diff.deleted.is_empty());
         let co_change_started = Instant::now();
         if history_changed {
-            let co_change = self.git.co_change_edges(&CoChangeWindow::default())?;
+            let co_change = self.git.co_change_edges(&CoChangeWindow::from_env())?;
             timings.co_change_edges = co_change.len();
             combined.edges.extend(co_change);
         }

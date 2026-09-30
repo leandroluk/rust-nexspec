@@ -452,9 +452,10 @@ impl Engine {
             CoChangeWindow {
                 max_commits: usize::MAX,
                 max_age: std::time::Duration::MAX,
+                ..CoChangeWindow::from_env()
             }
         } else {
-            CoChangeWindow::default()
+            CoChangeWindow::from_env()
         };
         let file_id = file_node_id(&path);
         let mut co_changed_files = Vec::new();
