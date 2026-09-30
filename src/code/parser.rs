@@ -165,6 +165,48 @@ struct SymbolInfo {
     end_byte: usize,
 }
 
+/// Same-file call resolution in O(log S) per call instead of scanning every
+/// symbol (a 10k-function file made that quadratic). Semantics match the old
+/// linear `find`: the caller is the first symbol (document order) whose range
+/// contains the call, the callee the first symbol with that name.
+struct CallResolver {
+    /// Symbol indices sorted by `(start_byte, original position)`.
+    by_start: Vec<usize>,
+    /// `max_end[k]` = largest `end_byte` among `by_start[..=k]`.
+    max_end: Vec<usize>,
+    first_by_name: HashMap<String, usize>,
+}
+
+impl CallResolver {
+    fn new(symbols: &[SymbolInfo]) -> Self {
+        let mut by_start: Vec<usize> = (0..symbols.len()).collect();
+        by_start.sort_by_key(|&i| (symbols[i].start_byte, i));
+        let mut max_end = Vec::with_capacity(by_start.len());
+        let mut running = 0usize;
+        for &i in &by_start {
+            running = running.max(symbols[i].end_byte);
+            max_end.push(running);
+        }
+        let mut first_by_name = HashMap::new();
+        for (i, symbol) in symbols.iter().enumerate() {
+            first_by_name.entry(symbol.name.clone()).or_insert(i);
+        }
+        Self { by_start, max_end, first_by_name }
+    }
+
+    fn caller_at<'a>(&self, symbols: &'a [SymbolInfo], byte: usize) -> Option<&'a SymbolInfo> {
+        // First position whose prefix-max end passes `byte`: everything before
+        // it ends at or before `byte`, so it is the earliest possible container.
+        let k = self.max_end.partition_point(|&end| end <= byte);
+        let candidate = &symbols[*self.by_start.get(k)?];
+        (candidate.start_byte <= byte).then_some(candidate)
+    }
+
+    fn callee_named<'a>(&self, symbols: &'a [SymbolInfo], name: &str) -> Option<&'a SymbolInfo> {
+        self.first_by_name.get(name).map(|&i| &symbols[i])
+    }
+}
+
 fn edge_id(kind: &str, from: &StableId, to: &StableId) -> StableId {
     let mut bytes = Vec::with_capacity(kind.len() + 65);
     bytes.extend_from_slice(kind.as_bytes());
@@ -281,6 +323,7 @@ pub fn extract(
     }
 
     let callee_ix = queries.callee_ix;
+    let resolver = CallResolver::new(&symbols);
     let mut cursor = QueryCursor::new();
     let mut matches = cursor.matches(&queries.call, tree.root_node(), source_bytes);
     while let Some(m) = matches.next() {
@@ -291,10 +334,8 @@ pub fn extract(
             continue;
         };
         let call_byte = callee_cap.node.start_byte();
-        let caller = symbols
-            .iter()
-            .find(|s| s.start_byte <= call_byte && call_byte < s.end_byte);
-        let callee = symbols.iter().find(|s| s.name == callee_name);
+        let caller = resolver.caller_at(&symbols, call_byte);
+        let callee = resolver.callee_named(&symbols, callee_name);
         if let (Some(caller), Some(callee)) = (caller, callee)
             && caller.id != callee.id
         {
@@ -490,5 +531,31 @@ function local() {}
         let set = extract_at(source, Language::TypeScript);
         assert!(has_edge(&set, symbol_id(&set, "exported"), marker_node_id("REQ-888"), EdgeType::Satisfies));
         assert!(has_edge(&set, symbol_id(&set, "local"), marker_node_id("REQ-889"), EdgeType::Satisfies));
+    }
+
+    #[test]
+    fn call_resolver_matches_the_naive_linear_scan_including_nesting() {
+        // A class spanning two methods, a gap, then two adjacent functions and
+        // a repeated name: the shapes real files produce.
+        let ranges = [(0, 100, "Klass"), (10, 40, "m1"), (50, 90, "m2"), (120, 150, "f"), (150, 180, "g"), (200, 230, "f")];
+        let symbols: Vec<SymbolInfo> = ranges
+            .iter()
+            .enumerate()
+            .map(|(i, (start, end, name))| SymbolInfo {
+                id: [i as u8; 32],
+                name: name.to_string(),
+                start_byte: *start,
+                end_byte: *end,
+            })
+            .collect();
+        let resolver = CallResolver::new(&symbols);
+        for byte in 0..260 {
+            let naive = symbols.iter().find(|s| s.start_byte <= byte && byte < s.end_byte).map(|s| s.id);
+            assert_eq!(resolver.caller_at(&symbols, byte).map(|s| s.id), naive, "caller at byte {byte}");
+        }
+        for name in ["Klass", "m1", "f", "g", "missing"] {
+            let naive = symbols.iter().find(|s| s.name == name).map(|s| s.id);
+            assert_eq!(resolver.callee_named(&symbols, name).map(|s| s.id), naive, "callee {name}");
+        }
     }
 }

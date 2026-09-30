@@ -92,11 +92,12 @@ Primeiro corte = T-901…T-906 incluindo T-903b, T-904b, T-904c (aprovado em 202
 - **Done when**: sync sem mudanças 1,3 s → 22 ms; sync de 1 arquivo 2,5 s → 0,19 s (sintético, release); teste garante que um participante reaberto acha os pontos persistidos e que um commit posterior invalida o grafo.
 - **Gate**: `cargo test --lib vector::hnsw && cargo test --release --test perf_budget -- --ignored`
 
-## T-908: Micro-benchmarks de complexidade (REQ-904) [ ]
+## T-908: Micro-benchmarks de complexidade (REQ-904) [x]
 - **REQ**: REQ-904
 - **What**: `criterion` (dev-dependency) para `CsrDelta::upsert/remove/edges_from`, `co_change_edges`, `markdown::extract`, extração de símbolos; verificação T(2N)/T(N) ≤ 2,2 em teste normal (não no bench) usando medida de operações/tempo com N pequeno.
 - **Where**: `benches/complexity.rs`, `Cargo.toml`
 - **Depends on**: T-904
+- **Achado**: `code::extract` era quadrático em arquivos com muitas chamadas (resolução por varredura linear de todos os símbolos, 2,88x ao dobrar 12 mil funções). Corrigido com `CallResolver` (mapa nome→símbolo + busca binária por prefixo-máximo de `end_byte`): 335 ms → 222 ms em 12 mil funções, razão 2,10.
 - **Done when**: `cargo bench --no-run` compila; teste de razão verde; `edges_from` documentado como O(delta) com decisão (corrigir ou aceitar).
 - **Gate**: `cargo bench --no-run && cargo test complexity`
 

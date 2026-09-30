@@ -92,6 +92,8 @@ Arestas staged: 646 mil (sintético) / 1,04 mi (real), das quais 99,4% são co-c
 - **D8 — Versão de formato do índice (resolve a pergunta de reindexação).** O índice é derivado (git + specs), então é descartável. `meta` ganha `index_format` (u64). `Engine::open` compara com `INDEX_FORMAT` do binário: diferente (ou ausente em índice existente) → apaga `.specs/.index/` e o próximo `sync` reconstrói, com aviso na saída. O teto de co-change sobe o formato para 2; as Fases 7/11/etc. reaproveitam o mecanismo. Descartada a alternativa 'rode init de novo' (depende do usuário lembrar) e a de remover só arestas CoChanges (exige enumerar arestas antigas no CSR).
 - **D6 — Regressões nomeadas ficam em `tests/regressions.rs` com o nome `regression_<bug>`**, para o `grep`/`cargo test regression_` listar o inventário. Onde já existe teste equivalente no módulo, o teste novo é de integração (via `Engine`), não duplicata.
 - **D7 — Escopo do primeiro corte (aprovação pendente):** T-901…T-905 (medir, teto, regressões). REQ-902/904/906/907/908 completos viram um segundo corte, dentro da mesma fase.
+- **D9 — `CsrDelta::edges_from` fica O(delta) (decisão da T-908).** Medido: 215 µs por chamada com 100 mil arestas no delta. O delta é limitado pela compactação (5% da base) e o cold start compacta de imediato, então o custo real é de dezenas de µs; indexar por `from` complicaria `remove` (swap_remove) sem ganho mensurável. Reavaliar se `trace` passar de 1 s no orçamento.
+- **D10 — Razão de linearidade = 2,5 (spec dizia ~2,2).** Melhor de 5 execuções em N e 2N; quadrático dá ~4 (medido 2,88 em `code::extract` com 12 mil funções antes da correção). Medições atuais: 1,8 a 2,1.
 
 ## Risks
 
