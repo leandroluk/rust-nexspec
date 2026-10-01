@@ -14,7 +14,7 @@ use crate::engine::{Engine, EngineError};
 use crate::enrich::cache::{CACHE_DIR, CacheError, EnrichmentCache, Entry, content_hash};
 use crate::enrich::cost::Pricing;
 use crate::enrich::provider::{BatchOutcome, EnrichProvider, FileRequest, PROMPT_VERSION, ProviderError, Usage, validate_languages};
-use crate::enrich::select::{Candidate, DEFAULT_SNIPPET_CHARS, Top, eligible_files, find_secret, order_by_importance, snippet};
+use crate::enrich::select::{Candidate, DEFAULT_SNIPPET_CHARS, Top, eligible_files, find_secret, order_by_importance, redact_secrets, snippet};
 use crate::graph::edge::EdgeType;
 use crate::graph::node::NodePayload;
 use crate::report::GraphSnapshot;
@@ -46,11 +46,14 @@ pub struct EnrichOptions {
     /// Stop dispatching batches once this many tokens (input + output, as reported) were used.
     pub token_budget: Option<u64>,
     pub snippet_chars: usize,
+    /// Send a file the secret scan flagged with the secrets masked (`[REDACTED]`) instead of keeping it back
+    /// (`--omit-secrets` turns this off).
+    pub redact_secrets: bool,
 }
 
 impl Default for EnrichOptions {
     fn default() -> Self {
-        Self { langs: vec!["en".to_string()], batch: 8, concurrency: 4, top: None, token_budget: None, snippet_chars: DEFAULT_SNIPPET_CHARS }
+        Self { langs: vec!["en".to_string()], batch: 8, concurrency: 4, top: None, token_budget: None, snippet_chars: DEFAULT_SNIPPET_CHARS, redact_secrets: true }
     }
 }
 
@@ -73,6 +76,8 @@ pub struct Plan {
     pub fresh: usize,
     /// Files kept on the machine because the snippet looked like it holds a secret.
     pub omitted_secret: Vec<(String, &'static str)>,
+    /// Files sent with their secrets masked, and what kind the scan found.
+    pub redacted: Vec<(String, &'static str)>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -99,6 +104,9 @@ pub struct State {
     pub cost_usd: f64,
     pub failed: Vec<String>,
     pub omitted_secret: Vec<String>,
+    /// Sent with secrets masked, `path (kind)`.
+    #[serde(default)]
+    pub redacted: Vec<String>,
 }
 
 impl State {
@@ -173,11 +181,18 @@ pub fn plan(engine: &Engine, repo: &Path, cache: &EnrichmentCache, options: &Enr
         }
         let text = String::from_utf8_lossy(&bytes);
         let cut = snippet(&text, options.snippet_chars);
+        let mut sent = cut.to_string();
         if let Some(kind) = find_secret(cut) {
-            plan.omitted_secret.push((candidate.path, kind));
-            continue;
+            // Masked, and checked again: if anything still looks like a secret the file stays home.
+            let masked = redact_secrets(cut);
+            if !options.redact_secrets || find_secret(&masked).is_some() {
+                plan.omitted_secret.push((candidate.path, kind));
+                continue;
+            }
+            plan.redacted.push((candidate.path.clone(), kind));
+            sent = masked;
         }
-        plan.files.push(PlannedFile { path: candidate.path, hash, snippet: cut.to_string(), langs });
+        plan.files.push(PlannedFile { path: candidate.path, hash, snippet: sent, langs });
     }
     Ok(plan)
 }
@@ -312,6 +327,7 @@ pub fn run(
     state.cost_usd += Pricing::for_model(provider.model()).cost(report.usage);
     state.failed = report.failed.iter().map(|(p, _)| p.clone()).collect();
     state.omitted_secret = plan.omitted_secret.iter().map(|(p, kind)| format!("{p} ({kind})")).collect();
+    state.redacted = plan.redacted.iter().map(|(p, kind)| format!("{p} ({kind})")).collect();
     state.save(repo)?;
     Ok(report)
 }

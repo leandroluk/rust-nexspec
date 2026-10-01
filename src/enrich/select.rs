@@ -69,21 +69,8 @@ pub fn find_secret(text: &str) -> Option<&'static str> {
         return Some("private key");
     }
     for token in text.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-')) {
-        let has_prefix_body = |prefix: &str, min: usize| token.strip_prefix(prefix).is_some_and(|rest| rest.len() >= min);
-        if has_prefix_body("AKIA", 16) && token.len() == 20 && token[4..].chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
-            return Some("AWS access key");
-        }
-        if has_prefix_body("AIza", 35) {
-            return Some("Google API key");
-        }
-        if has_prefix_body("ghp_", 30) || has_prefix_body("gho_", 30) || has_prefix_body("ghs_", 30) || has_prefix_body("github_pat_", 30) {
-            return Some("GitHub token");
-        }
-        if has_prefix_body("sk-", 20) {
-            return Some("API secret key");
-        }
-        if token.starts_with("xox") && token.len() > 20 && token.as_bytes().get(3).is_some_and(|c| b"baprs".contains(c)) {
-            return Some("Slack token");
+        if let Some(kind) = token_kind(token) {
+            return Some(kind);
         }
     }
     for line in text.lines() {
@@ -94,24 +81,93 @@ pub fn find_secret(text: &str) -> Option<&'static str> {
     None
 }
 
-/// `password = "hunter2hunter2"`, `apiKey: 'abcdef123456'`, … with a literal, not a reference.
-fn secret_assignment(line: &str) -> Option<&'static str> {
+/// The kind of secret a single token is, by its well-known prefix.
+fn token_kind(token: &str) -> Option<&'static str> {
+    let has_prefix_body = |prefix: &str, min: usize| token.strip_prefix(prefix).is_some_and(|rest| rest.len() >= min);
+    if has_prefix_body("AKIA", 16) && token.len() == 20 && token[4..].chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
+        return Some("AWS access key");
+    }
+    if has_prefix_body("AIza", 35) {
+        return Some("Google API key");
+    }
+    if has_prefix_body("ghp_", 30) || has_prefix_body("gho_", 30) || has_prefix_body("ghs_", 30) || has_prefix_body("github_pat_", 30) {
+        return Some("GitHub token");
+    }
+    if has_prefix_body("sk-", 20) {
+        return Some("API secret key");
+    }
+    if token.starts_with("xox") && token.len() > 20 && token.as_bytes().get(3).is_some_and(|c| b"baprs".contains(c)) {
+        return Some("Slack token");
+    }
+    None
+}
+
+/// Byte range of the literal in `password = "hunter2hunter2"`, `apiKey: 'abcdef123456'`, … (not a reference to the environment).
+fn assignment_literal(line: &str) -> Option<std::ops::Range<usize>> {
     const NAMES: &[&str] = &["password", "passwd", "secret", "api_key", "apikey", "api-key", "private_key", "access_token", "auth_token", "client_secret"];
     let lower = line.to_ascii_lowercase();
     let name = NAMES.iter().find(|n| lower.contains(*n))?;
-    let after = &line[lower.find(name)? + name.len()..];
+    let after_start = lower.find(name)? + name.len();
+    let after = &line[after_start..];
     let mut chars = after.trim_start_matches(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '"' || c == '\'' || c == ' ');
     chars = chars.trim_start();
     let rest = chars.strip_prefix('=').or_else(|| chars.strip_prefix(':'))?;
     let rest = rest.trim_start();
     let quote = rest.chars().next().filter(|c| *c == '"' || *c == '\'' || *c == '`')?;
     let literal = rest[1..].split(quote).next()?;
-    let looks_like_reference = literal.contains("${") || literal.contains("process.env") || literal.contains("os.environ") || literal.contains("{{");
+    let looks_like_reference = literal.contains("${") || literal.contains("process.env") || literal.contains("os.environ") || literal.contains("{{") || literal.contains("[REDACTED");
     if literal.len() >= 8 && !looks_like_reference && !literal.contains(' ') {
-        Some("hard-coded credential")
+        // `rest` is a suffix of `line`: the literal starts one quote after it.
+        let start = line.len() - rest.len() + 1;
+        Some(start..start + literal.len())
     } else {
         None
     }
+}
+
+fn secret_assignment(line: &str) -> Option<&'static str> {
+    assignment_literal(line).map(|_| "hard-coded credential")
+}
+
+/// `text` with everything `find_secret` would flag replaced by `[REDACTED]`: private key blocks, well-known token
+/// shapes and the literal in a credential assignment. What is left still reads the same to a summariser
+/// (`password = "[REDACTED]"`), and the value never leaves the machine.
+pub fn redact_secrets(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut in_key_block = false;
+    for line in text.lines() {
+        if in_key_block {
+            if line.contains("-----END") {
+                in_key_block = false;
+            }
+            continue;
+        }
+        if let Some(begin) = line.find("-----BEGIN").filter(|_| line.contains("PRIVATE KEY-----")) {
+            out.push_str(&line[..begin]);
+            out.push_str("[REDACTED PRIVATE KEY]");
+            match line[begin..].find("-----END").map(|e| begin + e) {
+                // The whole key sits on one line (a string with escaped newlines): keep what follows its closing dashes.
+                Some(end) => {
+                    let close = line[end + 8..].find("-----").map_or(line.len(), |c| end + 8 + c + 5);
+                    out.push_str(&line[close..]);
+                }
+                None => in_key_block = true,
+            }
+            out.push('\n');
+            continue;
+        }
+        let mut line = line.to_string();
+        let tokens: Vec<String> = line.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-')).filter(|t| token_kind(t).is_some()).map(str::to_string).collect();
+        for token in tokens {
+            line = line.replace(&token, "[REDACTED]");
+        }
+        if let Some(range) = assignment_literal(&line) {
+            line.replace_range(range, "[REDACTED]");
+        }
+        out.push_str(&line);
+        out.push('\n');
+    }
+    out
 }
 
 /// The first `max_chars` characters, cut at a line boundary when one is close.
@@ -226,6 +282,32 @@ mod tests {
         assert_eq!(find_secret("function hashPassword(password: string) { return hash(password); }"), None);
         assert_eq!(find_secret("label: 'Reset your password'"), None, "a sentence is not a credential");
         assert_eq!(find_secret("// the sky is blue\nexport class Invoice {}"), None);
+    }
+
+    #[test]
+    fn redaction_removes_what_the_scan_flags_and_keeps_the_rest_readable() {
+        let token = format!("{}{}", "gh", "p_abcdefghijklmnopqrstuvwxyz0123456789");
+        let aws = format!("{}{}", "AKIA", "ABCDEFGHIJKLMNOP");
+        let begin = format!("-----BEGIN {} KEY-----", "PRIVATE");
+        let end = format!("-----END {} KEY-----", "PRIVATE");
+        let code = format!(
+            "const password = \"hunter2hunter2\";\nconst url = process.env.URL;\nconst t = '{token}';\nconst aws = \"{aws}\";\nconst key = `{begin}\\nMIIEvQIBADANBg\\n{end}`;\nfunction hash(password: string) {{ return password; }}\n"
+        );
+        let redacted = redact_secrets(&code);
+        for gone in ["hunter2hunter2", token.as_str(), aws.as_str(), "MIIEvQIBADANBg"] {
+            assert!(!redacted.contains(gone), "{gone} survived:\n{redacted}");
+        }
+        assert!(redacted.contains("const password = \"[REDACTED]\";") && redacted.contains("process.env.URL") && redacted.contains("function hash(password: string)"), "{redacted}");
+        assert!(redacted.contains("[REDACTED PRIVATE KEY]"));
+        assert_eq!(find_secret(&redacted), None, "what is left passes the scan:\n{redacted}");
+    }
+
+    #[test]
+    fn a_multi_line_private_key_block_is_dropped_whole() {
+        let begin = format!("-----BEGIN {} KEY-----", "RSA PRIVATE");
+        let end = format!("-----END {} KEY-----", "RSA PRIVATE");
+        let code = format!("const before = 1;\n{begin}\nAAAA\nBBBB\n{end}\nconst after = 2;\n");
+        assert_eq!(redact_secrets(&code), "const before = 1;\n[REDACTED PRIVATE KEY]\nconst after = 2;\n");
     }
 
     #[test]

@@ -60,7 +60,7 @@ fn enrich_makes_a_prose_question_find_the_file_and_no_enrich_does_not() {
     let refused = run(repo.path(), Some(&fixtures), &["enrich", "--provider", "fake"]);
     assert!(!refused.status.success() && err(&refused).contains("--yes"), "{}", err(&refused));
 
-    let done = run(repo.path(), Some(&fixtures), &["enrich", "--provider", "fake", "--yes"]);
+    let done = run(repo.path(), Some(&fixtures), &["enrich", "--provider", "fake", "--yes", "--omit-secrets"]);
     assert!(done.status.success(), "{}", err(&done));
     assert!(out(&done).contains("enriched 2 file(s), 0 failed"), "{}", out(&done));
 
@@ -72,7 +72,7 @@ fn enrich_makes_a_prose_question_find_the_file_and_no_enrich_does_not() {
     assert_eq!(without, before, "--no-enrich ranks on code text only");
 
     // Nothing left to do; the cache is where the spec says.
-    let again = run(repo.path(), Some(&fixtures), &["enrich", "--provider", "fake", "--yes"]);
+    let again = run(repo.path(), Some(&fixtures), &["enrich", "--provider", "fake", "--yes", "--omit-secrets"]);
     assert!(out(&again).contains("nothing to do"), "{}", out(&again));
     assert!(repo.path().join(".specs/.cache/enrichment.jsonl").is_file());
 }
@@ -84,13 +84,13 @@ fn a_file_with_a_secret_is_kept_back_and_a_missing_answer_is_a_partial_failure()
     let fixtures = write_fixtures(tmp.path(), r#"{ "src/billing/charge.usecase.ts": { "en": "Charges residents" } }"#);
     assert!(run(repo.path(), None, &["sync"]).status.success());
 
-    let dry = run(repo.path(), None, &["enrich", "--dry-run"]);
+    let dry = run(repo.path(), None, &["enrich", "--dry-run", "--omit-secrets"]);
     assert!(dry.status.success(), "a dry run needs no key: {}", err(&dry));
     let text = out(&dry);
     assert!(text.contains("2 file(s) to send") && text.contains("1 kept back"), "{text}");
     assert!(text.contains("omitted: src/config/secrets.ts (hard-coded credential)") && text.contains("top  20%"), "{text}");
 
-    let run1 = run(repo.path(), Some(&fixtures), &["enrich", "--provider", "fake", "--yes"]);
+    let run1 = run(repo.path(), Some(&fixtures), &["enrich", "--provider", "fake", "--yes", "--omit-secrets"]);
     assert_eq!(run1.status.code(), Some(6), "a partial failure has its own exit code: {}", err(&run1));
     assert!(err(&run1).contains("src/lease/create.usecase.ts"), "{}", err(&run1));
     assert!(out(&run1).contains("enriched 1 file(s), 1 failed"), "{}", out(&run1));
@@ -106,7 +106,7 @@ fn a_changed_file_is_stale_and_leaves_the_ranking_until_reenriched_and_clear_rem
     let tmp = tempfile::TempDir::new().unwrap();
     let fixtures = write_fixtures(tmp.path(), ANSWERS);
     assert!(run(repo.path(), None, &["sync"]).status.success());
-    assert!(run(repo.path(), Some(&fixtures), &["enrich", "--provider", "fake", "--yes"]).status.success());
+    assert!(run(repo.path(), Some(&fixtures), &["enrich", "--provider", "fake", "--yes", "--omit-secrets"]).status.success());
 
     repo.write_file("src/billing/charge.usecase.ts", "export class ChargeUsecase { run() { return 99; } }\n");
     let status = out(&run(repo.path(), None, &["enrich", "--status"]));
@@ -126,4 +126,21 @@ fn an_unsupported_language_is_refused_with_a_clear_message() {
     let out = run(repo.path(), Some(&fixtures), &["enrich", "--provider", "fake", "--yes", "--lang", "zh"]);
     assert_eq!(out.status.code(), Some(1));
     assert!(err(&out).contains("unsupported summary language `zh`"), "{}", err(&out));
+}
+
+#[test]
+fn by_default_a_flagged_file_is_sent_with_its_secrets_masked_not_kept_back() {
+    let repo = repo_with_files();
+    assert!(run(repo.path(), None, &["sync"]).status.success());
+
+    let dry = out(&run(repo.path(), None, &["enrich", "--dry-run"]));
+    assert!(dry.contains("3 file(s) to send") && dry.contains("0 kept back"), "nothing is held back: {dry}");
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let fixtures = write_fixtures(tmp.path(), r#"{ "src/billing/charge.usecase.ts": { "en": "a" }, "src/lease/create.usecase.ts": { "en": "b" }, "src/config/secrets.ts": { "en": "c" } }"#);
+    let done = run(repo.path(), Some(&fixtures), &["enrich", "--provider", "fake", "--yes"]);
+    assert!(done.status.success(), "{}", err(&done));
+    let status = out(&run(repo.path(), None, &["enrich", "--status"]));
+    assert!(status.contains("sent with secrets masked: src/config/secrets.ts (hard-coded credential)"), "{status}");
+    assert!(!status.contains("omitted (secret)"), "{status}");
 }

@@ -159,6 +159,9 @@ struct EnrichArgs {
     /// Stop after this many tokens (input + output, as the provider reports them).
     #[arg(long)]
     token_budget: Option<u64>,
+    /// Keep back a file the secret scan flags, instead of sending it with the secrets masked (`[REDACTED]`).
+    #[arg(long)]
+    omit_secrets: bool,
     /// Characters of each file that are sent.
     #[arg(long, default_value_t = nexspec::enrich::select::DEFAULT_SNIPPET_CHARS)]
     snippet_chars: usize,
@@ -591,6 +594,9 @@ fn run_enrich(repo: &Path, index_dir: &Path, args: &EnrichArgs) -> Result<i32, B
             for item in &state.omitted_secret {
                 println!("omitted (secret): {item}");
             }
+            for item in &state.redacted {
+                println!("sent with secrets masked: {item}");
+            }
         }
         return Ok(0);
     }
@@ -602,6 +608,7 @@ fn run_enrich(repo: &Path, index_dir: &Path, args: &EnrichArgs) -> Result<i32, B
         top: args.top.as_deref().map(Top::parse).transpose()?,
         token_budget: args.token_budget,
         snippet_chars: args.snippet_chars,
+        redact_secrets: !args.omit_secrets,
     };
     let provider: Box<dyn EnrichProvider> = match (args.dry_run, args.provider.as_str()) {
         (_, "fake") => {

@@ -104,3 +104,52 @@ fn a_file_that_is_never_answered_is_retried_once_and_then_reported() {
     assert_eq!((report.enriched_files, report.failed.len(), report.retried), (0, 1, 1));
     assert_eq!(*provider.calls.lock().unwrap(), 2, "the first try and one retry, no more");
 }
+
+/// Remembers every snippet it was sent.
+struct Spy {
+    seen: Mutex<Vec<(String, String)>>,
+}
+
+impl EnrichProvider for Spy {
+    fn name(&self) -> &str {
+        "spy"
+    }
+
+    fn model(&self) -> &str {
+        "spy-model"
+    }
+
+    fn summarize(&self, files: &[FileRequest], langs: &[String]) -> Result<BatchOutcome, ProviderError> {
+        let mut outcome = BatchOutcome::default();
+        for file in files {
+            self.seen.lock().unwrap().push((file.path.clone(), file.snippet.clone()));
+            outcome.items.push(Summarised { path: file.path.clone(), summaries: langs.iter().map(|l| (l.clone(), "ok".to_string())).collect() });
+        }
+        Ok(outcome)
+    }
+}
+
+#[test]
+fn the_provider_never_sees_a_secret_value_only_the_masked_file() {
+    let repo = FixtureRepo::init();
+    repo.write_file(".gitignore", ".specs/.index/\n.specs/.cache/\n");
+    let token = format!("{}{}", "gh", "p_abcdefghijklmnopqrstuvwxyz0123456789");
+    repo.write_file("src/config.ts", &format!("export const password = \"hunter2hunter2\";\nexport const token = '{token}';\nexport const url = process.env.URL;\n"));
+    repo.commit("init");
+    let index = tempfile::TempDir::new().unwrap();
+    let engine = Engine::open(index.path(), repo.path()).unwrap();
+    engine.sync().unwrap();
+    let provider = Spy { seen: Mutex::new(Vec::new()) };
+    let options = EnrichOptions::default();
+    let planned = plan(&engine, repo.path(), &EnrichmentCache::default(), &options, provider.model()).unwrap();
+    assert_eq!((planned.files.len(), planned.redacted.len(), planned.omitted_secret.len()), (1, 1, 0));
+    run(&engine, repo.path(), &provider, &options, planned, &AtomicBool::new(false), |_, _| {}).unwrap();
+    let seen = provider.seen.lock().unwrap();
+    let snippet = &seen[0].1;
+    assert!(!snippet.contains("hunter2hunter2") && !snippet.contains(&token), "{snippet}");
+    assert!(snippet.contains("password") && snippet.contains("[REDACTED]") && snippet.contains("process.env.URL"), "the code stays readable: {snippet}");
+
+    let strict = EnrichOptions { redact_secrets: false, ..EnrichOptions::default() };
+    let strict_plan = plan(&engine, repo.path(), &EnrichmentCache::default(), &strict, provider.model()).unwrap();
+    assert_eq!((strict_plan.files.len(), strict_plan.omitted_secret.len()), (0, 1), "--omit-secrets keeps it home");
+}
