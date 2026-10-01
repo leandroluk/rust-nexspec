@@ -683,9 +683,10 @@ fn run_enrich(repo: &Path, index_dir: &Path, args: &EnrichArgs) -> Result<i32, B
         eprintln!("warning: {path}: {reason}");
     }
     println!(
-        "enriched {} file(s), {} failed; {} input / {} output tokens, {}{}{}",
+        "enriched {} file(s), {} failed{}; {} input / {} output tokens, {}{}{}",
         report.enriched_files,
         report.failed.len(),
+        if report.retried > 0 { format!(" (asked again, one at a time, for {} file(s))", report.retried) } else { String::new() },
         report.usage.input_tokens,
         report.usage.output_tokens,
         format_usd(pricing.cost(report.usage)),

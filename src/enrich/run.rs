@@ -83,6 +83,8 @@ pub struct RunReport {
     pub batches: usize,
     pub interrupted: bool,
     pub budget_reached: bool,
+    /// Files asked for again, alone, after a first answer that missed them.
+    pub retried: usize,
 }
 
 /// What survives between runs (besides the cache itself): for `--status` and the first-use check.
@@ -212,76 +214,89 @@ pub fn run(
     if cache.retain_paths(&eligible) > 0 {
         cache.save(repo)?;
     }
-    let batches = make_batches(&plan.files, options.batch);
-    let total_batches = batches.len();
-    let next = AtomicUsize::new(0);
     let spent = AtomicU64::new(0);
     let budget_reached = AtomicBool::new(false);
-    let (tx, rx) = mpsc::channel::<Finished>();
-    let queue = Mutex::new(&batches);
     let mut report = RunReport::default();
     let mut outcome: Result<(), RunError> = Ok(());
+    let mut batches = make_batches(&plan.files, options.batch);
 
-    std::thread::scope(|scope| {
-        for _ in 0..options.concurrency.clamp(1, 16) {
-            let tx = tx.clone();
-            let (next, spent, budget_reached, queue) = (&next, &spent, &budget_reached, &queue);
-            scope.spawn(move || {
-                loop {
-                    if stop.load(Ordering::SeqCst) {
-                        return;
-                    }
-                    if options.token_budget.is_some_and(|b| spent.load(Ordering::SeqCst) >= b) {
-                        budget_reached.store(true, Ordering::SeqCst);
-                        return;
-                    }
-                    let index = next.fetch_add(1, Ordering::SeqCst);
-                    let batch = { queue.lock().unwrap().get(index).cloned() };
-                    let Some(batch) = batch else { return };
-                    let requests: Vec<FileRequest> = batch.iter().map(|f| FileRequest { path: f.path.clone(), snippet: f.snippet.clone() }).collect();
-                    let result = provider.summarize(&requests, &batch[0].langs);
-                    if let Ok(done) = &result {
-                        spent.fetch_add(done.usage.input_tokens + done.usage.output_tokens, Ordering::SeqCst);
-                    }
-                    if tx.send((index, result)).is_err() {
-                        return;
-                    }
-                }
-            });
-        }
-        drop(tx);
+    // Two passes: the second asks again, one file at a time, for the files the first one got no usable answer for
+    // (an answer that skips a file or a language is usually a batch too crowded for the model, not a bad file).
+    for pass in 0..2 {
+        let total_batches = batches.len();
+        let next = AtomicUsize::new(0);
+        let (tx, rx) = mpsc::channel::<Finished>();
+        let queue = Mutex::new(&batches);
 
-        for (index, result) in rx {
-            let batch = &batches[index];
-            report.batches += 1;
-            match result {
-                Ok(done) => {
-                    report.usage += done.usage;
-                    let at = unix_now();
-                    let mut applied = Vec::new();
-                    for item in &done.items {
-                        let Some(planned) = batch.iter().find(|f| f.path == item.path) else { continue };
-                        for (lang, text) in &item.summaries {
-                            cache.upsert(Entry::new(&item.path, &planned.hash, lang, text, provider.model(), PROMPT_VERSION, at));
+        std::thread::scope(|scope| {
+            for _ in 0..options.concurrency.clamp(1, 16) {
+                let tx = tx.clone();
+                let (next, spent, budget_reached, queue) = (&next, &spent, &budget_reached, &queue);
+                scope.spawn(move || {
+                    loop {
+                        if stop.load(Ordering::SeqCst) {
+                            return;
                         }
-                        applied.push(item.path.clone());
+                        if options.token_budget.is_some_and(|b| spent.load(Ordering::SeqCst) >= b) {
+                            budget_reached.store(true, Ordering::SeqCst);
+                            return;
+                        }
+                        let index = next.fetch_add(1, Ordering::SeqCst);
+                        let batch = { queue.lock().unwrap().get(index).cloned() };
+                        let Some(batch) = batch else { return };
+                        let requests: Vec<FileRequest> = batch.iter().map(|f| FileRequest { path: f.path.clone(), snippet: f.snippet.clone() }).collect();
+                        let result = provider.summarize(&requests, &batch[0].langs);
+                        if let Ok(done) = &result {
+                            spent.fetch_add(done.usage.input_tokens + done.usage.output_tokens, Ordering::SeqCst);
+                        }
+                        if tx.send((index, result)).is_err() {
+                            return;
+                        }
                     }
-                    report.failed.extend(done.failed);
-                    report.enriched_files += applied.len();
-                    if let Err(e) = cache.save(repo).map_err(RunError::from).and_then(|()| engine.apply_enrichment(&applied).map(|_| ()).map_err(RunError::from)) {
-                        outcome = Err(e);
-                        stop.store(true, Ordering::SeqCst);
-                    }
-                }
-                Err(error) => {
-                    // The code was not sent back and forth for nothing: say which files, never what was in them.
-                    let reason = error.to_string();
-                    report.failed.extend(batch.iter().map(|f| (f.path.clone(), reason.clone())));
-                }
+                });
             }
-            on_batch(&report, total_batches);
+            drop(tx);
+
+            for (index, result) in rx {
+                let batch = &batches[index];
+                report.batches += 1;
+                match result {
+                    Ok(done) => {
+                        report.usage += done.usage;
+                        let at = unix_now();
+                        let mut applied = Vec::new();
+                        for item in &done.items {
+                            let Some(planned) = batch.iter().find(|f| f.path == item.path) else { continue };
+                            for (lang, text) in &item.summaries {
+                                cache.upsert(Entry::new(&item.path, &planned.hash, lang, text, provider.model(), PROMPT_VERSION, at));
+                            }
+                            applied.push(item.path.clone());
+                        }
+                        report.failed.extend(done.failed);
+                        report.enriched_files += applied.len();
+                        if let Err(e) = cache.save(repo).map_err(RunError::from).and_then(|()| engine.apply_enrichment(&applied).map(|_| ()).map_err(RunError::from)) {
+                            outcome = Err(e);
+                            stop.store(true, Ordering::SeqCst);
+                        }
+                    }
+                    Err(error) => {
+                        // The code was not sent back and forth for nothing: say which files, never what was in them.
+                        let reason = error.to_string();
+                        report.failed.extend(batch.iter().map(|f| (f.path.clone(), reason.clone())));
+                    }
+                }
+                on_batch(&report, total_batches);
+            }
+        });
+
+        let can_retry = pass == 0 && outcome.is_ok() && !report.failed.is_empty() && !stop.load(Ordering::SeqCst) && !budget_reached.load(Ordering::SeqCst);
+        if !can_retry {
+            break;
         }
-    });
+        let failed: std::collections::HashSet<String> = report.failed.drain(..).map(|(path, _)| path).collect();
+        batches = plan.files.iter().filter(|f| failed.contains(&f.path)).map(|f| vec![f.clone()]).collect();
+        report.retried = batches.len();
+    }
 
     outcome?;
     report.interrupted = stop.load(Ordering::SeqCst);

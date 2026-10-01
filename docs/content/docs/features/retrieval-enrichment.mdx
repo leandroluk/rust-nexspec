@@ -12,7 +12,8 @@ Source: `.specs/features/retrieval-enrichment/`
 1. **Select.** Indexed TS/JS, Python, Go, Rust and Markdown files, honouring `.gitignore`. Never `.env*`, keys, certificates, binaries or generated code. The first 2500 characters of each file are scanned for secrets (private keys, cloud tokens, hard-coded passwords); a file that matches is kept back and listed by `--status`.
 2. **Order.** Most important first: graph degree, links to requirements and tasks, co-change. `--top 20%` or `--top 300` stops early.
 3. **Ask.** Batches of files go to the provider (Gemini first, key from `GEMINI_API_KEY`, sent in a header only). One request returns the summary in every language of `--lang`, written natively, not translated.
-4. **Keep.** After every batch the cache is rewritten and the summaries are applied to the index, so Ctrl+C or `--token-budget` lose nothing and repeat nothing.
+4. **Ask again.** Files the answer skipped (or whose answer lacks a language) are asked for again, one at a time, once: a crowded request is the usual reason a model skips a file. Network errors and HTTP 429/5xx are retried with back-off inside each request.
+5. **Keep.** After every batch the cache is rewritten and the summaries are applied to the index, so Ctrl+C or `--token-budget` lose nothing and repeat nothing.
 
 ## Search
 
