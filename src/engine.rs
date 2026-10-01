@@ -182,6 +182,12 @@ pub struct BlameResult {
 /// 9 = annotation nodes, `AnnotatedBy`/`SimilarTo` edges and their contexts (Fase 18).
 pub const INDEX_FORMAT: u64 = 9;
 
+/// "Access is denied" / os error 5 / permission denied while opening or replacing a file.
+fn is_transient_file_error(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("access is denied") || lower.contains("os error 5") || lower.contains("code: 5,") || lower.contains("permissiondenied")
+}
+
 /// What `sync --embed` did (Fase 18).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EmbedReport {
@@ -390,7 +396,33 @@ impl Engine {
 
     /// REQ-603: one incremental sync cycle via [`SyncOrchestrator`].
     pub fn sync(&self) -> Result<SyncReport, EngineError> {
-        self.sync_with(false)
+        self.retrying(|| self.sync_with(false))
+    }
+
+    /// Runs `attempt`, and runs it again (after letting the WAL catch up) when it failed only because Windows
+    /// refused to open an index file for a moment: an antivirus or the search indexer holding a freshly written
+    /// segment shows up as "Access is denied" (os error 5). Every cycle is idempotent, so trying again is safe;
+    /// any other error, or the fourth refusal, is returned as it is.
+    fn retrying<T>(&self, mut attempt: impl FnMut() -> Result<T, EngineError>) -> Result<T, EngineError> {
+        let mut tries = 0u32;
+        loop {
+            match attempt() {
+                Err(e) if tries < 3 && is_transient_file_error(&e.to_string()) => {
+                    tries += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(300 * u64::from(tries)));
+                    let _ = self.resume();
+                }
+                other => return other,
+            }
+        }
+    }
+
+    fn stage_set(&self, set: crate::sync::MutationSet) -> Result<u64, EngineError> {
+        self.retrying(|| {
+            let wal = Wal::open(self.wal_path())?;
+            let coordinator = Coordinator::new(wal, VersionPointer::new(&self.db), self.participants()?);
+            Ok(coordinator.stage(set.clone())?)
+        })
     }
 
     /// A sync cycle that also rebuilds the domain subgraph (Fase 14) even if git shows no change it
@@ -593,9 +625,7 @@ impl Engine {
         if set.nodes.is_empty() && set.edges.is_empty() && set.docs.is_empty() {
             return Ok(None);
         }
-        let wal = Wal::open(self.wal_path())?;
-        let coordinator = Coordinator::new(wal, VersionPointer::new(&self.db), self.participants()?);
-        Ok(Some(coordinator.stage(set)?))
+        Ok(Some(self.stage_set(set)?))
     }
 
     /// Re-applies the cached summaries of `paths` to the lexical index (REQ-1907): one cycle through
@@ -613,9 +643,7 @@ impl Engine {
             return Ok(0);
         }
         let applied = nodes.len();
-        let wal = Wal::open(self.wal_path())?;
-        let coordinator = Coordinator::new(wal, VersionPointer::new(&self.db), self.participants()?);
-        coordinator.stage(crate::sync::MutationSet { nodes, edges: vec![], docs: vec![] })?;
+        self.stage_set(crate::sync::MutationSet { nodes, edges: vec![], docs: vec![] })?;
         Ok(applied)
     }
 
@@ -1226,6 +1254,14 @@ mod tests {
                 .unwrap()
                 .success()
         );
+    }
+
+    #[test]
+    fn only_refused_file_access_counts_as_transient() {
+        assert!(is_transient_file_error("tantivy error: Failed to open file for write: IoError { io_error: Os { code: 5, kind: PermissionDenied, message: \"Access is denied.\" } }"));
+        assert!(is_transient_file_error("An IO error occurred: 'Access is denied. (os error 5)'"));
+        assert!(!is_transient_file_error("git error: no such revision"));
+        assert!(!is_transient_file_error("index format 5 is incompatible"));
     }
 
     #[test]
