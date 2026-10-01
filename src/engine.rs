@@ -656,7 +656,7 @@ impl Engine {
     /// Fase 5 pruning/budgeting/serialization pipeline.
     pub fn search(&self, query: &str, max_tokens: Option<u32>) -> Result<SearchResult, EngineError> {
         let tantivy = TantivyParticipant::new(&self.tantivy_dir())?;
-        let weight = self.summary_weight.unwrap_or_else(crate::search::query::summary_weight_from_env);
+        let weight = self.summary_weight.unwrap_or_else(|| crate::search::query::summary_weight_for(query));
         let bm25_ranked: Vec<StableId> = crate::search::search_text_weighted(&tantivy, query, 20, weight)?
             .iter()
             .filter_map(|doc| doc.get_first(tantivy.schema().id_field)?.as_str().and_then(unhex))

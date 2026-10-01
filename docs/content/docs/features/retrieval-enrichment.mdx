@@ -16,7 +16,9 @@ Source: `.specs/features/retrieval-enrichment/`
 
 ## Search
 
-The index has one field per language (`summary_en`, `summary_pt`, `summary_ru`, …, every language Tantivy can stem) next to `text`. Search queries all of them; summaries weigh `NEXSPEC_ENRICH_WEIGHT` (default 0.5, `0` switches them off) against 1.0 for code text. There is no language detection: a question in any language can match the summary written in that language. `--no-enrich` on `search` and `query` ranks on code text only.
+The index has one field per language (`summary_en`, `summary_pt`, `summary_ru`, …, every language Tantivy can stem) next to `text`. There is no language detection: a question in any language can match the summary written in that language. `--no-enrich` on `search` and `query` ranks on code text only.
+
+**Questions in prose get the summaries; identifier lookups do not.** A sentence ("how does a user log in to the application": three or more meaningful words, at least one stopword, nothing shaped like an identifier) searches the summaries with weight 2; a keyword list or identifier ("login use case password authenticate", `handleInvoice`, `who calls seed_discovery`) does not touch them. `NEXSPEC_ENRICH_WEIGHT` overrides both (`0` switches the summaries off). Stopwords (English and Portuguese) are dropped from every multi-word question before it is searched, and question text is never read as query syntax (`Synonyms: a, b` is just words). Why: on the reference corpus, applying one weight to everything either did nothing for prose (0.5) or lifted prose recall by 15 points while costing `locate` 10 points of MRR (2.0): identifier-shaped questions already match names, and the summaries only get in their way.
 
 ## Cost and control
 
@@ -33,3 +35,16 @@ Prices come from `NEXSPEC_ENRICH_PRICE_IN` / `NEXSPEC_ENRICH_PRICE_OUT` (USD per
 ## Is it worth it?
 
 `nexspec bench --compare-enrich` runs your corpus twice on the same commit. The summaries may keep a weight above zero only if prose (`behavior`) questions gain at least 15 points of `recall@5`, `locate` MRR drops by at most 2 points and median latency grows by at most 20 %. The report also says how many questions it takes for the enrichment tokens to pay themselves back.
+
+### Measured on the condominium (2026-09-30)
+
+1038 files summarised in English (about 706 thousand tokens, US$ 0.10 with `gemini-flash-lite-latest`), corpus of 32 questions including 8 in prose:
+
+| | without summaries | with summaries |
+| --- | --- | --- |
+| prose (`behavior`) recall@5 | 40 % | 55 % (+15 points) |
+| `locate` MRR | 0.93 | 0.93 |
+| `structure` recall@5 | 100 % | 100 % |
+| median latency | 86 ms | 60 ms |
+
+All three criteria pass, so the summaries keep their weight. The corpus is small (ten prose questions, and the weight was tuned on it), so treat it as a first confirmation rather than a measured guarantee; add prose questions of your own to `.specs/bench/queries.toml` and run `bench --compare-enrich` on your repository.

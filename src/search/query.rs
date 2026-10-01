@@ -29,14 +29,63 @@ pub fn find_by_id(
     }
 }
 
-/// Weight of the `summary_*` fields relative to `text` (REQ-1907): `NEXSPEC_ENRICH_WEIGHT`,
-/// default 0.5; 0 leaves the summaries out of the query.
+/// `NEXSPEC_ENRICH_WEIGHT` when it is set and valid.
+fn weight_override() -> Option<f32> {
+    std::env::var("NEXSPEC_ENRICH_WEIGHT").ok().and_then(|v| v.trim().parse::<f32>().ok()).filter(|w| w.is_finite() && *w >= 0.0)
+}
+
+/// Weight of the `summary_*` fields relative to `text` for callers with no question to look at (REQ-1907):
+/// `NEXSPEC_ENRICH_WEIGHT`, default 0.5; 0 leaves the summaries out of the query.
 pub fn summary_weight_from_env() -> f32 {
-    std::env::var("NEXSPEC_ENRICH_WEIGHT")
-        .ok()
-        .and_then(|v| v.trim().parse::<f32>().ok())
-        .filter(|w| w.is_finite() && *w >= 0.0)
-        .unwrap_or(0.5)
+    weight_override().unwrap_or(0.5)
+}
+
+/// Weight of the summaries for this question. A question in prose ("how does a user log in") has words that
+/// no symbol is called, and the summaries are where they are; an identifier lookup ("handleInvoice",
+/// "who calls seed_discovery") already matches names, and summaries only get in its way (on the reference
+/// corpus a weight of 2 lifted prose recall@5 by 15 points and cost `locate` 10 points of MRR when applied
+/// to everything). So: prose gets `PROSE_WEIGHT`, a lookup gets none; `NEXSPEC_ENRICH_WEIGHT` overrides both.
+pub fn summary_weight_for(question: &str) -> f32 {
+    weight_override().unwrap_or(if looks_like_prose(question) { PROSE_WEIGHT } else { 0.0 })
+}
+
+pub const PROSE_WEIGHT: f32 = 2.0;
+
+/// A sentence rather than a keyword list: three or more meaningful words, at least one stopword among the words
+/// ("how does a user log in", not "login use case password authenticate"), and nothing shaped like an
+/// identifier, a path or a marker.
+pub fn looks_like_prose(question: &str) -> bool {
+    let content = without_stopwords(question);
+    if content.split_whitespace().count() == question.split_whitespace().count() {
+        return false;
+    }
+    let words: Vec<&str> = content.split_whitespace().collect();
+    let identifier_like = |w: &&str| {
+        w.chars().any(|c| matches!(c, '_' | '/' | '\\' | '.' | ':') || c.is_ascii_digit())
+            || w.chars().zip(w.chars().skip(1)).any(|(a, b)| a.is_lowercase() && b.is_uppercase())
+    };
+    words.len() >= 3 && !words.iter().any(identifier_like)
+}
+
+/// Words that carry no meaning in a question (English and Portuguese). Left in, they match the one-word name of
+/// any symbol called `log` or `to` and drown the words that matter.
+const STOPWORDS: &[&str] = &[
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "do", "does", "did", "how", "what", "which", "who", "whom", "whose", "where", "when", "why",
+    "in", "on", "at", "to", "of", "for", "from", "by", "with", "and", "or", "not", "it", "its", "this", "that", "these", "those", "as", "into", "about",
+    "i", "you", "we", "they", "he", "she", "can", "could", "should", "would", "will", "may", "might", "there", "their", "them", "me", "my", "our", "your",
+    "o", "os", "as", "um", "uma", "de", "do", "da", "dos", "das", "em", "no", "na", "nos", "nas", "por", "para", "com", "e", "ou", "que", "como", "qual",
+    "quais", "onde", "quando", "ao", "aos", "se", "ser", "foi", "sao",
+];
+
+/// A question without its stopwords; the text unchanged when it is short (an identifier lookup) or would
+/// be left empty.
+pub fn without_stopwords(question: &str) -> String {
+    let words: Vec<&str> = question.split_whitespace().collect();
+    if words.len() < 3 {
+        return question.to_string();
+    }
+    let kept: Vec<&str> = words.iter().copied().filter(|w| !STOPWORDS.contains(&w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase().as_str())).collect();
+    if kept.is_empty() { question.to_string() } else { kept.join(" ") }
 }
 
 /// Free-text BM25 search over `text` and the file summaries, ranked, top `limit` results.
@@ -69,7 +118,7 @@ pub fn search_text_weighted(
     }
     // Lenient: a question is prose, not query syntax. "Synonyms: a, b" must not be read as a field called
     // `Synonyms`, and a stray quote or parenthesis must not end the search in an error.
-    let (query, _ignored_syntax_errors) = query_parser.parse_query_lenient(query_text);
+    let (query, _ignored_syntax_errors) = query_parser.parse_query_lenient(&without_stopwords(query_text));
     let top = searcher.search(&query, &TopDocs::with_limit(limit).order_by_score())?;
     top.into_iter()
         .map(|(_score, addr)| searcher.doc(addr).map_err(SearchError::from))
@@ -136,6 +185,29 @@ mod tests {
 
         let no_hits = search_text(&p, "completely_unrelated_zzz", 10).unwrap();
         assert!(no_hits.is_empty());
+    }
+
+    #[test]
+    fn prose_is_told_from_identifier_lookups() {
+        assert!(looks_like_prose("how does a user log in to the application"));
+        assert!(looks_like_prose("onde ficam os contratos de servico"));
+        assert!(!looks_like_prose("handleInvoice"));
+        assert!(!looks_like_prose("who calls seed_discovery"));
+        assert!(!looks_like_prose("what uses CsrDelta in the graph"));
+        assert!(!looks_like_prose("REQ-CTC-001 cadastro de contrato"));
+        assert!(!looks_like_prose("src/billing/charge.ts imports"));
+        assert!(!looks_like_prose("two words"));
+        assert!(!looks_like_prose("login use case password authenticate"), "a keyword list is a lookup");
+        assert!(!looks_like_prose("outbox decorator repository dispatch"));
+    }
+
+    #[test]
+    fn stopwords_leave_a_question_with_its_meaning_and_short_lookups_alone() {
+        assert_eq!(without_stopwords("how does a user log in to the application"), "user log application");
+        assert_eq!(without_stopwords("onde ficam os contratos de servico"), "ficam contratos servico");
+        assert_eq!(without_stopwords("handleInvoice"), "handleInvoice");
+        assert_eq!(without_stopwords("who calls"), "who calls", "two words: left as typed");
+        assert_eq!(without_stopwords("what is the"), "what is the", "never left empty");
     }
 
     #[test]
