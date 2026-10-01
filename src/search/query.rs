@@ -67,7 +67,9 @@ pub fn search_text_weighted(
             query_parser.set_field_boost(*field, summary_weight);
         }
     }
-    let query = query_parser.parse_query(query_text)?;
+    // Lenient: a question is prose, not query syntax. "Synonyms: a, b" must not be read as a field called
+    // `Synonyms`, and a stray quote or parenthesis must not end the search in an error.
+    let (query, _ignored_syntax_errors) = query_parser.parse_query_lenient(query_text);
     let top = searcher.search(&query, &TopDocs::with_limit(limit).order_by_score())?;
     top.into_iter()
         .map(|(_score, addr)| searcher.doc(addr).map_err(SearchError::from))
@@ -134,6 +136,16 @@ mod tests {
 
         let no_hits = search_text(&p, "completely_unrelated_zzz", 10).unwrap();
         assert!(no_hits.is_empty());
+    }
+
+    #[test]
+    fn a_question_with_query_syntax_in_it_is_searched_not_rejected() {
+        let (_dir, p) = participant_with([6u8; 32], "charge monthly invoice");
+        for question in ["Synonyms: charge, invoice", "how is it (charged) \"monthly\"?", "-invoice +charge", "path:src/a.ts charge", "unbalanced (paren charge"] {
+            let hits = search_text(&p, question, 10).unwrap_or_else(|e| panic!("{question:?}: {e}"));
+            assert!(hits.len() <= 1, "{question:?}");
+        }
+        assert_eq!(search_text(&p, "Synonyms: charge invoice", 10).unwrap().len(), 1, "the words after the colon still match");
     }
 
     #[test]
